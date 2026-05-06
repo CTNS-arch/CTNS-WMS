@@ -1,12 +1,12 @@
 import { PrismaClient } from '@prisma/client'
-import { PrismaPg } from '@prisma/adapter-pg'
-import { Pool } from 'pg'
+import { PrismaNeonHttp } from '@prisma/adapter-neon'
+import { neon } from '@neondatabase/serverless'
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined }
 
 function createPrismaClient() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-  const adapter = new PrismaPg(pool)
+  const sql = neon(process.env.DATABASE_URL!)
+  const adapter = new PrismaNeonHttp(sql)
   return new PrismaClient({ adapter })
 }
 
