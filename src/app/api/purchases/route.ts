@@ -7,17 +7,13 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status')
     const search = searchParams.get('search')
-    const page = parseInt(searchParams.get('page') ?? '1', 10)
-    const limit = parseInt(searchParams.get('limit') ?? '20', 10)
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
+    const limit = Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10))
     const skip = (page - 1) * limit
 
     const where: any = {}
-    if (status && status !== '') {
-      where.status = status as PurchaseStatus
-    }
-    if (search && search.trim() !== '') {
-      where.itemName = { contains: search.trim(), mode: 'insensitive' }
-    }
+    if (status) where.status = status as PurchaseStatus
+    if (search?.trim()) where.title = { contains: search.trim(), mode: 'insensitive' }
 
     const [requests, total] = await Promise.all([
       prisma.purchaseRequest.findMany({
@@ -26,8 +22,8 @@ export async function GET(req: NextRequest) {
         take: limit,
         orderBy: { createdAt: 'desc' },
         include: {
+          items: { orderBy: { lineNo: 'asc' } },
           requester: { select: { name: true, email: true } },
-          item: { select: { itemCode: true } },
         },
       }),
       prisma.purchaseRequest.count({ where }),
@@ -43,35 +39,43 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { url, itemId, itemName, quantity, unit, price, memo, requesterId } = body
+    const { title, department, memo, items, requesterId } = body
 
-    if (!itemName || itemName.trim() === '') {
-      return NextResponse.json({ success: false, message: '품명은 필수입니다.' }, { status: 400 })
+    if (!title?.trim()) {
+      return NextResponse.json({ success: false, message: '제목은 필수입니다.' }, { status: 400 })
     }
-    if (quantity === undefined || quantity === null || quantity === '') {
-      return NextResponse.json({ success: false, message: '수량은 필수입니다.' }, { status: 400 })
+    if (!items || items.length === 0) {
+      return NextResponse.json({ success: false, message: '품목을 1개 이상 입력해주세요.' }, { status: 400 })
     }
-    if (!unit || unit.trim() === '') {
-      return NextResponse.json({ success: false, message: '단위는 필수입니다.' }, { status: 400 })
+    const validItems = items.filter((it: any) => it.quantity && Number(it.quantity) > 0 && it.unit?.trim())
+    if (validItems.length === 0) {
+      return NextResponse.json({ success: false, message: '수량과 단위가 입력된 품목이 필요합니다.' }, { status: 400 })
     }
-
-    const data: any = {
-      itemName: itemName.trim(),
-      quantity: Number(quantity),
-      unit: unit.trim(),
-      status: 'PENDING' as PurchaseStatus,
-    }
-    if (url !== undefined && url !== '') data.url = url
-    if (itemId !== undefined && itemId !== '') data.itemId = itemId
-    if (price !== undefined && price !== '' && price !== null) data.price = Number(price)
-    if (memo !== undefined && memo !== '') data.memo = memo
-    if (requesterId !== undefined && requesterId !== '') data.requesterId = requesterId
 
     const request = await prisma.purchaseRequest.create({
-      data,
+      data: {
+        title: title.trim(),
+        department: department?.trim() || '생산구매팀',
+        memo: memo?.trim() || null,
+        requesterId: requesterId || null,
+        items: {
+          create: validItems.map((it: any, i: number) => ({
+            lineNo: i + 1,
+            workCode: it.workCode?.trim() || null,
+            category: it.category?.trim() || null,
+            midCategory: it.midCategory?.trim() || null,
+            subCategory: it.subCategory?.trim() || null,
+            bomNo: it.bomNo?.trim() || null,
+            spec: it.spec?.trim() || null,
+            quantity: Number(it.quantity),
+            unit: it.unit?.trim() || 'EA',
+            purchaseReason: it.purchaseReason?.trim() || null,
+          })),
+        },
+      },
       include: {
+        items: { orderBy: { lineNo: 'asc' } },
         requester: { select: { name: true, email: true } },
-        item: { select: { itemCode: true } },
       },
     })
 
