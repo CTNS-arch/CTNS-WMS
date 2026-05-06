@@ -1,0 +1,246 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── 인증 / 사용자 ──────────────────────────────────────────
+
+enum UserRole {
+  ITEM_WRITE   // 품번 생성/편집
+  ITEM_DELETE  // 품번 삭제
+  LAB_STOCK    // 연구소 재고 관리
+  PROD_STOCK   // 생산구매팀 재고 관리
+  MASTER_ADMIN // 마스터 관리자
+}
+
+model User {
+  id        String     @id @default(cuid())
+  email     String     @unique
+  name      String?
+  image     String?
+  roles     UserRole[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  accounts          Account[]
+  sessions          Session[]
+  stockTransactions StockTransaction[]
+  purchaseRequests  PurchaseRequest[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ── 품목 분류 ──────────────────────────────────────────────
+
+enum ItemCategory {
+  PRODUCT   // 제품
+  ASSEMBLY  // 어셈블리
+  COMPONENT // 컴포넌트
+}
+
+enum ItemStatus {
+  ACTIVE       // 사용
+  INACTIVE     // 미사용
+  RESTRICTED   // 사용금지
+  DISCONTINUED // 단종
+}
+
+// ── 재고 ──────────────────────────────────────────────────
+
+enum Department {
+  LAB        // 연구소
+  PRODUCTION // 생산구매팀
+}
+
+enum StockTxType {
+  IN       // 입고
+  OUT      // 출고
+  TRANSFER // 이관
+  ADJUST   // 재고 조정
+}
+
+// ── 구매 요청 ──────────────────────────────────────────────
+
+enum PurchaseStatus {
+  PENDING  // 검토중
+  APPROVED // 승인
+  ORDERED  // 발주
+  RECEIVED // 입고완료
+  REJECTED // 반려
+}
+
+model Item {
+  id   String @id @default(cuid())
+  itemCode String @unique
+  itemName String
+  unit     String
+
+  // 분류
+  category       ItemCategory
+  subCategory    String?      // 배터리팩(BP), BMS(B), PCM(PC) 등
+  revisionNumber Int?         // 리비전 No. — 제품/BMS/PCM 코드의 버전
+  status         ItemStatus   @default(ACTIVE)
+  memo           String?
+
+  // 물리적 속성 (어셈블리, 제품, 컴포넌트)
+  length   Decimal? @db.Decimal(10, 2) // 가로/길이(mm)
+  width    Decimal? @db.Decimal(10, 2) // 세로/폭(mm)
+  height   Decimal? @db.Decimal(10, 2) // 높이(mm)
+  diameter Decimal? @db.Decimal(10, 2) // 직경(mm)
+  weight   Decimal? @db.Decimal(10, 2) // 무게(g)
+  material String?  // 알루미늄, 플라스틱, 나무, 스틸, 고무, 실리콘
+  packType String?  // 소프트팩, 하드팩
+
+  // 전기화학 (BMS, 셀, 제품)
+  chemistryType String? // NMC, LFP, NCA, LTO, LMFP, LMO, LCO, LNMO, LCP, LI-PO
+  seriesCount   Int?    // 직렬 정수(S)
+
+  // 셀/제품 구성
+  cellModel     String? // LGES H51, SDI 40T 등
+  parallelCount Int?    // 병렬 정수(P)
+  circuit       String? // BMS, PCM
+  layerCount    Int?    // 단 수
+
+  // 전기 사양 (셀, 제품)
+  dischargeCutoffVoltage     Decimal? @db.Decimal(10, 2) // 방전종료전압(V)
+  nominalVoltage             Decimal? @db.Decimal(10, 2) // 공칭전압(V)
+  chargeCutoffVoltage        Decimal? @db.Decimal(10, 2) // 충전종료전압(V)
+  nominalCapacity            Decimal? @db.Decimal(10, 3) // 공칭용량(Ah)
+  energy                     Decimal? @db.Decimal(12, 2) // 에너지(Wh)
+  maxChargeCurrent           Decimal? @db.Decimal(10, 2) // 미표충전전류(A)
+  maxDischargeCurrent        Decimal? @db.Decimal(10, 2) // 미표방전전류(A)
+  continuousChargeCurrent    Decimal? @db.Decimal(10, 2) // 연속충전전류(A) — BMS, 셀, 제품
+  continuousDischargeCurrent Decimal? @db.Decimal(10, 2) // 연속방전전류(A) — BMS, 셀, 제품
+  chargeCRate                Decimal? @db.Decimal(10, 2) // 충전 C-rate
+  dischargeCRate             Decimal? @db.Decimal(10, 2) // 방전 C-rate
+
+  // BMS 전용
+  manufacturer   String?  // 제조사 (CTNS, 달리)
+  minSeriesCount Int?     // 최소 직렬 수
+  maxSeriesCount Int?     // 최대 직렬 수
+  maxVoltage     Decimal? @db.Decimal(10, 2) // 최대허용전압(V)
+
+  // 모든 품목 공통 (다중 선택 → 배열)
+  vendors        String[] // 거래처
+
+  // 제품 전용 (다중 선택 → 배열)
+  specialOptions String[] // 특수옵션
+  certifications String[] // 인증
+
+  // 파일 (URL 배열)
+  drawings   String[] // 도면 (어셈블리, 제품)
+  specSheets String[] // 스펙시트 (셀)
+
+  // 컴포넌트 전용
+  color String? // 색상
+
+  // 셀 전용
+  formFactor String? // 원통형, 각형, 파우치
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bomAsParent       BOM[]              @relation("ParentItem")
+  bomAsChild        BOM[]              @relation("ChildItem")
+  stocks            Stock[]
+  stockTransactions StockTransaction[]
+  purchaseRequests  PurchaseRequest[]
+}
+
+model Stock {
+  id         String     @id @default(cuid())
+  itemId     String
+  department Department
+  quantity   Float      @default(0)
+  memo       String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  item Item @relation(fields: [itemId], references: [id])
+
+  @@unique([itemId, department])
+}
+
+model StockTransaction {
+  id       String      @id @default(cuid())
+  itemId   String
+  type     StockTxType
+  fromDept Department?
+  toDept   Department?
+  quantity Float
+  memo     String?
+  userId   String?
+  createdAt DateTime   @default(now())
+
+  item Item  @relation(fields: [itemId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model PurchaseRequest {
+  id          String         @id @default(cuid())
+  url         String?
+  itemId      String?
+  itemName    String
+  quantity    Float
+  unit        String
+  price       Decimal?       @db.Decimal(12, 2)
+  status      PurchaseStatus @default(PENDING)
+  memo        String?
+  requesterId String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  item      Item? @relation(fields: [itemId], references: [id])
+  requester User? @relation(fields: [requesterId], references: [id])
+}
+
+model BOM {
+  id       String  @id @default(cuid())
+  parentId String
+  childId  String
+  quantity Float
+  unit     String
+  memo     String?
+
+  parent Item @relation("ParentItem", fields: [parentId], references: [id])
+  child  Item @relation("ChildItem", fields: [childId], references: [id])
+
+  @@unique([parentId, childId])
+}
