@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { Prisma } from '@prisma/client'
+
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
 
 // 정확한 품번 변경 매핑 (현재코드 → 새코드 + 리비전 번호)
 const CODE_MAP = [
@@ -20,7 +21,7 @@ const CAT_REMAP: Record<string, { category: string; catCode: string }> = {
 export async function POST() {
   const results: string[] = []
 
-  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  await prisma.$transaction(async (tx: TxClient) => {
     // ── 1. BP 품번 회로 코드 수정 (명시적 매핑) ───────────────────
     for (const { from, to, revisionNumber } of CODE_MAP) {
       const item = await tx.item.findUnique({ where: { itemCode: from } })
