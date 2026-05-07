@@ -539,7 +539,7 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
 
   return (
     <Sheet open={open} onOpenChange={o => !o && onClose()}>
-      <SheetContent side="right" className="w-[800px] max-w-[800px] flex flex-col p-0 gap-0">
+      <SheetContent side="right" className="w-[800px] max-w-[800px] h-screen flex flex-col p-0 gap-0">
 
         {/* 고정 헤더 */}
         <SheetHeader className="px-6 py-4 border-b shrink-0">

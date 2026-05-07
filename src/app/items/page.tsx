@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import ItemFormDialog from '@/components/items/ItemFormDialog'
 import BomDialog from '@/components/items/BomDialog'
+import ItemBulkCreateDialog from '@/components/items/ItemBulkCreateDialog'
 import { CATEGORY_OPTIONS, SUB_OPTIONS } from '@/lib/classification'
 import { getOptions, type SelectOption } from '@/lib/select-options'
 
@@ -95,6 +96,7 @@ export default function ItemsPage() {
   const [batchStatusOpen, setBatchStatusOpen] = useState(false)
   const [batchStatus, setBatchStatus] = useState('')
   const [bomItem, setBomItem] = useState<any>(null)
+  const [bulkFormOpen, setBulkFormOpen] = useState(false)
 
   // ── 옵션 ──
   const [chemistryOpts, setChemistryOpts] = useState<SelectOption[]>([])
@@ -128,7 +130,7 @@ export default function ItemsPage() {
   const isAsmGeneric = isAsm && !isPO && !isBmsPcm
 
   // 뷰별 총 컬럼 수 (colSpan 계산용)
-  const colCount = isAll ? 22 : (isProd || isPO) ? 22 : isBmsPcm ? 13 : isAsmGeneric ? 17 : 15
+  const colCount = isAll ? 9 : (isProd || isPO) ? 22 : isBmsPcm ? 13 : isAsmGeneric ? 17 : 15
 
   const fetchItems = useCallback(async () => {
     setLoading(true)
@@ -305,7 +307,7 @@ export default function ItemsPage() {
   const hasBom = (cat: string) => cat === 'PRODUCT' || cat === 'ASSEMBLY'
 
   // 뷰별 테이블 너비
-  const tableWidth = isAll ? 2180 : (isProd || isPO) ? 2180 : isBmsPcm ? 1510 : isAsmGeneric ? 1750 : 1590
+  const tableWidth = isAll ? 1155 : (isProd || isPO) ? 2180 : isBmsPcm ? 1510 : isAsmGeneric ? 1750 : 1590
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -499,12 +501,17 @@ export default function ItemsPage() {
           </div>
 
           <div className="px-3 py-3 border-t shrink-0 bg-gray-50">
-            <div className="flex gap-1.5">
-              <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={resetFilters} disabled={!hasActiveFilters}>
-                초기화
-              </Button>
-              <Button size="sm" className="flex-1 text-xs" onClick={() => { setEditItem(null); setFormOpen(true) }}>
-                + 등록
+            <div className="flex flex-col gap-1.5">
+              <div className="flex gap-1.5">
+                <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={resetFilters} disabled={!hasActiveFilters}>
+                  초기화
+                </Button>
+                <Button size="sm" className="flex-1 text-xs" onClick={() => { setEditItem(null); setFormOpen(true) }}>
+                  + 등록
+                </Button>
+              </div>
+              <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => setBulkFormOpen(true)}>
+                일괄 등록
               </Button>
             </div>
           </div>
@@ -559,33 +566,31 @@ export default function ItemsPage() {
                 <col style={{ width: 80 }} />
                 <col style={{ width: 200 }} />
                 <col style={{ width: 200 }} />
-                {/* 전체보기: 고객사 앞에 */}
-                {isAll && <col style={{ width: 80 }} />}
                 {/* 대분류, 중분류: 항상 */}
                 <col style={{ width: 80 }} />
                 <col style={{ width: 80 }} />
                 {/* 완제품/소프트팩: 화학계, 셀모델, 회로, 팩타입 */}
-                {(isAll || isProd || isPO) && <><col style={{ width: 80 }} /><col style={{ width: 110 }} /><col style={{ width: 80 }} /><col style={{ width: 80 }} /></>}
+                {(isProd || isPO) && <><col style={{ width: 80 }} /><col style={{ width: 110 }} /><col style={{ width: 80 }} /><col style={{ width: 80 }} /></>}
                 {/* BMS/PCM: 제조사, 최대직렬, 연속방전 */}
                 {isBmsPcm && <><col style={{ width: 100 }} /><col style={{ width: 70 }} /><col style={{ width: 80 }} /></>}
                 {/* 단위: BMS/PCM 제외 */}
                 {!isBmsPcm && <col style={{ width: 55 }} />}
                 {/* 완제품/소프트팩: 직렬, 병렬, 단수 */}
-                {(isAll || isProd || isPO) && <><col style={{ width: 65 }} /><col style={{ width: 65 }} /><col style={{ width: 60 }} /></>}
+                {(isProd || isPO) && <><col style={{ width: 65 }} /><col style={{ width: 65 }} /><col style={{ width: 60 }} /></>}
                 {/* 물리규격: 일반반제품 + 자재 */}
                 {(isAsmGeneric || isComp) && <><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /></>}
-                {/* 재질: BMS/PCM 제외 */}
-                {!isBmsPcm && <col style={{ width: 85 }} />}
+                {/* 재질: BMS/PCM 및 전체보기 제외 */}
+                {!isBmsPcm && !isAll && <col style={{ width: 85 }} />}
                 {/* 일반반제품: 고객사 (재질 다음) */}
                 {isAsmGeneric && <col style={{ width: 80 }} />}
                 {/* 완제품/소프트팩: 특수옵션, 인증, 도면 */}
-                {(isAll || isProd || isPO) && <><col style={{ width: 80 }} /><col style={{ width: 80 }} /><col style={{ width: 80 }} /></>}
+                {(isProd || isPO) && <><col style={{ width: 80 }} /><col style={{ width: 80 }} /><col style={{ width: 80 }} /></>}
                 {/* BMS/PCM: 특수옵션 */}
                 {isBmsPcm && <col style={{ width: 80 }} />}
                 {/* 완제품/소프트팩: 고객사 (도면 다음) */}
                 {(isProd || isPO) && <col style={{ width: 80 }} />}
-                {/* 리비전: 자재 제외 */}
-                {!isComp && <col style={{ width: 80 }} />}
+                {/* 리비전: 자재·전체보기 제외 */}
+                {!isComp && !isAll && <col style={{ width: 80 }} />}
                 {/* 비고, 관리: 항상 */}
                 <col style={{ width: 200 }} />
                 <col style={{ width: 220 }} />
@@ -601,10 +606,9 @@ export default function ItemsPage() {
                   <TableHead style={{ left: 40 }} className="sticky z-20 bg-gray-50 whitespace-nowrap text-xs">상태</TableHead>
                   <TableHead style={{ left: 120 }} className="sticky z-20 bg-gray-50 whitespace-nowrap text-xs">품번 코드</TableHead>
                   <TableHead style={{ left: 320 }} className="sticky z-20 bg-gray-50 whitespace-nowrap text-xs border-r border-gray-300">품목명</TableHead>
-                  {isAll && <TableHead className="whitespace-nowrap text-xs">고객사</TableHead>}
                   <TableHead className="whitespace-nowrap text-xs">대분류</TableHead>
                   <TableHead className="whitespace-nowrap text-xs">중분류</TableHead>
-                  {(isAll || isProd || isPO) && <>
+                  {(isProd || isPO) && <>
                     <TableHead className="whitespace-nowrap text-xs">화학계</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">셀모델</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">회로</TableHead>
@@ -616,7 +620,7 @@ export default function ItemsPage() {
                     <TableHead className="whitespace-nowrap text-xs">연속방전(A)</TableHead>
                   </>}
                   {!isBmsPcm && <TableHead className="whitespace-nowrap text-xs">단위</TableHead>}
-                  {(isAll || isProd || isPO) && <>
+                  {(isProd || isPO) && <>
                     <TableHead className="whitespace-nowrap text-xs">직렬(S)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">병렬(P)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">단수</TableHead>
@@ -628,16 +632,16 @@ export default function ItemsPage() {
                     <TableHead className="whitespace-nowrap text-xs">직경(mm)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">무게(g)</TableHead>
                   </>}
-                  {!isBmsPcm && <TableHead className="whitespace-nowrap text-xs">재질</TableHead>}
+                  {!isBmsPcm && !isAll && <TableHead className="whitespace-nowrap text-xs">재질</TableHead>}
                   {isAsmGeneric && <TableHead className="whitespace-nowrap text-xs">고객사</TableHead>}
-                  {(isAll || isProd || isPO) && <>
+                  {(isProd || isPO) && <>
                     <TableHead className="whitespace-nowrap text-xs">특수옵션</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">인증</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">도면</TableHead>
                   </>}
                   {isBmsPcm && <TableHead className="whitespace-nowrap text-xs">특수옵션</TableHead>}
                   {(isProd || isPO) && <TableHead className="whitespace-nowrap text-xs">고객사</TableHead>}
-                  {!isComp && <TableHead className="whitespace-nowrap text-xs">리비전</TableHead>}
+                  {!isComp && !isAll && <TableHead className="whitespace-nowrap text-xs">리비전</TableHead>}
                   <TableHead className="whitespace-nowrap text-xs">비고</TableHead>
                   <TableHead className="whitespace-nowrap text-xs pr-4">관리</TableHead>
                 </TableRow>
@@ -671,10 +675,9 @@ export default function ItemsPage() {
                       <TableCell style={{ left: 320 }} className={`${stickyCls} border-r border-gray-300`}>
                         <TooltipCell value={item.itemName} />
                       </TableCell>
-                      {isAll && <TableCell><TagListCell values={item.vendors ?? []} /></TableCell>}
                       <TableCell><TooltipCell value={CATEGORY_LABEL[item.category] ?? item.category} /></TableCell>
                       <TableCell><TooltipCell value={item.subCategory} /></TableCell>
-                      {(isAll || isProd || isPO) && <>
+                      {(isProd || isPO) && <>
                         <TableCell><TooltipCell value={item.chemistryType} /></TableCell>
                         <TableCell><TooltipCell value={item.cellModel} /></TableCell>
                         <TableCell><TooltipCell value={item.circuit ? (CIRCUIT_LABEL[item.circuit] ?? item.circuit) : null} /></TableCell>
@@ -686,7 +689,7 @@ export default function ItemsPage() {
                         <TableCell className="text-xs text-center text-gray-700">{item.continuousDischargeCurrent != null ? Number(item.continuousDischargeCurrent) : '-'}</TableCell>
                       </>}
                       {!isBmsPcm && <TableCell><TooltipCell value={item.unit} /></TableCell>}
-                      {(isAll || isProd || isPO) && <>
+                      {(isProd || isPO) && <>
                         <TableCell className="text-xs text-center text-gray-700">{item.seriesCount ?? '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-700">{item.parallelCount ?? '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-700">{item.layerCount ?? '-'}</TableCell>
@@ -698,16 +701,16 @@ export default function ItemsPage() {
                         <TableCell className="text-xs text-center text-gray-700">{item.diameter != null ? Number(item.diameter) : '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-700">{item.weight != null ? Number(item.weight) : '-'}</TableCell>
                       </>}
-                      {!isBmsPcm && <TableCell><TooltipCell value={item.material} /></TableCell>}
+                      {!isBmsPcm && !isAll && <TableCell><TooltipCell value={item.material} /></TableCell>}
                       {isAsmGeneric && <TableCell><TagListCell values={item.vendors ?? []} /></TableCell>}
-                      {(isAll || isProd || isPO) && <>
+                      {(isProd || isPO) && <>
                         <TableCell><TagListCell values={item.specialOptions ?? []} /></TableCell>
                         <TableCell><TagListCell values={item.certifications ?? []} /></TableCell>
                         <TableCell><DrawingsCell urls={item.drawings ?? []} /></TableCell>
                       </>}
                       {isBmsPcm && <TableCell><TagListCell values={item.specialOptions ?? []} /></TableCell>}
                       {(isProd || isPO) && <TableCell><TagListCell values={item.vendors ?? []} /></TableCell>}
-                      {!isComp && <TableCell className="text-xs text-gray-700">rev.{item.revisionNumber ?? 1}</TableCell>}
+                      {!isComp && !isAll && <TableCell className="text-xs text-gray-700">rev.{item.revisionNumber ?? 1}</TableCell>}
                       <TableCell><TooltipCell value={item.memo} /></TableCell>
                       <TableCell className="pr-2">
                         <div className="flex items-center gap-1 flex-nowrap">
@@ -749,6 +752,11 @@ export default function ItemsPage() {
         onSaved={() => { setFormOpen(false); setEditItem(null); fetchItems() }}
       />
       <BomDialog open={!!bomItem} item={bomItem} onClose={() => setBomItem(null)} />
+      <ItemBulkCreateDialog
+        open={bulkFormOpen}
+        onClose={() => setBulkFormOpen(false)}
+        onSaved={() => { setBulkFormOpen(false); fetchItems() }}
+      />
 
       <AlertDialog open={!!deleteId} onOpenChange={open => !open && setDeleteId(null)}>
         <AlertDialogContent>
