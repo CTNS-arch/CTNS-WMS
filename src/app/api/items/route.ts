@@ -68,6 +68,17 @@ export async function GET(req: NextRequest) {
     if (parallelCountParam) where.parallelCount = parseInt(parallelCountParam)
     if (layerCountParam) where.layerCount = parseInt(layerCountParam)
 
+    const lengthMin = searchParams.get('lengthMin')
+    const widthMin = searchParams.get('widthMin')
+    const heightMin = searchParams.get('heightMin')
+    const diameterMin = searchParams.get('diameterMin')
+    const weightMin = searchParams.get('weightMin')
+    if (lengthMin) where.length = { gte: parseFloat(lengthMin) } as any
+    if (widthMin) where.width = { gte: parseFloat(widthMin) } as any
+    if (heightMin) where.height = { gte: parseFloat(heightMin) } as any
+    if (diameterMin) where.diameter = { gte: parseFloat(diameterMin) } as any
+    if (weightMin) where.weight = { gte: parseFloat(weightMin) } as any
+
     const validSort = ['itemCode', 'itemName', 'category', 'subCategory', 'status', 'createdAt', 'updatedAt', 'revisionNumber']
     const orderBy: Prisma.ItemOrderByWithRelationInput = validSort.includes(sortBy)
       ? { [sortBy]: sortOrder }

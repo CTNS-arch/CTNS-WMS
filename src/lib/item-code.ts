@@ -29,8 +29,8 @@ export type ItemCodeType = 'bp' | 'bms' | 'cell' | 'component' | 'simple'
 
 export function getItemCodeType(category?: string, subCategory?: string): ItemCodeType {
   if (subCategory === 'PO') return 'bp'
-  if (category === 'PRODUCT' && subCategory === 'BP') return 'bp'
-  if (category === 'PRODUCT' && (subCategory === 'BM' || subCategory === 'PC')) return 'bms'
+  if (subCategory === 'BP') return 'bp'
+  if (subCategory === 'BM' || subCategory === 'PC') return 'bms'
   if (category === 'COMPONENT' && subCategory === 'CL') return 'cell'
   if (category === 'COMPONENT' && subCategory) return 'component'
   return 'simple'
@@ -136,5 +136,5 @@ export function isBatteryPack(category?: string, subCategory?: string) {
 }
 
 export function isBmsItem(category?: string, subCategory?: string) {
-  return category === 'PRODUCT' && (subCategory === 'BM' || subCategory === 'PC')
+  return subCategory === 'BM' || subCategory === 'PC'
 }

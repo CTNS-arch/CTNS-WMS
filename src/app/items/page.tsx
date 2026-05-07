@@ -67,6 +67,11 @@ export default function ItemsPage() {
   const [filterSeriesCount, setFilterSeriesCount] = useState('')
   const [filterParallelCount, setFilterParallelCount] = useState('')
   const [filterLayerCount, setFilterLayerCount] = useState('')
+  const [filterLengthMin, setFilterLengthMin] = useState('')
+  const [filterWidthMin, setFilterWidthMin] = useState('')
+  const [filterHeightMin, setFilterHeightMin] = useState('')
+  const [filterDiameterMin, setFilterDiameterMin] = useState('')
+  const [filterWeightMin, setFilterWeightMin] = useState('')
 
   // ── 정렬 ──
   const [sortBy, setSortBy] = useState('createdAt')
@@ -145,6 +150,11 @@ export default function ItemsPage() {
     if (filterSeriesCount) params.set('seriesCount', filterSeriesCount)
     if (filterParallelCount) params.set('parallelCount', filterParallelCount)
     if (filterLayerCount) params.set('layerCount', filterLayerCount)
+    if (filterLengthMin) params.set('lengthMin', filterLengthMin)
+    if (filterWidthMin) params.set('widthMin', filterWidthMin)
+    if (filterHeightMin) params.set('heightMin', filterHeightMin)
+    if (filterDiameterMin) params.set('diameterMin', filterDiameterMin)
+    if (filterWeightMin) params.set('weightMin', filterWeightMin)
 
     const res = await fetch(`/api/items?${params}`)
     const json = await res.json()
@@ -152,7 +162,9 @@ export default function ItemsPage() {
     setLoading(false)
   }, [page, search, filterCategory, filterSubCategory, filterStatus,
     filterChemistry, filterCellModel, filterCircuit, filterPackType, filterMaterial,
-    filterVendor, filterSeriesCount, filterParallelCount, filterLayerCount, sortBy, sortOrder])
+    filterVendor, filterSeriesCount, filterParallelCount, filterLayerCount,
+    filterLengthMin, filterWidthMin, filterHeightMin, filterDiameterMin, filterWeightMin,
+    sortBy, sortOrder])
 
   useEffect(() => { fetchItems() }, [fetchItems])
 
@@ -170,6 +182,7 @@ export default function ItemsPage() {
     setFilterChemistry([]); setFilterCellModel([]); setFilterCircuit([])
     setFilterPackType([]); setFilterMaterial([]); setFilterVendor([])
     setFilterSeriesCount(''); setFilterParallelCount(''); setFilterLayerCount('')
+    setFilterLengthMin(''); setFilterWidthMin(''); setFilterHeightMin(''); setFilterDiameterMin(''); setFilterWeightMin('')
     setPage(1); setSelected(new Set())
   }
 
@@ -182,7 +195,10 @@ export default function ItemsPage() {
       setFilterChemistry([]); setFilterCellModel([]); setFilterCircuit([])
       setFilterPackType([]); setFilterSeriesCount(''); setFilterParallelCount(''); setFilterLayerCount('')
     }
-    if (next === 'PRODUCT') setFilterVendor([])
+    if (next === 'PRODUCT') {
+      setFilterVendor([])
+      setFilterLengthMin(''); setFilterWidthMin(''); setFilterHeightMin(''); setFilterDiameterMin(''); setFilterWeightMin('')
+    }
     if (next !== 'COMPONENT') setFilterMaterial([])
     resetAndPage()
   }
@@ -279,7 +295,8 @@ export default function ItemsPage() {
     search || filterCategory || filterSubCategory.length || filterStatus.length ||
     filterChemistry.length || filterCellModel.length || filterCircuit.length ||
     filterPackType.length || filterMaterial.length || filterVendor.length ||
-    filterSeriesCount || filterParallelCount || filterLayerCount
+    filterSeriesCount || filterParallelCount || filterLayerCount ||
+    filterLengthMin || filterWidthMin || filterHeightMin || filterDiameterMin || filterWeightMin
   )
   const hasBom = (cat: string) => cat === 'PRODUCT' || cat === 'ASSEMBLY'
 
@@ -315,7 +332,19 @@ export default function ItemsPage() {
               <MultiPillGroup
                 options={subOpts.map((o: any) => ({ value: o.value, label: o.label }))}
                 value={filterSubCategory}
-                onChange={v => { setFilterSubCategory(v); resetAndPage() }}
+                onChange={v => {
+                  setFilterSubCategory(v)
+                  if (!filterCategory && v.length > 0) {
+                    const newSub = v.find(s => !filterSubCategory.includes(s)) ?? v[v.length - 1]
+                    for (const [cat, opts] of Object.entries(SUB_OPTIONS)) {
+                      if ((opts as any[]).some((o: any) => o.value === newSub)) {
+                        setFilterCategory(cat)
+                        break
+                      }
+                    }
+                  }
+                  resetAndPage()
+                }}
                 wrap
               />
             </FilterSection>
@@ -393,6 +422,47 @@ export default function ItemsPage() {
                   <input type="number" min="1" value={filterLayerCount}
                     onChange={e => debounce(setFilterLayerCount)(e.target.value)}
                     placeholder="예) 2"
+                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  />
+                </FilterSection>
+              </>
+            )}
+
+            {/* 반제품/자재 물리규격 필터 */}
+            {(isAsm || isComp) && (
+              <>
+                <FilterSection label="길이 이상(mm)">
+                  <input type="number" min="0" value={filterLengthMin}
+                    onChange={e => debounce(setFilterLengthMin)(e.target.value)}
+                    placeholder="예) 100"
+                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  />
+                </FilterSection>
+                <FilterSection label="폭 이상(mm)">
+                  <input type="number" min="0" value={filterWidthMin}
+                    onChange={e => debounce(setFilterWidthMin)(e.target.value)}
+                    placeholder="예) 50"
+                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  />
+                </FilterSection>
+                <FilterSection label="높이 이상(mm)">
+                  <input type="number" min="0" value={filterHeightMin}
+                    onChange={e => debounce(setFilterHeightMin)(e.target.value)}
+                    placeholder="예) 20"
+                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  />
+                </FilterSection>
+                <FilterSection label="직경 이상(mm)">
+                  <input type="number" min="0" value={filterDiameterMin}
+                    onChange={e => debounce(setFilterDiameterMin)(e.target.value)}
+                    placeholder="예) 18"
+                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  />
+                </FilterSection>
+                <FilterSection label="무게 이상(g)">
+                  <input type="number" min="0" value={filterWeightMin}
+                    onChange={e => debounce(setFilterWeightMin)(e.target.value)}
+                    placeholder="예) 50"
                     className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
                   />
                 </FilterSection>
@@ -485,8 +555,8 @@ export default function ItemsPage() {
                 <col style={{ width: 80 }} />
                 <col style={{ width: 200 }} />
                 <col style={{ width: 200 }} />
-                {/* 거래처: 전체 + 자재 */}
-                {(isAll || isComp) && <col style={{ width: 80 }} />}
+                {/* 거래처: 전체보기에서만 품목명 뒤에 표시 */}
+                {isAll && <col style={{ width: 80 }} />}
                 {/* 대분류, 중분류: 항상 */}
                 <col style={{ width: 80 }} />
                 <col style={{ width: 80 }} />
@@ -520,7 +590,7 @@ export default function ItemsPage() {
                   <TableHead style={{ left: 40 }} className="sticky z-20 bg-gray-50 whitespace-nowrap text-xs">상태</TableHead>
                   <TableHead style={{ left: 120 }} className="sticky z-20 bg-gray-50 whitespace-nowrap text-xs">품번 코드</TableHead>
                   <TableHead style={{ left: 320 }} className="sticky z-20 bg-gray-50 whitespace-nowrap text-xs border-r border-gray-300">품목명</TableHead>
-                  {(isAll || isComp) && <TableHead className="whitespace-nowrap text-xs">거래처</TableHead>}
+                  {isAll && <TableHead className="whitespace-nowrap text-xs">거래처</TableHead>}
                   <TableHead className="whitespace-nowrap text-xs">대분류</TableHead>
                   <TableHead className="whitespace-nowrap text-xs">중분류</TableHead>
                   {(isAll || isProd) && <>
@@ -583,7 +653,7 @@ export default function ItemsPage() {
                       <TableCell style={{ left: 320 }} className={`${stickyCls} border-r border-gray-300`}>
                         <TooltipCell value={item.itemName} />
                       </TableCell>
-                      {(isAll || isComp) && <TableCell><TagListCell values={item.vendors ?? []} /></TableCell>}
+                      {isAll && <TableCell><TagListCell values={item.vendors ?? []} /></TableCell>}
                       <TableCell><TooltipCell value={CATEGORY_LABEL[item.category] ?? item.category} /></TableCell>
                       <TableCell><TooltipCell value={item.subCategory} /></TableCell>
                       {(isAll || isProd) && <>

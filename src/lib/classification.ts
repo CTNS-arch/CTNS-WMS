@@ -9,11 +9,11 @@ export const CATEGORY_OPTIONS: SelectOption[] = [
 export const SUB_OPTIONS: Record<string, SelectOption[]> = {
   PRODUCT: [
     { value: 'BP', label: '배터리팩', colorIndex: 0, code: 'BP' },
-    { value: 'BM', label: 'BMS',      colorIndex: 3, code: 'BM' },
-    { value: 'PC', label: 'PCM',      colorIndex: 6, code: 'PC' },
   ],
   ASSEMBLY: [
     { value: 'PO',  label: 'Soft pack',             colorIndex: 0, code: 'PO'  },
+    { value: 'BM',  label: 'BMS',                    colorIndex: 3, code: 'BM'  },
+    { value: 'PC',  label: 'PCM',                    colorIndex: 6, code: 'PC'  },
     { value: 'CAS', label: 'Case',                   colorIndex: 1, code: 'CAS' },
     { value: 'PRA', label: 'Power Relay Assembly',   colorIndex: 2, code: 'PRA' },
     { value: 'DST', label: 'Distribution Board',     colorIndex: 3, code: 'DST' },
@@ -89,11 +89,11 @@ export interface ThirdLevelDef {
 
 export const THIRD_LEVEL: Record<string, ThirdLevelDef | null> = {
   // PRODUCT
-  BP: { field: 'chemistryType', label: '화학계',    optKey: 'chemistryType' },
-  BM: null, // BMS: 3분류 없음 (제조사·직렬·용량으로 코드 생성)
-  PC: null, // PCM: 동일
+  BP: { field: 'chemistryType', label: '화학계', optKey: 'chemistryType' },
   // ASSEMBLY
   PO:  { field: 'chemistryType', label: '화학계', optKey: 'chemistryType' },
+  BM: null, // BMS: 3분류 없음 (제조사·직렬·용량으로 코드 생성)
+  PC: null, // PCM: 동일
   CAS: null, PRA: null, DST: null, SWB: null, DRV: null,
   CMB: null, JTB: null, HRN: null, ETC: null,
   // COMPONENT
