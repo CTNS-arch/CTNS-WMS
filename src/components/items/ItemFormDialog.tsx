@@ -604,8 +604,8 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
             <Field label="단위" required>
               <TagSelect value={form.unit} onChange={v => set('unit', v)} options={opts.unit ?? []} onAdd={addOpt('unit')} placeholder="단위 선택" />
             </Field>
-            <Field label="거래처">
-              <TagMultiSelect value={form.vendors} onChange={v => set('vendors', v)} options={opts.vendor ?? []} onAdd={addOpt('vendor')} placeholder="거래처 선택 또는 입력 후 만들기" />
+            <Field label="고객사">
+              <TagMultiSelect value={form.vendors} onChange={v => set('vendors', v)} options={opts.vendor ?? []} onAdd={addOpt('vendor')} placeholder="고객사 선택 또는 입력 후 만들기" />
             </Field>
           </div>
 
@@ -682,15 +682,17 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
           )}
 
           {/* ── 제품 옵션 ── */}
-          {prod && (
+          {(prod || bms) && (
             <div className="space-y-3">
               <SectionHeader title="제품 옵션" />
               <Field label="특수옵션">
                 <TagMultiSelect value={form.specialOptions} onChange={v => set('specialOptions', v)} options={opts.specialOption ?? []} onAdd={addOpt('specialOption')} placeholder="특수옵션 선택" />
               </Field>
-              <Field label="인증">
-                <TagMultiSelect value={form.certifications} onChange={v => set('certifications', v)} options={opts.certification ?? []} onAdd={addOpt('certification')} placeholder="인증 선택" />
-              </Field>
+              {prod && (
+                <Field label="인증">
+                  <TagMultiSelect value={form.certifications} onChange={v => set('certifications', v)} options={opts.certification ?? []} onAdd={addOpt('certification')} placeholder="인증 선택" />
+                </Field>
+              )}
             </div>
           )}
 
