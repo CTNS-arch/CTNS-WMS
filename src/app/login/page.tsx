@@ -1,10 +1,22 @@
 'use client'
 
 import { signIn } from 'next-auth/react'
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 
-export default function LoginPage() {
+const ERROR_MESSAGES: Record<string, string> = {
+  Configuration:    '서버 설정 오류입니다. 관리자에게 문의하세요.',
+  AccessDenied:     '접근이 거부되었습니다. 조직 계정으로 시도해 주세요.',
+  OAuthCallback:    'Microsoft 인증 중 오류가 발생했습니다. 다시 시도해 주세요.',
+  OAuthCreateAccount: '계정 생성에 실패했습니다. 관리자에게 문의하세요.',
+  Default:          '로그인 중 오류가 발생했습니다. 다시 시도해 주세요.',
+}
+
+function LoginPage() {
   const [loading, setLoading] = useState(false)
+  const searchParams = useSearchParams()
+  const errorCode = searchParams.get('error')
+  const errorMsg = errorCode ? (ERROR_MESSAGES[errorCode] ?? ERROR_MESSAGES.Default) : null
 
   const handleLogin = async () => {
     setLoading(true)
@@ -33,6 +45,14 @@ export default function LoginPage() {
 
         {/* 카드 */}
         <div className="w-full bg-white rounded-2xl shadow-md border border-gray-100 p-8 flex flex-col gap-6">
+          {errorMsg && (
+            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+              <svg className="w-4 h-4 text-red-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"/>
+              </svg>
+              <p className="text-xs text-red-600">{errorMsg}</p>
+            </div>
+          )}
           <div className="text-center">
             <p className="text-sm font-medium text-gray-700">조직 계정으로 로그인</p>
             <p className="text-xs text-gray-400 mt-1">myctns.com 구성원만 접속 가능합니다</p>
@@ -97,5 +117,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+export default function LoginPageWrapper() {
+  return (
+    <Suspense>
+      <LoginPage />
+    </Suspense>
   )
 }
