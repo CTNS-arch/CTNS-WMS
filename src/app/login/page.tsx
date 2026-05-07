@@ -1,35 +1,100 @@
 'use client'
 
-import { signIn } from "next-auth/react"
+import { signIn } from 'next-auth/react'
+import { useState } from 'react'
 
 export default function LoginPage() {
+  const [loading, setLoading] = useState(false)
+
+  const handleLogin = async () => {
+    setLoading(true)
+    await signIn('microsoft-entra-id', { callbackUrl: '/items' })
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-10 w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-gray-900">CTNS WMS</h1>
-          <p className="mt-1 text-sm text-gray-500">배터리팩 제조 WMS 시스템</p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-blue-50">
+      <div className="w-full max-w-[360px] px-4 flex flex-col items-center gap-8">
+
+        {/* 로고 */}
+        <div className="flex flex-col items-center gap-3">
+          <svg width="56" height="56" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100" height="100" fill="#2235CC"/>
+            <path d="M82 23 L90 31 L90 47 L82 39 Z" fill="#0A0A0A"/>
+            <path d="M82 61 L90 69 L90 83 L82 75 Z" fill="#0A0A0A"/>
+            <path d="M18 75 L18 83 L82 83 Q90 83 90 75 L82 75 Q82 79 77 79 L18 79 Z" fill="#0A0A0A"/>
+            <path d="M12 23 L77 23 Q83 23 83 29 Q83 39 77 39 L30 39 L30 61 L77 61 Q83 61 83 67 Q83 77 77 77 L12 77 Z" fill="white"/>
+            <path d="M12 15 L77 15 Q91 15 91 25 L91 29 Q91 23 77 23 L12 23 Z" fill="#00C8F0"/>
+          </svg>
+          <div className="text-center">
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">CTNS WMS</h1>
+            <p className="text-sm text-gray-500 mt-0.5">(주)씨티엔에스 물류 관리 시스템</p>
+          </div>
         </div>
 
-        <button
-          onClick={() => signIn("microsoft-entra-id", { callbackUrl: "/items" })}
-          className="w-full flex items-center justify-center gap-3 bg-gray-900 hover:bg-gray-800 text-white font-medium py-2.5 px-4 rounded-lg transition-colors"
-        >
-          <svg
-            width="22"
-            height="22"
-            viewBox="0 0 22 22"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            aria-hidden="true"
+        {/* 카드 */}
+        <div className="w-full bg-white rounded-2xl shadow-md border border-gray-100 p-8 flex flex-col gap-6">
+          <div className="text-center">
+            <p className="text-sm font-medium text-gray-700">조직 계정으로 로그인</p>
+            <p className="text-xs text-gray-400 mt-1">myctns.com 구성원만 접속 가능합니다</p>
+          </div>
+
+          <button
+            onClick={handleLogin}
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-3 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-xl transition-colors text-sm"
           >
-            <rect x="0" y="0" width="10" height="10" fill="#F25022" />
-            <rect x="12" y="0" width="10" height="10" fill="#7FBA00" />
-            <rect x="0" y="12" width="10" height="10" fill="#00A4EF" />
-            <rect x="12" y="12" width="10" height="10" fill="#FFB900" />
-          </svg>
-          Microsoft 계정으로 로그인
-        </button>
+            {loading ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+                로그인 중...
+              </>
+            ) : (
+              <>
+                <svg width="20" height="20" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+                  <rect x="0" y="0" width="10" height="10" fill="#F25022"/>
+                  <rect x="12" y="0" width="10" height="10" fill="#7FBA00"/>
+                  <rect x="0" y="12" width="10" height="10" fill="#00A4EF"/>
+                  <rect x="12" y="12" width="10" height="10" fill="#FFB900"/>
+                </svg>
+                Microsoft 계정으로 로그인
+              </>
+            )}
+          </button>
+
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-gray-100"/>
+            <span className="text-[11px] text-gray-400">Microsoft Entra ID</span>
+            <div className="flex-1 h-px bg-gray-100"/>
+          </div>
+
+          <div className="flex flex-col gap-1.5 text-[11px] text-gray-400">
+            <div className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+              </svg>
+              조직 계정 SSO 로그인
+            </div>
+            <div className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+              </svg>
+              최초 로그인 시 자동 계정 생성
+            </div>
+            <div className="flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+              </svg>
+              별도 비밀번호 불필요
+            </div>
+          </div>
+        </div>
+
+        <p className="text-[11px] text-gray-400 text-center">
+          문의: IT 담당자 또는 시스템 관리자
+        </p>
       </div>
     </div>
   )
