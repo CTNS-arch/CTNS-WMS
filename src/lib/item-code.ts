@@ -28,6 +28,7 @@ function getThirdCode(subCategory: string, thirdValue: string): string {
 export type ItemCodeType = 'bp' | 'bms' | 'cell' | 'component' | 'simple'
 
 export function getItemCodeType(category?: string, subCategory?: string): ItemCodeType {
+  if (subCategory === 'SFT') return 'bp'
   if (category === 'PRODUCT' && subCategory === 'BP') return 'bp'
   if (category === 'PRODUCT' && (subCategory === 'BM' || subCategory === 'PC')) return 'bms'
   if (category === 'COMPONENT' && subCategory === 'CL') return 'cell'
@@ -130,7 +131,8 @@ export function buildSimpleCode(form: {
 }
 
 export function isBatteryPack(category?: string, subCategory?: string) {
-  return category === 'PRODUCT' && subCategory === 'BP'
+  return (category === 'PRODUCT' && subCategory === 'BP') ||
+         (category === 'ASSEMBLY' && subCategory === 'SFT')
 }
 
 export function isBmsItem(category?: string, subCategory?: string) {

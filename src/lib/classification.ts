@@ -12,7 +12,18 @@ export const SUB_OPTIONS: Record<string, SelectOption[]> = {
     { value: 'BM', label: 'BMS',      colorIndex: 3, code: 'BM' },
     { value: 'PC', label: 'PCM',      colorIndex: 6, code: 'PC' },
   ],
-  ASSEMBLY: [], // TBD
+  ASSEMBLY: [
+    { value: 'SFT', label: '소프트팩',           colorIndex: 0, code: 'SFT' },
+    { value: 'CAS', label: '케이스',              colorIndex: 1, code: 'CAS' },
+    { value: 'PRA', label: '전원릴레이 어셈블리', colorIndex: 2, code: 'PRA' },
+    { value: 'DST', label: '분배보드',            colorIndex: 3, code: 'DST' },
+    { value: 'SWB', label: '스위치박스',          colorIndex: 4, code: 'SWB' },
+    { value: 'DRV', label: '드라이버',            colorIndex: 5, code: 'DRV' },
+    { value: 'CMB', label: '통신보드',            colorIndex: 6, code: 'CMB' },
+    { value: 'JTB', label: '정션박스',            colorIndex: 7, code: 'JTB' },
+    { value: 'HRN', label: '하네스',              colorIndex: 8, code: 'HRN' },
+    { value: 'ETC', label: '기타',                colorIndex: 9, code: 'ETC' },
+  ],
   COMPONENT: [
     { value: 'CL', label: '셀',           colorIndex: 1, code: 'CL' },
     { value: 'EL', label: '전장/전기부품', colorIndex: 0, code: 'EL' },
@@ -81,6 +92,10 @@ export const THIRD_LEVEL: Record<string, ThirdLevelDef | null> = {
   BP: { field: 'chemistryType', label: '화학계',    optKey: 'chemistryType' },
   BM: null, // BMS: 3분류 없음 (제조사·직렬·용량으로 코드 생성)
   PC: null, // PCM: 동일
+  // ASSEMBLY
+  SFT: { field: 'chemistryType', label: '화학계', optKey: 'chemistryType' },
+  CAS: null, PRA: null, DST: null, SWB: null, DRV: null,
+  CMB: null, JTB: null, HRN: null, ETC: null,
   // COMPONENT
   CL: { field: 'chemistryType', label: '화학계',    optKey: 'chemistryType' },
   EL: { field: 'formFactor',    label: '부품 유형', optKey: 'elComponentType' },
@@ -94,7 +109,7 @@ export const THIRD_LEVEL: Record<string, ThirdLevelDef | null> = {
 }
 
 export function showElec(sub: string) {
-  return ['BP', 'BM', 'PC', 'CL'].includes(sub)
+  return ['BP', 'BM', 'PC', 'CL', 'SFT'].includes(sub)
 }
 export function showBms(sub: string) {
   return ['BM', 'PC'].includes(sub)
