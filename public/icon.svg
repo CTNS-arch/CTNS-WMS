@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Blue background -->
+  <rect width="100" height="100" fill="#2235CC"/>
+
+  <!-- 3D depth: right side of top bar -->
+  <path d="M80 22 L88 30 L88 46 L80 38 Z" fill="#080808"/>
+  <!-- 3D depth: right side of bottom bar -->
+  <path d="M80 62 L88 70 L88 84 L80 76 Z" fill="#080808"/>
+  <!-- 3D depth: bottom of bottom bar -->
+  <path d="M18 76 L18 84 L80 84 Q88 84 88 76 L80 76 Q80 80 76 80 L18 80 Z" fill="#080808"/>
+
+  <!-- White C front face -->
+  <path d="
+    M12 22
+    L76 22 Q82 22 82 28 Q82 38 76 38
+    L30 38
+    L30 62
+    L76 62 Q82 62 82 68 Q82 76 76 76
+    L12 76
+    Z
+  " fill="white"/>
+
+  <!-- Cyan top surface of top bar -->
+  <path d="M12 14 L76 14 Q90 14 90 24 L90 28 Q90 22 76 22 L12 22 Z" fill="#00C8F0"/>
+</svg>

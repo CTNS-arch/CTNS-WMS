@@ -181,6 +181,20 @@ model Item {
   bomAsChild        BOM[]              @relation("ChildItem")
   stocks            Stock[]
   stockTransactions StockTransaction[]
+  costs             ItemCost[]
+}
+
+model ItemCost {
+  id        String   @id @default(cuid())
+  itemId    String
+  currency  String   @default("KRW") // KRW, USD, EUR, CNY, JPY
+  unitPrice Decimal  @db.Decimal(15, 4)
+  supplier  String?
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
 }
 
 model Stock {
@@ -213,15 +227,16 @@ model StockTransaction {
 }
 
 model PurchaseRequest {
-  id          String         @id @default(cuid())
-  title       String
-  department  String         @default("생산구매팀")
-  requestDate DateTime       @default(now())
-  status      PurchaseStatus @default(PENDING)
-  memo        String?
-  requesterId String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id           String         @id @default(cuid())
+  title        String
+  department   String         @default("생산구매팀")
+  requestDate  DateTime       @default(now())
+  status       PurchaseStatus @default(PENDING)
+  memo         String?
+  requesterId  String?
+  approvalLine String?        // JSON: [{order,role,name}]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
   requester User?                  @relation(fields: [requesterId], references: [id])
   items     PurchaseRequestItem[]

@@ -35,7 +35,24 @@ const FILTER_PILLS = [
   { value: 'REJECTED', label: '반려' },
 ]
 const DEPT_OPTIONS = ['생산구매팀', '연구소', '기타']
-const CATEGORY_OPTIONS = ['원자재', '소모품', '공구', '설비', '기타']
+const CATEGORY_OPTIONS = ['완제품', '반제품', '자재', '소모품', '공구', '설비', '기타']
+const ITEM_CAT_LABEL: Record<string, string> = {
+  PRODUCT: '완제품', ASSEMBLY: '반제품', COMPONENT: '자재',
+}
+const SUB_CAT_LABEL: Record<string, string> = {
+  BP: '배터리팩', BM: 'BMS', PC: 'PCM',
+  CL: '셀', EL: '전장/전기부품', ME: '기구/외장부품',
+  CD: '도전재', PK: '포장자재', FS: '체결부품',
+  SM: '부자재/소모품', RM: '일반자재', OT: '생품/기타',
+}
+
+type Approver = { order: number; role: string; name: string }
+const DEFAULT_APPROVAL_LINE: Approver[] = [
+  { order: 1, role: '기안자', name: '' },
+  { order: 2, role: '검토자', name: '담당자명 입력' },
+  { order: 3, role: '승인자', name: '담당자명 입력' },
+]
+
 const LIMIT = 20
 const DEFAULT_ROWS = 8
 
@@ -51,7 +68,11 @@ const emptyRow = (): ItemRow => ({
 
 const initRows = () => Array.from({ length: DEFAULT_ROWS }, emptyRow)
 
-const emptyForm = () => ({ title: '', department: '생산구매팀', memo: '', items: initRows() })
+const emptyForm = () => ({
+  title: '', department: '생산구매팀', memo: '',
+  items: initRows(),
+  approvalLine: DEFAULT_APPROVAL_LINE.map(a => ({ ...a })),
+})
 
 export default function PurchasesPage() {
   const [requests, setRequests] = useState<any[]>([])
@@ -65,12 +86,21 @@ export default function PurchasesPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editReq, setEditReq] = useState<any | null>(null)
   const [form, setForm] = useState(emptyForm())
+  const [approvalEditing, setApprovalEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
   const titleRef = useRef<HTMLInputElement>(null)
+  const bomRefs = useRef<Record<number, HTMLInputElement | null>>({})
+  const bomSearchTimer = useRef<any>(null)
   const totalPages = Math.max(1, Math.ceil(total / LIMIT))
+
+  const [itemDropdown, setItemDropdown] = useState<{
+    idx: number
+    results: any[]
+    pos: { top: number; left: number; width: number }
+  } | null>(null)
 
   const fetchRequests = useCallback(async (p: number, status: string, q: string) => {
     setLoading(true)
@@ -96,6 +126,7 @@ export default function PurchasesPage() {
   function openCreate() {
     setEditReq(null)
     setForm(emptyForm())
+    setApprovalEditing(false)
     setFormOpen(true)
     setTimeout(() => titleRef.current?.focus(), 100)
   }
@@ -113,7 +144,11 @@ export default function PurchasesPage() {
       : []
     // pad to at least DEFAULT_ROWS
     while (loaded.length < DEFAULT_ROWS) loaded.push(emptyRow())
-    setForm({ title: req.title ?? '', department: req.department ?? '생산구매팀', memo: req.memo ?? '', items: loaded })
+    let loadedApproval: Approver[]
+    try { loadedApproval = req.approvalLine ? JSON.parse(req.approvalLine) : DEFAULT_APPROVAL_LINE.map(a => ({ ...a })) }
+    catch { loadedApproval = DEFAULT_APPROVAL_LINE.map(a => ({ ...a })) }
+    setForm({ title: req.title ?? '', department: req.department ?? '생산구매팀', memo: req.memo ?? '', items: loaded, approvalLine: loadedApproval })
+    setApprovalEditing(false)
     setFormOpen(true)
   }
 
@@ -129,6 +164,53 @@ export default function PurchasesPage() {
     setForm(f => ({ ...f, items: f.items.map((r, i) => i === idx ? emptyRow() : r) }))
   }
 
+  async function fetchBomItems(query: string, idx: number) {
+    const el = bomRefs.current[idx]
+    if (!el) return
+    try {
+      const url = query.trim()
+        ? `/api/items?search=${encodeURIComponent(query)}&limit=10`
+        : `/api/items?limit=10&sortBy=createdAt&sortOrder=desc`
+      const res = await fetch(url)
+      const json = await res.json()
+      if (json.success) {
+        const r = el.getBoundingClientRect()
+        if (json.data.items.length > 0) {
+          setItemDropdown({ idx, results: json.data.items, pos: { top: r.bottom + 2, left: r.left, width: r.width } })
+        } else {
+          setItemDropdown(d => d?.idx === idx ? null : d)
+        }
+      }
+    } catch { setItemDropdown(null) }
+  }
+
+  function handleBomFocus(idx: number) {
+    fetchBomItems(form.items[idx]?.bomNo ?? '', idx)
+  }
+
+  function handleBomInput(idx: number, value: string) {
+    updateItem(idx, 'bomNo', value)
+    clearTimeout(bomSearchTimer.current)
+    bomSearchTimer.current = setTimeout(() => fetchBomItems(value, idx), 200)
+  }
+
+  function selectBomItem(item: any) {
+    if (!itemDropdown) return
+    const idx = itemDropdown.idx
+    setForm(f => ({
+      ...f,
+      items: f.items.map((r, i) => i === idx ? {
+        ...r,
+        bomNo: item.itemCode,
+        spec: item.itemName || r.spec,
+        unit: item.unit || r.unit,
+        category: ITEM_CAT_LABEL[item.category] || r.category,
+        midCategory: item.subCategory ? (SUB_CAT_LABEL[item.subCategory] ?? item.subCategory) : r.midCategory,
+      } : r),
+    }))
+    setItemDropdown(null)
+  }
+
   async function handleSave() {
     if (!form.title.trim()) { toast.error('제목을 입력해주세요.'); titleRef.current?.focus(); return }
     const validItems = form.items.filter(it => it.quantity && Number(it.quantity) > 0 && it.unit.trim())
@@ -136,7 +218,7 @@ export default function PurchasesPage() {
 
     setSaving(true)
     try {
-      const body = { title: form.title, department: form.department, memo: form.memo, items: form.items }
+      const body = { title: form.title, department: form.department, memo: form.memo, items: form.items, approvalLine: form.approvalLine }
       const res = await fetch(editReq ? `/api/purchases/${editReq.id}` : '/api/purchases', {
         method: editReq ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -310,6 +392,54 @@ export default function PurchasesPage() {
               </div>
             </div>
 
+            {/* 결재 라인 */}
+            <div className="flex flex-col gap-2 shrink-0">
+              <div className="flex items-center gap-3">
+                <label className="text-xs font-medium text-gray-600">결재 라인</label>
+                <button
+                  type="button"
+                  onClick={() => setApprovalEditing(e => !e)}
+                  className="text-xs text-blue-500 hover:text-blue-700 underline underline-offset-2"
+                >
+                  {approvalEditing ? '완료' : '변경'}
+                </button>
+                {approvalEditing && (
+                  <button
+                    type="button"
+                    onClick={() => { setForm(f => ({ ...f, approvalLine: DEFAULT_APPROVAL_LINE.map(a => ({ ...a })) })); setApprovalEditing(false) }}
+                    className="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2"
+                  >
+                    기본값으로 초기화
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1 flex-wrap">
+                {form.approvalLine.map((approver, i) => (
+                  <React.Fragment key={approver.order}>
+                    {i > 0 && <span className="text-gray-300 text-sm font-light select-none">→</span>}
+                    <div className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg border text-xs min-w-[80px] ${approvalEditing ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
+                      <span className="text-gray-400 font-medium text-[10px] uppercase tracking-wide">{approver.role}</span>
+                      {approvalEditing ? (
+                        <input
+                          value={approver.name}
+                          onChange={e => setForm(f => ({
+                            ...f,
+                            approvalLine: f.approvalLine.map((a, ai) => ai === i ? { ...a, name: e.target.value } : a),
+                          }))}
+                          placeholder="이름 입력"
+                          className="w-20 text-center text-xs border-0 bg-transparent border-b border-blue-300 focus:outline-none focus:border-blue-500 py-0 px-0 placeholder-gray-300"
+                        />
+                      ) : (
+                        <span className={`font-medium ${approver.name ? 'text-gray-700' : 'text-gray-300 italic'}`}>
+                          {approver.name || '미설정'}
+                        </span>
+                      )}
+                    </div>
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+
             {/* 품목 테이블 */}
             <div className="flex flex-col gap-2 flex-1 min-h-0">
               <div className="flex items-center justify-between">
@@ -342,7 +472,7 @@ export default function PurchasesPage() {
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-gray-50">
                     <tr>
-                      {['NO', 'WORK CODE', '구분', '중분류', '소분류', 'BOM No.', '규격', '수량', '단위', '구매 사유', ''].map((h, i) => (
+                      {['NO', '프로젝트코드', '구분', '중분류', '소분류', 'BOM No.', '품목명', '수량', '단위', '구매 사유', ''].map((h, i) => (
                         <th key={i} className="px-2 py-2 text-left text-xs font-semibold text-gray-600 border-b border-r last:border-r-0 whitespace-nowrap bg-gray-50">
                           {h}{(h === '수량' || h === '단위') && <span className="text-red-400 ml-0.5">*</span>}
                         </th>
@@ -357,7 +487,7 @@ export default function PurchasesPage() {
                           <td className="px-2 py-0.5 text-center text-gray-400 border-r text-xs">{idx + 1}</td>
                           <td className="px-0.5 py-0.5 border-r">
                             <input value={row.workCode} onChange={e => updateItem(idx, 'workCode', e.target.value)}
-                              placeholder="P26-0502" className={cell} />
+                              placeholder="예) P26-0502" className={cell} />
                           </td>
                           <td className="px-0.5 py-0.5 border-r">
                             <Select value={row.category || '_none'}
@@ -380,8 +510,15 @@ export default function PurchasesPage() {
                               placeholder="스틸" className={cell} />
                           </td>
                           <td className="px-0.5 py-0.5 border-r">
-                            <input value={row.bomNo} onChange={e => updateItem(idx, 'bomNo', e.target.value)}
-                              placeholder="CCST010" className={cell} />
+                            <input
+                              ref={el => { bomRefs.current[idx] = el }}
+                              value={row.bomNo}
+                              onChange={e => handleBomInput(idx, e.target.value)}
+                              onFocus={() => handleBomFocus(idx)}
+                              onBlur={() => setTimeout(() => setItemDropdown(d => d?.idx === idx ? null : d), 200)}
+                              placeholder="품번 검색"
+                              className={cell}
+                            />
                           </td>
                           <td className="px-0.5 py-0.5 border-r">
                             <input value={row.spec} onChange={e => updateItem(idx, 'spec', e.target.value)}
@@ -443,6 +580,44 @@ export default function PurchasesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 품목 검색 드롭다운 */}
+      {itemDropdown && (
+        <div
+          style={{
+            position: 'fixed',
+            top: itemDropdown.pos.top,
+            left: itemDropdown.pos.left,
+            minWidth: Math.max(itemDropdown.pos.width, 480),
+            zIndex: 99999,
+          }}
+          className="bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden"
+        >
+          <div className="px-3 py-2 border-b bg-gray-50 flex items-center justify-between">
+            <span className="text-xs text-gray-500 font-medium">품목 선택</span>
+            <span className="text-xs text-gray-400">{itemDropdown.results.length}건</span>
+          </div>
+          {/* 컬럼 헤더 */}
+          <div className="grid grid-cols-[1fr_1.4fr_60px_70px_60px] px-3 py-1 bg-gray-50 border-b text-xs text-gray-400 font-medium">
+            <span>품번</span><span>품명</span><span>대분류</span><span>중분류</span><span>단위</span>
+          </div>
+          <div className="max-h-60 overflow-y-auto">
+            {itemDropdown.results.map(item => (
+              <button
+                key={item.id}
+                onMouseDown={e => { e.preventDefault(); selectBomItem(item) }}
+                className="w-full text-left px-3 py-2 hover:bg-blue-50 grid grid-cols-[1fr_1.4fr_60px_70px_60px] gap-x-2 items-center border-b last:border-0 transition-colors"
+              >
+                <span className="text-xs font-mono font-semibold text-gray-800 truncate">{item.itemCode}</span>
+                <span className="text-xs text-gray-700 truncate">{item.itemName}</span>
+                <span className="text-xs text-gray-500">{ITEM_CAT_LABEL[item.category] ?? item.category}</span>
+                <span className="text-xs text-gray-500">{item.subCategory ? (SUB_CAT_LABEL[item.subCategory] ?? item.subCategory) : '-'}</span>
+                <span className="text-xs text-gray-400">{item.unit}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 삭제 확인 */}
       <AlertDialog open={!!deleteId} onOpenChange={open => { if (!open) setDeleteId(null) }}>

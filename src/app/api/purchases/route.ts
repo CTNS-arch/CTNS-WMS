@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { title, department, memo, items, requesterId } = body
+    const { title, department, memo, items, requesterId, approvalLine } = body
 
     if (!title?.trim()) {
       return NextResponse.json({ success: false, message: '제목은 필수입니다.' }, { status: 400 })
@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
         department: department?.trim() || '생산구매팀',
         memo: memo?.trim() || null,
         requesterId: requesterId || null,
+        approvalLine: approvalLine ? JSON.stringify(approvalLine) : null,
         items: {
           create: validItems.map((it: any, i: number) => ({
             lineNo: i + 1,

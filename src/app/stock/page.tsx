@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 
 const CATEGORY_LABEL: Record<string, string> = {
-  PRODUCT: '제품', ASSEMBLY: '어셈블리', COMPONENT: '부자재',
+  PRODUCT: '완제품', ASSEMBLY: '반제품', COMPONENT: '자재',
 }
 
 type Dept = 'LAB' | 'PRODUCTION'

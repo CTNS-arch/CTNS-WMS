@@ -1,9 +1,9 @@
 import { SelectOption } from './select-options'
 
 export const CATEGORY_OPTIONS: SelectOption[] = [
-  { value: 'PRODUCT',   label: '제품',    colorIndex: 0, code: '1' },
-  { value: 'ASSEMBLY',  label: '어셈블리', colorIndex: 1, code: '2' },
-  { value: 'COMPONENT', label: '부자재',  colorIndex: 2, code: '3' },
+  { value: 'PRODUCT',   label: '완제품', colorIndex: 0, code: '1' },
+  { value: 'ASSEMBLY',  label: '반제품', colorIndex: 1, code: '2' },
+  { value: 'COMPONENT', label: '자재',  colorIndex: 2, code: '3' },
 ]
 
 export const SUB_OPTIONS: Record<string, SelectOption[]> = {

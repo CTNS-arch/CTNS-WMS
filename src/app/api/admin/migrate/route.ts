@@ -51,7 +51,7 @@ export async function POST() {
         const existing = await tx.item.findMany({
           where: { itemCode: { startsWith: newBase + '-' }, id: { not: item.id } },
         })
-        const usedRevs = new Set(existing.map(e => parseInt(e.itemCode.split('-').pop()!, 10)))
+        const usedRevs = new Set(existing.map((e: { itemCode: string }) => parseInt(e.itemCode.split('-').pop()!, 10)))
 
         let assignedRev = origRev
         if (usedRevs.has(origRev)) {

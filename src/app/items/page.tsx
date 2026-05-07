@@ -19,7 +19,7 @@ import BomDialog from '@/components/items/BomDialog'
 import { CATEGORY_OPTIONS, SUB_OPTIONS } from '@/lib/classification'
 import { getOptions, type SelectOption } from '@/lib/select-options'
 
-const CATEGORY_LABEL: Record<string, string> = { PRODUCT: '제품', ASSEMBLY: '어셈블리', COMPONENT: '부자재' }
+const CATEGORY_LABEL: Record<string, string> = { PRODUCT: '완제품', ASSEMBLY: '반제품', COMPONENT: '자재' }
 const STATUS_LABEL: Record<string, string> = { ACTIVE: '사용', INACTIVE: '미사용', RESTRICTED: '사용금지', DISCONTINUED: '단종' }
 const STATUS_COLOR: Record<string, string> = {
   ACTIVE: 'bg-green-100 text-green-700',

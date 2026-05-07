@@ -8,8 +8,9 @@ import AppShell from '@/components/layout/AppShell'
 const geist = Geist({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'CTNS ERP',
-  description: '배터리팩 제조 ERP 시스템',
+  title: 'CTNS WMS',
+  description: '배터리팩 제조 WMS 시스템',
+  icons: { icon: '/icon.svg' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

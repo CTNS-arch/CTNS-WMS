@@ -6,13 +6,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     const { id } = await params
     const body = await req.json()
-    const { title, department, memo, status, items } = body
+    const { title, department, memo, status, items, approvalLine } = body
 
     const data: any = {}
     if (status !== undefined) data.status = status as PurchaseStatus
     if (title !== undefined) data.title = title.trim()
     if (department !== undefined) data.department = department.trim()
     if (memo !== undefined) data.memo = memo?.trim() || null
+    if (approvalLine !== undefined) data.approvalLine = approvalLine ? JSON.stringify(approvalLine) : null
 
     const updated = await prisma.$transaction(async (tx) => {
       if (items !== undefined) {
