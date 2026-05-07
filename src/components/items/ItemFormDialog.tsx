@@ -189,14 +189,16 @@ function CellModelPicker({
 function ClassificationTree({
   category, subCategory, thirdValue, opts,
   cellModel, seriesCount, parallelCount, circuit,
-  isBP, isCL,
+  isBP, isCL, isBms,
+  maxSeriesCount, continuousDischargeCurrent,
   cellModelGroups, onAddCellModelGroup, onAddCellModelEntry,
   onCategory, onSub, onThird, onAddOpt, onSet,
 }: {
   category: string; subCategory: string; thirdValue: string
   opts: Record<string, SelectOption[]>
   cellModel: string; seriesCount: string; parallelCount: string; circuit: string
-  isBP: boolean; isCL: boolean
+  isBP: boolean; isCL: boolean; isBms: boolean
+  maxSeriesCount: string; continuousDischargeCurrent: string
   cellModelGroups: CellModelGroup[]
   onAddCellModelGroup: (mfr: string) => void
   onAddCellModelEntry: (mfr: string, label: string, code: string) => void
@@ -232,7 +234,7 @@ function ClassificationTree({
             )}
           </LevelRow>
 
-          {subCategory && (third || isBP || isCL) && (
+          {subCategory && (third || isBP || isCL || isBms) && (
             <Branch>
               {third && (
                 <LevelRow label={third.label}>
@@ -264,6 +266,16 @@ function ClassificationTree({
                   </LevelRow>
                   <LevelRow label="회로">
                     <TagSelect value={circuit} onChange={v => onSet('circuit', v)} options={opts.circuit ?? []} onAdd={onAddOpt('circuit')} placeholder="BMS / PCM" />
+                  </LevelRow>
+                </>
+              )}
+              {isBms && (
+                <>
+                  <LevelRow label="최대직렬(S)">
+                    <Input type="number" value={maxSeriesCount} onChange={e => onSet('maxSeriesCount', e.target.value)} placeholder="예) 16" />
+                  </LevelRow>
+                  <LevelRow label="연속방전(A)">
+                    <Input type="number" step="0.01" value={continuousDischargeCurrent} onChange={e => onSet('continuousDischargeCurrent', e.target.value)} placeholder="예) 100" />
                   </LevelRow>
                 </>
               )}
@@ -551,6 +563,9 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
               circuit={form.circuit}
               isBP={isBP}
               isCL={isCL}
+              isBms={bms}
+              maxSeriesCount={form.maxSeriesCount}
+              continuousDischargeCurrent={form.continuousDischargeCurrent}
               cellModelGroups={cellModelGroups}
               onAddCellModelGroup={mfr => { addCellModelGroup(mfr); setCellModelGroups([...getCellModelGroups()]) }}
               onAddCellModelEntry={(mfr, label, code) => { addCellModelEntry(mfr, label, code); setCellModelGroups([...getCellModelGroups()]); setOpts(prev => ({ ...prev, cellModel: getOptions('cellModel') })) }}
@@ -634,7 +649,8 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
                 ['maxChargeCurrent', '피크충전전류 (A)'],
                 ['maxDischargeCurrent', '피크방전전류 (A)'],
                 ['continuousChargeCurrent', '연속충전전류 (A)'],
-                ['continuousDischargeCurrent', '연속방전전류 (A)'],
+                // BMS/PCM은 분류 체계에서 입력하므로 제외
+                ...(!bms ? [['continuousDischargeCurrent', '연속방전전류 (A)']] : []),
                 ['chargeCRate', '충전 C-rate'],
                 ['dischargeCRate', '방전 C-rate'],
               ] as [string, string][]).map(([k, lb]) => (
@@ -660,9 +676,6 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
               </Field>
               <Field label="최소 직렬 수 (S)">
                 <Input type="number" value={form.minSeriesCount} onChange={e => set('minSeriesCount', e.target.value)} />
-              </Field>
-              <Field label="최대 직렬 수 (S)">
-                <Input type="number" value={form.maxSeriesCount} onChange={e => set('maxSeriesCount', e.target.value)} />
               </Field>
             </div>
           )}
