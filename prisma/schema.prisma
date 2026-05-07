@@ -121,13 +121,17 @@ model Item {
   memo           String?
 
   // 물리적 속성 (어셈블리, 제품, 컴포넌트)
-  length   Decimal? @db.Decimal(10, 2) // 가로/길이(mm)
-  width    Decimal? @db.Decimal(10, 2) // 세로/폭(mm)
-  height   Decimal? @db.Decimal(10, 2) // 높이(mm)
-  diameter Decimal? @db.Decimal(10, 2) // 직경(mm)
-  weight   Decimal? @db.Decimal(10, 2) // 무게(g)
-  material String?  // 알루미늄, 플라스틱, 나무, 스틸, 고무, 실리콘
-  packType String?  // 소프트팩, 하드팩
+  length      Decimal? @db.Decimal(10, 2) // 가로/길이(mm)
+  width       Decimal? @db.Decimal(10, 2) // 세로/폭(mm)
+  height      Decimal? @db.Decimal(10, 2) // 높이(mm)
+  diameter    Decimal? @db.Decimal(10, 2) // 직경(mm)
+  weight      Decimal? @db.Decimal(10, 2) // 무게(g)
+  innerLength Decimal? @db.Decimal(10, 2) // 내경 가로(mm)
+  innerWidth  Decimal? @db.Decimal(10, 2) // 내경 세로(mm)
+  innerHeight Decimal? @db.Decimal(10, 2) // 내경 높이(mm)
+  thickness   Decimal? @db.Decimal(10, 2) // 두께(mm)
+  material    String?  // 알루미늄, 플라스틱, 나무, 스틸, 고무, 실리콘
+  packType    String?  // 소프트팩, 하드팩
 
   // 전기화학 (BMS, 셀, 제품)
   chemistryType String? // NMC, LFP, NCA, LTO, LMFP, LMO, LCO, LNMO, LCP, LI-PO
@@ -145,8 +149,8 @@ model Item {
   chargeCutoffVoltage        Decimal? @db.Decimal(10, 2) // 충전종료전압(V)
   nominalCapacity            Decimal? @db.Decimal(10, 3) // 공칭용량(Ah)
   energy                     Decimal? @db.Decimal(12, 2) // 에너지(Wh)
-  maxChargeCurrent           Decimal? @db.Decimal(10, 2) // 미표충전전류(A)
-  maxDischargeCurrent        Decimal? @db.Decimal(10, 2) // 미표방전전류(A)
+  maxChargeCurrent           Decimal? @db.Decimal(10, 2) // 피크충전전류(A)
+  maxDischargeCurrent        Decimal? @db.Decimal(10, 2) // 피크방전전류(A)
   continuousChargeCurrent    Decimal? @db.Decimal(10, 2) // 연속충전전류(A) — BMS, 셀, 제품
   continuousDischargeCurrent Decimal? @db.Decimal(10, 2) // 연속방전전류(A) — BMS, 셀, 제품
   chargeCRate                Decimal? @db.Decimal(10, 2) // 충전 C-rate
@@ -154,6 +158,7 @@ model Item {
 
   // BMS 전용
   manufacturer   String?  // 제조사 (CTNS, 달리)
+  ratedVoltage   Decimal? @db.Decimal(10, 2) // 정격전압(V)
   minSeriesCount Int?     // 최소 직렬 수
   maxSeriesCount Int?     // 최대 직렬 수
   maxVoltage     Decimal? @db.Decimal(10, 2) // 최대허용전압(V)

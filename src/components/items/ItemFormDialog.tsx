@@ -31,6 +31,7 @@ const EMPTY: any = {
   itemCode: '', itemName: '', unit: '', category: '', subCategory: '',
   revisionNumber: 1, status: 'ACTIVE', memo: '',
   length: '', width: '', height: '', diameter: '', weight: '',
+  innerLength: '', innerWidth: '', innerHeight: '', thickness: '',
   material: '', packType: '', color: '', formFactor: '',
   chemistryType: '', cellModel: '', seriesCount: '', parallelCount: '',
   circuit: '', layerCount: '',
@@ -38,10 +39,11 @@ const EMPTY: any = {
   nominalCapacity: '', energy: '', maxChargeCurrent: '', maxDischargeCurrent: '',
   continuousChargeCurrent: '', continuousDischargeCurrent: '',
   chargeCRate: '', dischargeCRate: '',
-  manufacturer: '', minSeriesCount: '', maxSeriesCount: '', maxVoltage: '',
+  manufacturer: '', ratedVoltage: '', minSeriesCount: '', maxSeriesCount: '', maxVoltage: '',
   vendors: [] as string[],
   specialOptions: [], certifications: [],
   drawings: [] as string[],
+  specSheets: [] as string[],
 }
 
 // ── 섹션 헤더 ────────────────────────────────────────────
@@ -276,7 +278,7 @@ function ClassificationTree({
 // ── 품번 미리보기 (상단 고정) ──────────────────────────────
 const CODE_LABELS: Record<ItemCodeType, string[]> = {
   bp:        ['1분류', '2분류', '화학계', '셀모델', '직병렬', '회로', '버전'],
-  bms:       ['1분류', '2분류', '제조사', '직렬',   '용량',   '버전'],
+  bms:       ['1분류', '2분류', '제조사', '최대직렬', '연속방전', '버전'],
   cell:      ['1분류', '2분류', '화학계', '셀모델'],
   component: ['1분류', '2분류', '3분류', '일련번호'],
   simple:    [],
@@ -323,9 +325,11 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
   const [form, setForm] = useState<any>(EMPTY)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadingSpec, setUploadingSpec] = useState(false)
   const [opts, setOpts] = useState<Record<string, SelectOption[]>>({})
   const [cellModelGroups, setCellModelGroups] = useState<CellModelGroup[]>([])
   const drawingsInputRef = useRef<HTMLInputElement>(null)
+  const specSheetsInputRef = useRef<HTMLInputElement>(null)
 
   const handleDrawingUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
@@ -346,6 +350,29 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
       toast.error('파일 업로드에 실패했습니다.')
     } finally {
       setUploading(false)
+      e.target.value = ''
+    }
+  }, [])
+
+  const handleSpecSheetUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    setUploadingSpec(true)
+    try {
+      const fd = new FormData()
+      Array.from(files).forEach(f => fd.append('files', f))
+      const res = await fetch('/api/upload', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (json.success) {
+        setForm((f: any) => ({ ...f, specSheets: [...(f.specSheets || []), ...json.data.urls] }))
+        toast.success(`${json.data.urls.length}개 파일이 업로드되었습니다.`)
+      } else {
+        toast.error(json.message)
+      }
+    } catch {
+      toast.error('파일 업로드에 실패했습니다.')
+    } finally {
+      setUploadingSpec(false)
       e.target.value = ''
     }
   }, [])
@@ -380,7 +407,8 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
           vendors: item.vendors ?? [],
           specialOptions: item.specialOptions ?? [],
           certifications: item.certifications ?? [],
-          drawings: item.drawings ?? [] }
+          drawings: item.drawings ?? [],
+          specSheets: item.specSheets ?? [] }
       : { ...EMPTY, ...(initialValues ?? {}) }
     )
   }, [item, open])
@@ -418,7 +446,7 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
   }, [
     codeType, codeParts,
     form.category, form.subCategory, form.revisionNumber,
-    form.manufacturer, form.seriesCount, form.nominalCapacity,
+    form.manufacturer, form.maxSeriesCount, form.continuousDischargeCurrent,
     form.chemistryType, form.cellModel, form.formFactor,
   ])
 
@@ -465,9 +493,12 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
     setSaving(true)
     const payload = { ...form }
     const numF = ['revisionNumber', 'seriesCount', 'parallelCount', 'layerCount', 'minSeriesCount', 'maxSeriesCount']
-    const decF = ['length', 'width', 'height', 'diameter', 'weight', 'dischargeCutoffVoltage', 'nominalVoltage',
+    const decF = ['length', 'width', 'height', 'diameter', 'weight',
+      'innerLength', 'innerWidth', 'innerHeight', 'thickness',
+      'dischargeCutoffVoltage', 'nominalVoltage',
       'chargeCutoffVoltage', 'nominalCapacity', 'energy', 'maxChargeCurrent', 'maxDischargeCurrent',
-      'continuousChargeCurrent', 'continuousDischargeCurrent', 'chargeCRate', 'dischargeCRate', 'maxVoltage']
+      'continuousChargeCurrent', 'continuousDischargeCurrent', 'chargeCRate', 'dischargeCRate',
+      'maxVoltage', 'ratedVoltage']
     numF.forEach(k => { payload[k] = payload[k] !== '' ? Number(payload[k]) || null : null })
     decF.forEach(k => { payload[k] = payload[k] !== '' ? parseFloat(payload[k]) || null : null })
 
@@ -562,7 +593,12 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
           {/* ── 물리 규격 ── */}
           <div className="space-y-3">
             <SectionHeader title="물리 규격" />
-            {([['length', '가로/길이 (mm)'], ['width', '세로/폭 (mm)'], ['height', '높이 (mm)'], ['diameter', '직경 (mm)'], ['weight', '무게 (g)']] as [string, string][]).map(([k, lb]) => (
+            {([
+              ['length', '가로/길이 (mm)'], ['width', '세로/폭 (mm)'], ['height', '높이 (mm)'],
+              ['diameter', '직경 (mm)'], ['weight', '무게 (g)'],
+              ['innerLength', '내경 가로 (mm)'], ['innerWidth', '내경 세로 (mm)'],
+              ['innerHeight', '내경 높이 (mm)'], ['thickness', '두께 (mm)'],
+            ] as [string, string][]).map(([k, lb]) => (
               <Field key={k} label={lb}>
                 <Input type="number" step="0.01" value={form[k]} onChange={e => set(k, e.target.value)} placeholder="0.00" />
               </Field>
@@ -595,8 +631,8 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
                 ['chargeCutoffVoltage', '충전종료전압 (V)'],
                 ['nominalCapacity', '공칭용량 (Ah)'],
                 ['energy', '에너지 (Wh)'],
-                ['maxChargeCurrent', '미표충전전류 (A)'],
-                ['maxDischargeCurrent', '미표방전전류 (A)'],
+                ['maxChargeCurrent', '피크충전전류 (A)'],
+                ['maxDischargeCurrent', '피크방전전류 (A)'],
                 ['continuousChargeCurrent', '연속충전전류 (A)'],
                 ['continuousDischargeCurrent', '연속방전전류 (A)'],
                 ['chargeCRate', '충전 C-rate'],
@@ -615,6 +651,9 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
               <SectionHeader title="BMS 정보" />
               <Field label="제조사">
                 <TagSelect value={form.manufacturer} onChange={v => set('manufacturer', v)} options={opts.manufacturer ?? []} onAdd={addOpt('manufacturer')} placeholder="제조사 선택" />
+              </Field>
+              <Field label="정격전압 (V)">
+                <Input type="number" step="0.01" value={form.ratedVoltage} onChange={e => set('ratedVoltage', e.target.value)} placeholder="0.00" />
               </Field>
               <Field label="최대허용전압 (V)">
                 <Input type="number" step="0.01" value={form.maxVoltage} onChange={e => set('maxVoltage', e.target.value)} placeholder="0.00" />
@@ -685,6 +724,53 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
               <span className="text-xs text-gray-400">PDF, DWG, DXF, PNG, JPG, SVG, Excel, STEP, IGES 지원</span>
             </div>
           </div>
+
+          {/* ── 스펙시트 (셀 전용) ── */}
+          {isCL && (
+            <div className="space-y-3">
+              <SectionHeader title="스펙시트" />
+              {form.specSheets && form.specSheets.length > 0 && (
+                <div className="space-y-1.5">
+                  {form.specSheets.map((url: string, i: number) => {
+                    const filename = url.split('/').pop()?.replace(/^\d+-[\w-]+-/, '') ?? url
+                    return (
+                      <div key={i} className="flex items-center gap-2 px-3 py-1.5 border rounded-md bg-gray-50 text-xs">
+                        <span className="text-gray-500 shrink-0">📄</span>
+                        <span className="text-gray-700 flex-1 truncate" title={filename}>{filename}</span>
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline shrink-0">열기</a>
+                        <button
+                          type="button"
+                          onClick={() => set('specSheets', form.specSheets.filter((_: string, j: number) => j !== i))}
+                          className="text-gray-400 hover:text-red-500 shrink-0"
+                        >✕</button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              <div className="flex items-center gap-3">
+                <input
+                  ref={specSheetsInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.xlsx,.xls,.csv,.png,.jpg,.jpeg"
+                  className="hidden"
+                  onChange={handleSpecSheetUpload}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={uploadingSpec}
+                  onClick={() => specSheetsInputRef.current?.click()}
+                >
+                  {uploadingSpec ? '업로드 중...' : '+ 스펙시트 업로드'}
+                </Button>
+                <span className="text-xs text-gray-400">PDF, Excel, CSV, 이미지 지원</span>
+              </div>
+            </div>
+          )}
 
           {/* ── 비고 ── */}
           <div className="space-y-3">

@@ -100,20 +100,20 @@ export function buildComponentCode(form: {
   return `${catCode}-${subCode}-${thirdCode}-${serial}`
 }
 
-// BMS/PCM 코드: {catCode}-{BM/PC}-{제조사코드}-{직렬}S-{용량}A-{버전}
+// BMS/PCM 코드: {catCode}-{BM/PC}-{제조사코드}-{최대직렬}S-{연속방전}A-{버전}
 export function buildBmsCode(form: {
   category?: string
   subCategory?: string
   manufacturer?: string
-  seriesCount?: number | string
-  nominalCapacity?: number | string
+  maxSeriesCount?: number | string
+  continuousDischargeCurrent?: number | string
   revisionNumber?: number | string
 }): string {
   const catCode = CATEGORY_CODE[form.category ?? ''] ?? '?'
   const subCode = getCode('subCategory', form.subCategory ?? '')
   const mfrCode = form.manufacturer ? getCode('manufacturer', form.manufacturer) : '?'
-  const serS = form.seriesCount ? `${form.seriesCount}S` : '?S'
-  const capA = form.nominalCapacity ? `${Math.round(Number(form.nominalCapacity))}A` : '?A'
+  const serS = form.maxSeriesCount ? `${form.maxSeriesCount}S` : '?S'
+  const capA = form.continuousDischargeCurrent ? `${Math.round(Number(form.continuousDischargeCurrent))}A` : '?A'
   const version = String(form.revisionNumber || 1).padStart(3, '0')
   return `${catCode}-${subCode}-${mfrCode}-${serS}-${capA}-${version}`
 }
