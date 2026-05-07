@@ -190,7 +190,7 @@ function ClassificationTree({
   category, subCategory, thirdValue, opts,
   cellModel, seriesCount, parallelCount, circuit,
   isBP, isCL, isBms,
-  maxSeriesCount, continuousDischargeCurrent,
+  manufacturer, maxSeriesCount, continuousDischargeCurrent,
   cellModelGroups, onAddCellModelGroup, onAddCellModelEntry,
   onCategory, onSub, onThird, onAddOpt, onSet,
 }: {
@@ -198,7 +198,7 @@ function ClassificationTree({
   opts: Record<string, SelectOption[]>
   cellModel: string; seriesCount: string; parallelCount: string; circuit: string
   isBP: boolean; isCL: boolean; isBms: boolean
-  maxSeriesCount: string; continuousDischargeCurrent: string
+  manufacturer: string; maxSeriesCount: string; continuousDischargeCurrent: string
   cellModelGroups: CellModelGroup[]
   onAddCellModelGroup: (mfr: string) => void
   onAddCellModelEntry: (mfr: string, label: string, code: string) => void
@@ -271,6 +271,9 @@ function ClassificationTree({
               )}
               {isBms && (
                 <>
+                  <LevelRow label="제조사">
+                    <TagSelect value={manufacturer} onChange={v => onSet('manufacturer', v)} options={opts.manufacturer ?? []} onAdd={onAddOpt('manufacturer')} placeholder="제조사 선택" />
+                  </LevelRow>
                   <LevelRow label="최대직렬(S)">
                     <Input type="number" value={maxSeriesCount} onChange={e => onSet('maxSeriesCount', e.target.value)} placeholder="예) 16" />
                   </LevelRow>
@@ -564,6 +567,7 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
               isBP={isBP}
               isCL={isCL}
               isBms={bms}
+              manufacturer={form.manufacturer}
               maxSeriesCount={form.maxSeriesCount}
               continuousDischargeCurrent={form.continuousDischargeCurrent}
               cellModelGroups={cellModelGroups}
@@ -665,9 +669,6 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
           {bms && (
             <div className="space-y-3">
               <SectionHeader title="BMS 정보" />
-              <Field label="제조사">
-                <TagSelect value={form.manufacturer} onChange={v => set('manufacturer', v)} options={opts.manufacturer ?? []} onAdd={addOpt('manufacturer')} placeholder="제조사 선택" />
-              </Field>
               <Field label="정격전압 (V)">
                 <Input type="number" step="0.01" value={form.ratedVoltage} onChange={e => set('ratedVoltage', e.target.value)} placeholder="0.00" />
               </Field>
