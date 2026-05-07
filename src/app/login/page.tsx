@@ -18,7 +18,22 @@ function LoginPage() {
   const errorCode = searchParams.get('error')
   const errorMsg = errorCode ? (ERROR_MESSAGES[errorCode] ?? ERROR_MESSAGES.Default) : null
 
+  // Configuration 오류 시 자동 1회 재시도 (Vercel/Neon 콜드 스타트 대응)
+  useEffect(() => {
+    if (errorCode !== 'Configuration') return
+    const retried = sessionStorage.getItem('ctns_auth_retried')
+    if (retried) {
+      sessionStorage.removeItem('ctns_auth_retried')
+      return
+    }
+    sessionStorage.setItem('ctns_auth_retried', '1')
+    setLoading(true)
+    const t = setTimeout(() => signIn('microsoft-entra-id', { callbackUrl: '/items' }), 1200)
+    return () => clearTimeout(t)
+  }, [errorCode])
+
   const handleLogin = async () => {
+    sessionStorage.removeItem('ctns_auth_retried')
     setLoading(true)
     await signIn('microsoft-entra-id', { callbackUrl: '/items' })
   }
