@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
@@ -23,6 +24,7 @@ interface Props {
   open: boolean
   item?: any
   initialValues?: Partial<typeof EMPTY>
+  viewOnly?: boolean
   onClose: () => void
   onSaved: () => void
 }
@@ -44,9 +46,9 @@ const EMPTY: any = {
   specialOptions: [], certifications: [],
   drawings: [] as string[],
   specSheets: [] as string[],
+  images: [] as string[],
 }
 
-// ── 섹션 헤더 ────────────────────────────────────────────
 function SectionHeader({ title }: { title: string }) {
   return (
     <div className="-mx-6 px-6 py-2.5 bg-gray-100 border-t border-b border-gray-200 flex items-center gap-2">
@@ -56,7 +58,6 @@ function SectionHeader({ title }: { title: string }) {
   )
 }
 
-// ── 폼 필드 래퍼 ─────────────────────────────────────────
 function Field({ label, required, children }: {
   label: string; required?: boolean; children: React.ReactNode
 }) {
@@ -70,9 +71,6 @@ function Field({ label, required, children }: {
   )
 }
 
-// ── 분류 트리 ─────────────────────────────────────────────
-
-// 컨테이너 안에서 부모 세로선과 연결되는 행
 function LevelRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-3 relative">
@@ -83,7 +81,6 @@ function LevelRow({ label, children }: { label: string; children: React.ReactNod
   )
 }
 
-// 한 단계 들여쓰기 컨테이너 — 세로 연결선 포함
 function Branch({ children }: { children: React.ReactNode }) {
   return (
     <div className="ml-5 pl-4 border-l-2 border-gray-200 space-y-3">
@@ -92,7 +89,6 @@ function Branch({ children }: { children: React.ReactNode }) {
   )
 }
 
-// ── 셀모델 2단계 선택 (제조사 → 모델 + 코드 표시) ────────────────
 function CellModelPicker({
   value, groups, onChange, onAddGroup, onAddModel,
 }: {
@@ -120,7 +116,6 @@ function CellModelPicker({
   const modelOpts: SelectOption[] = selectedGroup?.models.map(m => ({
     value: m.value, label: m.label, colorIndex: m.colorIndex, code: m.code,
   })) ?? []
-  const selectedCode = selectedGroup?.models.find(m => m.value === value)?.code
 
   const confirmAddModel = () => {
     if (!newModelCode.trim()) return
@@ -131,7 +126,6 @@ function CellModelPicker({
 
   return (
     <>
-      {/* 셀제조사 행 */}
       <LevelRow label="셀제조사">
         <TagSelect
           value={selMfr}
@@ -141,7 +135,6 @@ function CellModelPicker({
           placeholder="제조사 선택"
         />
       </LevelRow>
-      {/* 셀모델 행 (제조사 선택 후) */}
       {selMfr && (
         <LevelRow label="셀모델">
           <div className="space-y-1.5">
@@ -193,6 +186,8 @@ function ClassificationTree({
   manufacturer, maxSeriesCount, continuousDischargeCurrent,
   cellModelGroups, onAddCellModelGroup, onAddCellModelEntry,
   onCategory, onSub, onThird, onAddOpt, onSet,
+  onSelectCLItem,
+  readOnly,
 }: {
   category: string; subCategory: string; thirdValue: string
   opts: Record<string, SelectOption[]>
@@ -205,17 +200,111 @@ function ClassificationTree({
   onCategory: (v: string) => void
   onSub: (v: string) => void
   onThird: (field: string, v: string) => void
+  onSelectCLItem?: (item: { chemistryType: string | null; cellModel: string | null }) => void
   onAddOpt: (key: string) => (label: string) => void
   onSet: (key: string, val: any) => void
+  readOnly?: boolean
 }) {
   const subOpts = SUB_OPTIONS[category] ?? []
   const third = subCategory ? THIRD_LEVEL[subCategory] : null
   const thirdOptions = third?.staticOptions ?? (third?.optKey ? opts[third.optKey] : undefined) ?? []
   const canAddThird = !third?.staticOptions && !!third?.optKey
 
+  // BP용 CL 품목 검색 상태
+  const [clSearch, setClSearch] = useState('')
+  const [clResults, setClResults] = useState<any[]>([])
+  const [clAllItems, setClAllItems] = useState<any[]>([])
+  const [clSearching, setClSearching] = useState(false)
+  const [clShowDropdown, setClShowDropdown] = useState(false)
+  const [selectedCL, setSelectedCL] = useState<any | null>(null)
+  const clDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const clContainerRef = useRef<HTMLDivElement>(null)
+
+  // 클릭 외부 시 드롭다운 닫기
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (clContainerRef.current && !clContainerRef.current.contains(e.target as Node)) {
+        setClShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // 포커스 시 전체 CL 품목 로드
+  const loadAllClItems = async () => {
+    setClShowDropdown(true)
+    if (clAllItems.length > 0) { setClResults(clSearch.trim() ? clResults : clAllItems); return }
+    setClSearching(true)
+    try {
+      const res = await fetch('/api/items?category=COMPONENT&subCategory=CL&limit=100&sortBy=itemCode&sortOrder=asc')
+      const json = await res.json()
+      if (json.success) {
+        setClAllItems(json.data.items)
+        if (!clSearch.trim()) setClResults(json.data.items)
+      }
+    } catch {}
+    setClSearching(false)
+  }
+
+  useEffect(() => {
+    if (!clSearch.trim()) {
+      setClResults(clAllItems)
+      return
+    }
+    const filtered = clAllItems.filter(item =>
+      item.itemCode.toLowerCase().includes(clSearch.toLowerCase()) ||
+      item.itemName.toLowerCase().includes(clSearch.toLowerCase())
+    )
+    setClResults(filtered)
+    clearTimeout(clDebounceRef.current)
+    clDebounceRef.current = setTimeout(async () => {
+      setClSearching(true)
+      try {
+        const res = await fetch(`/api/items?category=COMPONENT&subCategory=CL&search=${encodeURIComponent(clSearch)}&limit=20`)
+        const json = await res.json()
+        if (json.success) {
+          const merged = [...filtered]
+          for (const item of json.data.items) {
+            if (!merged.some((i: any) => i.id === item.id)) merged.push(item)
+          }
+          setClResults(merged)
+        }
+      } catch {}
+      setClSearching(false)
+    }, 300)
+  }, [clSearch, clAllItems])
+
+  if (readOnly) {
+    const catLabel = CATEGORY_OPTIONS.find(o => o.value === category)?.label ?? category
+    const subLabel = subOpts.find(o => o.value === subCategory)?.label ?? subCategory
+    const thirdLabel = thirdOptions.find((o: SelectOption) => o.value === thirdValue)?.label ?? thirdValue
+    const circuitLabel = (opts.circuit ?? []).find(o => o.value === circuit)?.label ?? circuit
+    const mfrLabel = (opts.manufacturer ?? []).find(o => o.value === manufacturer)?.label ?? manufacturer
+    const row = (label: string, value: string) => value ? (
+      <div className="flex items-center gap-3">
+        <span className="text-xs text-gray-400 w-20 shrink-0 text-right">{label}</span>
+        <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-700 font-medium">{value}</span>
+      </div>
+    ) : null
+    return (
+      <div className="space-y-2">
+        {row('1분류', catLabel)}
+        {row('2분류', subLabel)}
+        {third && row(third.label, thirdLabel)}
+        {(isBP || isCL) && cellModel && row('셀모델', cellModel)}
+        {isBP && seriesCount && row('직렬(S)', `${seriesCount}S`)}
+        {isBP && parallelCount && row('병렬(P)', `${parallelCount}P`)}
+        {isBP && circuit && row('회로', circuitLabel)}
+        {isBms && manufacturer && row('제조사', mfrLabel)}
+        {isBms && maxSeriesCount && row('최대직렬(S)', `${maxSeriesCount}S`)}
+        {isBms && continuousDischargeCurrent && row('연속방전(A)', `${continuousDischargeCurrent}A`)}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-3">
-      {/* 1분류 */}
       <div className="flex items-center gap-3">
         <span className="text-xs text-gray-400 w-14 shrink-0 text-right">1분류</span>
         <div className="flex-1">
@@ -223,7 +312,6 @@ function ClassificationTree({
         </div>
       </div>
 
-      {/* 2분류 이하 */}
       {category && (
         <Branch>
           <LevelRow label="2분류">
@@ -236,7 +324,7 @@ function ClassificationTree({
 
           {subCategory && (third || isBP || isCL || isBms) && (
             <Branch>
-              {third && (
+              {third && !(isBP && onSelectCLItem) && (
                 <LevelRow label={third.label}>
                   <TagSelect
                     value={thirdValue}
@@ -247,7 +335,57 @@ function ClassificationTree({
                   />
                 </LevelRow>
               )}
-              {(isBP || isCL) && (
+              {isBP && onSelectCLItem && (
+                <LevelRow label="셀 품목">
+                  <div className="relative" ref={clContainerRef}>
+                    {selectedCL ? (
+                      <div className="flex items-center gap-2 px-2.5 py-1.5 bg-blue-50 border border-blue-200 rounded-md text-xs">
+                        <span className="font-mono text-blue-700">{selectedCL.itemCode}</span>
+                        <span className="text-blue-600 flex-1 truncate">{selectedCL.itemName}</span>
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedCL(null); setClSearch(''); setClShowDropdown(false) }}
+                          className="text-blue-400 hover:text-blue-600 shrink-0"
+                        >×</button>
+                      </div>
+                    ) : (
+                      <Input
+                        value={clSearch}
+                        onChange={e => setClSearch(e.target.value)}
+                        onFocus={loadAllClItems}
+                        placeholder="클릭하면 셀 목록 표시 · 입력하여 검색"
+                        className="h-8 text-xs"
+                      />
+                    )}
+                    {!selectedCL && clShowDropdown && (
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-white border rounded-md shadow-lg z-30 max-h-48 overflow-y-auto">
+                        {clSearching ? (
+                          <p className="text-xs text-gray-400 px-3 py-2">불러오는 중...</p>
+                        ) : clResults.length === 0 ? (
+                          <p className="text-xs text-gray-400 px-3 py-2">셀(CL) 품목이 없습니다.</p>
+                        ) : clResults.map((item: any) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2"
+                            onClick={() => {
+                              setSelectedCL(item)
+                              setClSearch('')
+                              setClResults([])
+                              setClShowDropdown(false)
+                              onSelectCLItem({ chemistryType: item.chemistryType ?? null, cellModel: item.cellModel ?? null })
+                            }}
+                          >
+                            <span className="font-mono text-gray-500 shrink-0">{item.itemCode}</span>
+                            <span className="text-gray-800 truncate">{item.itemName}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </LevelRow>
+              )}
+              {(isBP || isCL) && !(isBP && onSelectCLItem) && (
                 <CellModelPicker
                   value={cellModel}
                   groups={cellModelGroups}
@@ -290,7 +428,105 @@ function ClassificationTree({
   )
 }
 
-// ── 품번 미리보기 (상단 고정) ──────────────────────────────
+function ImagePreviewModal({ url, onClose }: { url: string; onClose: () => void }) {
+  const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 })
+  const transformRef = useRef(transform)
+  transformRef.current = transform
+  const containerRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<{ mx: number; my: number; ox: number; oy: number } | null>(null)
+  const [dragging, setDragging] = useState(false)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const rect = el.getBoundingClientRect()
+      const relX = e.clientX - rect.left - rect.width / 2
+      const relY = e.clientY - rect.top - rect.height / 2
+      const { scale, x, y } = transformRef.current
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
+      const newScale = Math.max(0.1, Math.min(20, scale * factor))
+      const ratio = newScale / scale
+      setTransform({ scale: newScale, x: relX - (relX - x) * ratio, y: relY - (relY - y) * ratio })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const startDrag = (e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    setDragging(true)
+    dragRef.current = { mx: e.clientX, my: e.clientY, ox: transform.x, oy: transform.y }
+  }
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    const d = dragRef.current
+    if (!d) return
+    setTransform(prev => ({ ...prev, x: d.ox + e.clientX - d.mx, y: d.oy + e.clientY - d.my }))
+  }
+
+  const endDrag = () => { setDragging(false); dragRef.current = null }
+  const reset = () => setTransform({ scale: 1, x: 0, y: 0 })
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] bg-black/85" onClick={onClose}>
+      <div
+        ref={containerRef}
+        className="absolute inset-0 overflow-hidden"
+        style={{ cursor: dragging ? 'grabbing' : 'grab' }}
+        onClick={e => e.stopPropagation()}
+        onMouseDown={startDrag}
+        onMouseMove={onMouseMove}
+        onMouseUp={endDrag}
+        onMouseLeave={endDrag}
+        onDoubleClick={reset}
+      >
+        <img
+          src={url}
+          alt=""
+          draggable={false}
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: `translate(calc(-50% + ${transform.x}px), calc(-50% + ${transform.y}px)) scale(${transform.scale})`,
+            transformOrigin: 'center center',
+            maxWidth: transform.scale <= 1 ? '90vw' : 'none',
+            maxHeight: transform.scale <= 1 ? '90vh' : 'none',
+            userSelect: 'none',
+            pointerEvents: 'none',
+            display: 'block',
+          }}
+        />
+      </div>
+      <div className="absolute top-4 right-4 flex items-center gap-2 z-10" onClick={e => e.stopPropagation()}>
+        <span className="bg-black/60 text-white/80 text-xs px-2.5 py-1 rounded-full">
+          {Math.round(transform.scale * 100)}%
+        </span>
+        <button onClick={reset} className="bg-black/60 text-white text-xs px-2.5 py-1 rounded-full hover:bg-black/80">
+          초기화
+        </button>
+        <button
+          onClick={onClose}
+          className="w-8 h-8 bg-white text-gray-800 rounded-full flex items-center justify-center shadow-lg hover:bg-gray-100 text-sm font-bold"
+        >×</button>
+      </div>
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/40 text-xs whitespace-nowrap pointer-events-none">
+        스크롤: 확대/축소 · 드래그: 이동 · 더블클릭: 초기화
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 const CODE_LABELS: Record<ItemCodeType, string[]> = {
   bp:        ['1분류', '2분류', '화학계', '셀모델', '직병렬', '회로', '버전'],
   bms:       ['1분류', '2분류', '제조사', '최대직렬', '연속방전', '버전'],
@@ -335,24 +571,29 @@ function CodePreviewPanel({ itemCode, codeType }: { itemCode: string; codeType: 
   )
 }
 
-// ── 메인 컴포넌트 ────────────────────────────────────────
-export default function ItemFormDialog({ open, item, initialValues, onClose, onSaved }: Props) {
+export default function ItemFormDialog({ open, item, initialValues, viewOnly, onClose, onSaved }: Props) {
   const [form, setForm] = useState<any>(EMPTY)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadingSpec, setUploadingSpec] = useState(false)
+  const [uploadingImages, setUploadingImages] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
+  const [dragOverDrawing, setDragOverDrawing] = useState(false)
+  const [dragOverSpec, setDragOverSpec] = useState(false)
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
   const [opts, setOpts] = useState<Record<string, SelectOption[]>>({})
   const [cellModelGroups, setCellModelGroups] = useState<CellModelGroup[]>([])
   const drawingsInputRef = useRef<HTMLInputElement>(null)
   const specSheetsInputRef = useRef<HTMLInputElement>(null)
+  const imagesInputRef = useRef<HTMLInputElement>(null)
 
-  const handleDrawingUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
+  const handleDrawingFiles = useCallback(async (files: FileList | File[]) => {
+    const arr = Array.from(files)
+    if (arr.length === 0) return
     setUploading(true)
     try {
       const fd = new FormData()
-      Array.from(files).forEach(f => fd.append('files', f))
+      arr.forEach(f => fd.append('files', f))
       const res = await fetch('/api/upload', { method: 'POST', body: fd })
       const json = await res.json()
       if (json.success) {
@@ -365,17 +606,21 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
       toast.error('파일 업로드에 실패했습니다.')
     } finally {
       setUploading(false)
-      e.target.value = ''
     }
   }, [])
 
-  const handleSpecSheetUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
+  const handleDrawingUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) await handleDrawingFiles(e.target.files)
+    e.target.value = ''
+  }, [handleDrawingFiles])
+
+  const handleSpecSheetFiles = useCallback(async (files: FileList | File[]) => {
+    const arr = Array.from(files)
+    if (arr.length === 0) return
     setUploadingSpec(true)
     try {
       const fd = new FormData()
-      Array.from(files).forEach(f => fd.append('files', f))
+      arr.forEach(f => fd.append('files', f))
       const res = await fetch('/api/upload', { method: 'POST', body: fd })
       const json = await res.json()
       if (json.success) {
@@ -388,7 +633,33 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
       toast.error('파일 업로드에 실패했습니다.')
     } finally {
       setUploadingSpec(false)
-      e.target.value = ''
+    }
+  }, [])
+
+  const handleSpecSheetUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) await handleSpecSheetFiles(e.target.files)
+    e.target.value = ''
+  }, [handleSpecSheetFiles])
+
+  const handleImageFiles = useCallback(async (files: FileList | File[]) => {
+    const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
+    if (imageFiles.length === 0) return
+    setUploadingImages(true)
+    try {
+      const fd = new FormData()
+      imageFiles.forEach(f => fd.append('files', f))
+      const res = await fetch('/api/upload', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (json.success) {
+        setForm((f: any) => ({ ...f, images: [...(f.images || []), ...json.data.urls] }))
+        toast.success(`${json.data.urls.length}개 이미지가 업로드되었습니다.`)
+      } else {
+        toast.error(json.message)
+      }
+    } catch {
+      toast.error('이미지 업로드에 실패했습니다.')
+    } finally {
+      setUploadingImages(false)
     }
   }, [])
 
@@ -423,7 +694,8 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
           specialOptions: item.specialOptions ?? [],
           certifications: item.certifications ?? [],
           drawings: item.drawings ?? [],
-          specSheets: item.specSheets ?? [] }
+          specSheets: item.specSheets ?? [],
+          images: item.images ?? [] }
       : { ...EMPTY, ...(initialValues ?? {}) }
     )
   }, [item, open])
@@ -444,7 +716,6 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
     form.seriesCount, form.parallelCount, form.circuit, form.revisionNumber,
   ])
 
-  // 품번 자동생성: 신규 등록 및 리비전(id 없음) 시
   useEffect(() => {
     if (item?.id) return
     if (codeType === 'bp') {
@@ -465,8 +736,6 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
     form.chemistryType, form.cellModel, form.formFactor,
   ])
 
-  // 리비전 충돌 체크: 생성된 품번이 이미 존재하면 미리보기에 다음 번호 반영
-  // 셀 코드는 고유해야 하므로 revision 체크 생략
   const revCheckTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => {
     if (item?.id) return
@@ -492,8 +761,7 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
     return t ? form[t.field] : ''
   })()
 
-  // 폼 제목: 수정 / 리비전 등록 / 신규 등록 구분
-  const formTitle = item?.id ? '품목 수정' : item ? `리비전 등록 (Rev.${item.revisionNumber})` : '품목 등록'
+  const formTitle = viewOnly ? '품목 상세' : item?.id ? '품목 수정' : item ? `리비전 등록 (Rev.${item.revisionNumber})` : '품목 등록'
 
   const handleSubmit = async () => {
     if (!form.itemName || !form.unit || !form.category || !form.subCategory) {
@@ -538,19 +806,21 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
   const prod = showProductOptions(form.category)
 
   return (
+    <>
     <Sheet open={open} onOpenChange={o => !o && onClose()}>
       <SheetContent side="right" className="w-[800px] max-w-[800px] h-screen flex flex-col p-0 gap-0">
 
-        {/* 고정 헤더 */}
         <SheetHeader className="px-6 py-4 border-b shrink-0">
           <SheetTitle>{formTitle}</SheetTitle>
         </SheetHeader>
 
-        {/* 품번 미리보기 - 스크롤해도 고정 */}
         <CodePreviewPanel itemCode={form.itemCode} codeType={codeType} />
 
-        {/* 스크롤 영역 */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+        {/* viewOnly 오버레이: 클릭 차단, 스크롤은 컨테이너에서 처리 */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 relative">
+          {viewOnly && (
+            <div className="absolute inset-0 z-10 cursor-default" style={{ pointerEvents: 'all' }} />
+          )}
 
           {/* ── 분류 체계 ── */}
           <div className="space-y-3">
@@ -578,6 +848,14 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
               onThird={handleThird}
               onAddOpt={addOpt}
               onSet={set}
+              readOnly={!!item?.id}
+              onSelectCLItem={!item?.id ? ({ chemistryType, cellModel }) => {
+                setForm((f: any) => ({
+                  ...f,
+                  ...(chemistryType ? { chemistryType } : {}),
+                  ...(cellModel ? { cellModel } : {}),
+                }))
+              } : undefined}
             />
           </div>
 
@@ -635,7 +913,7 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
             </Field>
           </div>
 
-          {/* ── 전기 사양 (BP, BMS, PCM, 셀) ── */}
+          {/* ── 전기 사양 ── */}
           {elec && (
             <div className="space-y-3">
               <SectionHeader title="전기 사양" />
@@ -653,7 +931,6 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
                 ['maxChargeCurrent', '피크충전전류 (A)'],
                 ['maxDischargeCurrent', '피크방전전류 (A)'],
                 ['continuousChargeCurrent', '연속충전전류 (A)'],
-                // BMS/PCM은 분류 체계에서 입력하므로 제외
                 ...(!bms ? [['continuousDischargeCurrent', '연속방전전류 (A)']] : []),
                 ['chargeCRate', '충전 C-rate'],
                 ['dischargeCRate', '방전 C-rate'],
@@ -665,7 +942,7 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
             </div>
           )}
 
-          {/* ── BMS 정보 (BMS, PCM 전용) ── */}
+          {/* ── BMS 정보 ── */}
           {bms && (
             <div className="space-y-3">
               <SectionHeader title="BMS 정보" />
@@ -696,9 +973,105 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
             </div>
           )}
 
+          {/* ── 이미지 ── */}
+          <div className="space-y-3">
+            <SectionHeader title="이미지" />
+            {!viewOnly && (
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                onDragEnter={e => { e.preventDefault(); setDragOver(true) }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={async e => {
+                  e.preventDefault(); setDragOver(false)
+                  if (e.dataTransfer.files.length > 0) await handleImageFiles(e.dataTransfer.files)
+                }}
+                className={`border-2 border-dashed rounded-lg px-4 py-5 text-center transition-colors ${dragOver ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-gray-50/50'}`}
+              >
+                <input
+                  ref={imagesInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => { if (e.target.files) handleImageFiles(e.target.files); e.target.value = '' }}
+                />
+                <p className="text-xs text-gray-400 mb-2">이미지를 드래그하거나 클릭하여 업로드</p>
+                <p className="text-[10px] text-gray-300 mb-2.5">JPG, PNG, GIF, WEBP, SVG 지원</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  disabled={uploadingImages}
+                  onClick={() => imagesInputRef.current?.click()}
+                >
+                  {uploadingImages ? '업로드 중...' : '+ 이미지 선택'}
+                </Button>
+              </div>
+            )}
+            {form.images && form.images.length > 0 && (
+              <div className="space-y-1.5">
+                {form.images.map((url: string, i: number) => {
+                  const filename = url.split('/').pop()?.replace(/^\d+-[\w-]+-/, '') ?? url
+                  return (
+                    <div key={i} className="flex items-center gap-2 px-3 py-1.5 border rounded-md bg-gray-50 text-xs">
+                      <span className="text-gray-500 shrink-0">🖼</span>
+                      <span className="text-gray-700 flex-1 truncate" title={filename}>{filename}</span>
+                      <button
+                        type="button"
+                        onClick={() => setPreviewImageUrl(url)}
+                        className="text-blue-500 hover:underline shrink-0"
+                      >미리보기</button>
+                      {!viewOnly && (
+                        <button
+                          type="button"
+                          onClick={() => set('images', form.images.filter((_: string, j: number) => j !== i))}
+                          className="text-gray-400 hover:text-red-500 shrink-0"
+                        >✕</button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
           {/* ── 도면 ── */}
           <div className="space-y-3">
             <SectionHeader title="도면" />
+            {!viewOnly && (
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOverDrawing(true) }}
+                onDragEnter={e => { e.preventDefault(); setDragOverDrawing(true) }}
+                onDragLeave={() => setDragOverDrawing(false)}
+                onDrop={async e => {
+                  e.preventDefault(); setDragOverDrawing(false)
+                  if (e.dataTransfer.files.length > 0) await handleDrawingFiles(e.dataTransfer.files)
+                }}
+                className={`border-2 border-dashed rounded-lg px-4 py-5 text-center transition-colors ${dragOverDrawing ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-gray-50/50'}`}
+              >
+                <input
+                  ref={drawingsInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.dwg,.dxf,.png,.jpg,.jpeg,.svg,.xlsx,.xls,.step,.stp,.igs,.iges"
+                  className="hidden"
+                  onChange={handleDrawingUpload}
+                />
+                <p className="text-xs text-gray-400 mb-2">파일을 드래그하거나 클릭하여 업로드</p>
+                <p className="text-[10px] text-gray-300 mb-2.5">PDF, DWG, DXF, PNG, JPG, SVG, Excel, STEP, IGES 지원</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  disabled={uploading}
+                  onClick={() => drawingsInputRef.current?.click()}
+                >
+                  {uploading ? '업로드 중...' : '+ 파일 선택'}
+                </Button>
+              </div>
+            )}
             {form.drawings && form.drawings.length > 0 && (
               <div className="space-y-1.5">
                 {form.drawings.map((url: string, i: number) => {
@@ -708,43 +1081,57 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
                       <span className="text-gray-500 shrink-0">📄</span>
                       <span className="text-gray-700 flex-1 truncate" title={filename}>{filename}</span>
                       <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline shrink-0">열기</a>
-                      <button
-                        type="button"
-                        onClick={() => set('drawings', form.drawings.filter((_: string, j: number) => j !== i))}
-                        className="text-gray-400 hover:text-red-500 shrink-0"
-                      >✕</button>
+                      {!viewOnly && (
+                        <button
+                          type="button"
+                          onClick={() => set('drawings', form.drawings.filter((_: string, j: number) => j !== i))}
+                          className="text-gray-400 hover:text-red-500 shrink-0"
+                        >✕</button>
+                      )}
                     </div>
                   )
                 })}
               </div>
             )}
-            <div className="flex items-center gap-3">
-              <input
-                ref={drawingsInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.dwg,.dxf,.png,.jpg,.jpeg,.svg,.xlsx,.xls,.step,.stp,.igs,.iges"
-                className="hidden"
-                onChange={handleDrawingUpload}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 text-xs"
-                disabled={uploading}
-                onClick={() => drawingsInputRef.current?.click()}
-              >
-                {uploading ? '업로드 중...' : '+ 파일 업로드'}
-              </Button>
-              <span className="text-xs text-gray-400">PDF, DWG, DXF, PNG, JPG, SVG, Excel, STEP, IGES 지원</span>
-            </div>
           </div>
 
           {/* ── 스펙시트 (셀 전용) ── */}
           {isCL && (
             <div className="space-y-3">
               <SectionHeader title="스펙시트" />
+              {!viewOnly && (
+                <div
+                  onDragOver={e => { e.preventDefault(); setDragOverSpec(true) }}
+                  onDragEnter={e => { e.preventDefault(); setDragOverSpec(true) }}
+                  onDragLeave={() => setDragOverSpec(false)}
+                  onDrop={async e => {
+                    e.preventDefault(); setDragOverSpec(false)
+                    if (e.dataTransfer.files.length > 0) await handleSpecSheetFiles(e.dataTransfer.files)
+                  }}
+                  className={`border-2 border-dashed rounded-lg px-4 py-5 text-center transition-colors ${dragOverSpec ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300 bg-gray-50/50'}`}
+                >
+                  <input
+                    ref={specSheetsInputRef}
+                    type="file"
+                    multiple
+                    accept=".pdf,.xlsx,.xls,.csv,.png,.jpg,.jpeg"
+                    className="hidden"
+                    onChange={handleSpecSheetUpload}
+                  />
+                  <p className="text-xs text-gray-400 mb-2">파일을 드래그하거나 클릭하여 업로드</p>
+                  <p className="text-[10px] text-gray-300 mb-2.5">PDF, Excel, CSV, 이미지 지원</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    disabled={uploadingSpec}
+                    onClick={() => specSheetsInputRef.current?.click()}
+                  >
+                    {uploadingSpec ? '업로드 중...' : '+ 파일 선택'}
+                  </Button>
+                </div>
+              )}
               {form.specSheets && form.specSheets.length > 0 && (
                 <div className="space-y-1.5">
                   {form.specSheets.map((url: string, i: number) => {
@@ -754,37 +1141,18 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
                         <span className="text-gray-500 shrink-0">📄</span>
                         <span className="text-gray-700 flex-1 truncate" title={filename}>{filename}</span>
                         <a href={url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline shrink-0">열기</a>
-                        <button
-                          type="button"
-                          onClick={() => set('specSheets', form.specSheets.filter((_: string, j: number) => j !== i))}
-                          className="text-gray-400 hover:text-red-500 shrink-0"
-                        >✕</button>
+                        {!viewOnly && (
+                          <button
+                            type="button"
+                            onClick={() => set('specSheets', form.specSheets.filter((_: string, j: number) => j !== i))}
+                            className="text-gray-400 hover:text-red-500 shrink-0"
+                          >✕</button>
+                        )}
                       </div>
                     )
                   })}
                 </div>
               )}
-              <div className="flex items-center gap-3">
-                <input
-                  ref={specSheetsInputRef}
-                  type="file"
-                  multiple
-                  accept=".pdf,.xlsx,.xls,.csv,.png,.jpg,.jpeg"
-                  className="hidden"
-                  onChange={handleSpecSheetUpload}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs"
-                  disabled={uploadingSpec}
-                  onClick={() => specSheetsInputRef.current?.click()}
-                >
-                  {uploadingSpec ? '업로드 중...' : '+ 스펙시트 업로드'}
-                </Button>
-                <span className="text-xs text-gray-400">PDF, Excel, CSV, 이미지 지원</span>
-              </div>
             </div>
           )}
 
@@ -804,12 +1172,22 @@ export default function ItemFormDialog({ open, item, initialValues, onClose, onS
         </div>
 
         <SheetFooter className="px-6 py-4 border-t shrink-0 flex gap-2 justify-end">
-          <Button variant="outline" onClick={onClose}>취소</Button>
-          <Button onClick={handleSubmit} disabled={saving}>
-            {saving ? '저장 중...' : item?.id ? '수정' : '등록'}
-          </Button>
+          {viewOnly ? (
+            <Button variant="outline" onClick={onClose}>닫기</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={onClose}>취소</Button>
+              <Button onClick={handleSubmit} disabled={saving}>
+                {saving ? '저장 중...' : item?.id ? '수정' : '등록'}
+              </Button>
+            </>
+          )}
         </SheetFooter>
       </SheetContent>
     </Sheet>
+
+    {/* 이미지 미리보기 팝업 */}
+    {previewImageUrl && <ImagePreviewModal url={previewImageUrl} onClose={() => setPreviewImageUrl(null)} />}
+    </>
   )
 }

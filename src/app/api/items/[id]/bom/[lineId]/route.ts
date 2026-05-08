@@ -9,16 +9,11 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (quantity == null || !unit)
       return NextResponse.json({ success: false, message: '수량과 단위를 입력하세요.' }, { status: 400 })
 
-    const line = await prisma.bOM.update({
+    await prisma.bOM.update({
       where: { id: lineId },
       data: { quantity: parseFloat(quantity), unit, memo: memo || null },
-      include: {
-        child: {
-          select: { id: true, itemCode: true, itemName: true, unit: true, category: true, subCategory: true },
-        },
-      },
     })
-    return NextResponse.json({ success: true, data: line })
+    return NextResponse.json({ success: true })
   } catch (err: any) {
     if (err.code === 'P2025')
       return NextResponse.json({ success: false, message: 'BOM 항목을 찾을 수 없습니다.' }, { status: 404 })

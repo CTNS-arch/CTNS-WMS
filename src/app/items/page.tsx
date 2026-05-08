@@ -92,6 +92,7 @@ export default function ItemsPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editItem, setEditItem] = useState<any>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [deleteBomEntries, setDeleteBomEntries] = useState<any[]>([])
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false)
   const [batchStatusOpen, setBatchStatusOpen] = useState(false)
   const [batchStatus, setBatchStatus] = useState('')
@@ -129,8 +130,9 @@ export default function ItemsPage() {
   const isBmsPcm   = isAsm && filterSubCategory.length > 0 && filterSubCategory.every(s => ['BM', 'PC'].includes(s))
   const isAsmGeneric = isAsm && !isPO && !isBmsPcm
 
-  // 뷰별 총 컬럼 수 (colSpan 계산용)
-  const colCount = isAll ? 9 : (isProd || isPO) ? 22 : isBmsPcm ? 13 : isAsmGeneric ? 17 : 15
+  // 뷰별 총 컬럼 수 (colSpan 계산용) — BOM 컬럼은 isComp 제외
+  const hasBomCol = !isComp
+  const colCount = isAll ? 11 : (isProd || isPO) ? 24 : isBmsPcm ? 15 : isAsmGeneric ? 19 : (isComp ? 16 : 17)
 
   const fetchItems = useCallback(async () => {
     setLoading(true)
@@ -232,13 +234,28 @@ export default function ItemsPage() {
     setSelected(prev => prev.size === items.length && items.length > 0 ? new Set() : new Set(items.map(i => i.id)))
   }
 
+  const openDeleteDialog = async (id: string) => {
+    setDeleteBomEntries([])
+    setDeleteId(id)
+    try {
+      const res = await fetch(`/api/items/${id}`)
+      const json = await res.json()
+      if (json.success) {
+        const entries = [...(json.data.bomAsParent ?? []), ...(json.data.bomAsChild ?? [])]
+        setDeleteBomEntries(entries)
+      }
+    } catch {}
+  }
+
   const handleDelete = async () => {
     if (!deleteId) return
-    const res = await fetch(`/api/items/${deleteId}`, { method: 'DELETE' })
+    const force = deleteBomEntries.length > 0
+    const res = await fetch(`/api/items/${deleteId}?force=${force}`, { method: 'DELETE' })
     const json = await res.json()
     if (json.success) { toast.success('삭제되었습니다.'); fetchItems() }
     else toast.error(json.message)
     setDeleteId(null)
+    setDeleteBomEntries([])
   }
 
   const handleBatchDelete = async () => {
@@ -307,7 +324,7 @@ export default function ItemsPage() {
   const hasBom = (cat: string) => cat === 'PRODUCT' || cat === 'ASSEMBLY'
 
   // 뷰별 테이블 너비
-  const tableWidth = isAll ? 1155 : (isProd || isPO) ? 2180 : isBmsPcm ? 1510 : isAsmGeneric ? 1750 : 1590
+  const tableWidth = isAll ? 1335 : (isProd || isPO) ? 2360 : isBmsPcm ? 1690 : isAsmGeneric ? 1930 : (isComp ? 1690 : 1770)
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -559,7 +576,7 @@ export default function ItemsPage() {
 
           {/* 테이블 */}
           <div className="flex-1 overflow-auto min-h-0">
-            <table className="caption-bottom text-sm" style={{ tableLayout: 'fixed', width: `${tableWidth}px`, minWidth: `${tableWidth}px` }}>
+            <table className="caption-bottom text-sm subpixel-antialiased" style={{ tableLayout: 'fixed', width: `${tableWidth}px`, minWidth: `${tableWidth}px` }}>
               <colgroup>
                 {/* 고정 4열 */}
                 <col style={{ width: 40 }} />
@@ -575,25 +592,30 @@ export default function ItemsPage() {
                 {isBmsPcm && <><col style={{ width: 100 }} /><col style={{ width: 70 }} /><col style={{ width: 80 }} /></>}
                 {/* 단위: BMS/PCM 제외 */}
                 {!isBmsPcm && <col style={{ width: 55 }} />}
+                {/* 이미지: 전체보기에서 단위 다음 */}
+                {isAll && <col style={{ width: 100 }} />}
                 {/* 완제품/소프트팩: 직렬, 병렬, 단수 */}
                 {(isProd || isPO) && <><col style={{ width: 65 }} /><col style={{ width: 65 }} /><col style={{ width: 60 }} /></>}
                 {/* 물리규격: 일반반제품 + 자재 */}
                 {(isAsmGeneric || isComp) && <><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /></>}
                 {/* 재질: BMS/PCM 및 전체보기 제외 */}
                 {!isBmsPcm && !isAll && <col style={{ width: 85 }} />}
-                {/* 일반반제품: 고객사 (재질 다음) */}
+                {/* 이미지: 반제품(일반/BMS)/자재에서 재질 다음 */}
+                {(isAsmGeneric || isComp || isBmsPcm) && <col style={{ width: 100 }} />}
+                {/* 일반반제품: 고객사 */}
                 {isAsmGeneric && <col style={{ width: 80 }} />}
-                {/* 완제품/소프트팩: 특수옵션, 인증, 도면 */}
-                {(isProd || isPO) && <><col style={{ width: 80 }} /><col style={{ width: 80 }} /><col style={{ width: 80 }} /></>}
+                {/* 완제품/소프트팩: 특수옵션, 인증, 도면, 이미지 */}
+                {(isProd || isPO) && <><col style={{ width: 80 }} /><col style={{ width: 80 }} /><col style={{ width: 80 }} /><col style={{ width: 100 }} /></>}
                 {/* BMS/PCM: 특수옵션 */}
                 {isBmsPcm && <col style={{ width: 80 }} />}
-                {/* 완제품/소프트팩: 고객사 (도면 다음) */}
+                {/* 완제품/소프트팩: 고객사 (이미지 다음) */}
                 {(isProd || isPO) && <col style={{ width: 80 }} />}
                 {/* 리비전: 자재·전체보기 제외 */}
                 {!isComp && !isAll && <col style={{ width: 80 }} />}
-                {/* 비고, 관리: 항상 */}
+                {/* 비고, BOM(isComp 제외), 관리: 항상 */}
                 <col style={{ width: 200 }} />
-                <col style={{ width: 220 }} />
+                {hasBomCol && <col style={{ width: 80 }} />}
+                <col style={{ width: 160 }} />
               </colgroup>
 
               <TableHeader className="sticky top-0 z-20 bg-gray-50 text-xs">
@@ -620,6 +642,7 @@ export default function ItemsPage() {
                     <TableHead className="whitespace-nowrap text-xs">연속방전(A)</TableHead>
                   </>}
                   {!isBmsPcm && <TableHead className="whitespace-nowrap text-xs">단위</TableHead>}
+                  {isAll && <TableHead className="whitespace-nowrap text-xs">이미지</TableHead>}
                   {(isProd || isPO) && <>
                     <TableHead className="whitespace-nowrap text-xs">직렬(S)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">병렬(P)</TableHead>
@@ -633,16 +656,19 @@ export default function ItemsPage() {
                     <TableHead className="whitespace-nowrap text-xs">무게(g)</TableHead>
                   </>}
                   {!isBmsPcm && !isAll && <TableHead className="whitespace-nowrap text-xs">재질</TableHead>}
+                  {(isAsmGeneric || isComp || isBmsPcm) && <TableHead className="whitespace-nowrap text-xs">이미지</TableHead>}
                   {isAsmGeneric && <TableHead className="whitespace-nowrap text-xs">고객사</TableHead>}
                   {(isProd || isPO) && <>
                     <TableHead className="whitespace-nowrap text-xs">특수옵션</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">인증</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">도면</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">이미지</TableHead>
                   </>}
                   {isBmsPcm && <TableHead className="whitespace-nowrap text-xs">특수옵션</TableHead>}
                   {(isProd || isPO) && <TableHead className="whitespace-nowrap text-xs">고객사</TableHead>}
                   {!isComp && !isAll && <TableHead className="whitespace-nowrap text-xs">리비전</TableHead>}
                   <TableHead className="whitespace-nowrap text-xs">비고</TableHead>
+                  {hasBomCol && <TableHead className="whitespace-nowrap text-xs">BOM</TableHead>}
                   <TableHead className="whitespace-nowrap text-xs pr-4">관리</TableHead>
                 </TableRow>
               </TableHeader>
@@ -685,43 +711,50 @@ export default function ItemsPage() {
                       </>}
                       {isBmsPcm && <>
                         <TableCell><TooltipCell value={item.manufacturer} /></TableCell>
-                        <TableCell className="text-xs text-center text-gray-700">{item.maxSeriesCount ?? '-'}</TableCell>
-                        <TableCell className="text-xs text-center text-gray-700">{item.continuousDischargeCurrent != null ? Number(item.continuousDischargeCurrent) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.maxSeriesCount ?? '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.continuousDischargeCurrent != null ? Number(item.continuousDischargeCurrent) : '-'}</TableCell>
                       </>}
                       {!isBmsPcm && <TableCell><TooltipCell value={item.unit} /></TableCell>}
+                      {isAll && <TableCell><ImageCell urls={item.images ?? []} /></TableCell>}
                       {(isProd || isPO) && <>
-                        <TableCell className="text-xs text-center text-gray-700">{item.seriesCount ?? '-'}</TableCell>
-                        <TableCell className="text-xs text-center text-gray-700">{item.parallelCount ?? '-'}</TableCell>
-                        <TableCell className="text-xs text-center text-gray-700">{item.layerCount ?? '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.seriesCount ?? '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.parallelCount ?? '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.layerCount ?? '-'}</TableCell>
                       </>}
                       {(isAsmGeneric || isComp) && <>
-                        <TableCell className="text-xs text-center text-gray-700">{item.length != null ? Number(item.length) : '-'}</TableCell>
-                        <TableCell className="text-xs text-center text-gray-700">{item.width != null ? Number(item.width) : '-'}</TableCell>
-                        <TableCell className="text-xs text-center text-gray-700">{item.height != null ? Number(item.height) : '-'}</TableCell>
-                        <TableCell className="text-xs text-center text-gray-700">{item.diameter != null ? Number(item.diameter) : '-'}</TableCell>
-                        <TableCell className="text-xs text-center text-gray-700">{item.weight != null ? Number(item.weight) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.length != null ? Number(item.length) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.width != null ? Number(item.width) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.height != null ? Number(item.height) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.diameter != null ? Number(item.diameter) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.weight != null ? Number(item.weight) : '-'}</TableCell>
                       </>}
                       {!isBmsPcm && !isAll && <TableCell><TooltipCell value={item.material} /></TableCell>}
+                      {(isAsmGeneric || isComp || isBmsPcm) && <TableCell><ImageCell urls={item.images ?? []} /></TableCell>}
                       {isAsmGeneric && <TableCell><TagListCell values={item.vendors ?? []} /></TableCell>}
                       {(isProd || isPO) && <>
                         <TableCell><TagListCell values={item.specialOptions ?? []} /></TableCell>
                         <TableCell><TagListCell values={item.certifications ?? []} /></TableCell>
                         <TableCell><DrawingsCell urls={item.drawings ?? []} /></TableCell>
+                        <TableCell><ImageCell urls={item.images ?? []} /></TableCell>
                       </>}
                       {isBmsPcm && <TableCell><TagListCell values={item.specialOptions ?? []} /></TableCell>}
                       {(isProd || isPO) && <TableCell><TagListCell values={item.vendors ?? []} /></TableCell>}
-                      {!isComp && !isAll && <TableCell className="text-xs text-gray-700">rev.{item.revisionNumber ?? 1}</TableCell>}
+                      {!isComp && !isAll && <TableCell className="text-xs text-gray-900">rev.{item.revisionNumber ?? 1}</TableCell>}
                       <TableCell><TooltipCell value={item.memo} /></TableCell>
+                      {hasBomCol && (
+                        <TableCell className="pr-1">
+                          {hasBom(item.category) ? (
+                            <Button size="sm" variant="outline" className="text-xs h-7 px-2 text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => setBomItem(item)}>
+                              BOM{(item as any)._count?.bomAsParent > 0 ? ` (${(item as any)._count.bomAsParent})` : ''}
+                            </Button>
+                          ) : null}
+                        </TableCell>
+                      )}
                       <TableCell className="pr-2">
                         <div className="flex items-center gap-1 flex-nowrap">
-                          {hasBom(item.category) && (
-                            <Button size="sm" variant="outline" className="text-xs h-7 px-2 text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => setBomItem(item)}>
-                              BOM
-                            </Button>
-                          )}
                           <Button size="sm" variant="outline" className="text-xs h-7 px-2" onClick={() => handleRevise(item.id)}>리비전</Button>
                           <Button size="sm" variant="outline" className="text-xs h-7 px-2" onClick={() => { setEditItem(item); setFormOpen(true) }}>수정</Button>
-                          <Button size="sm" variant="destructive" className="text-xs h-7 px-2" onClick={() => setDeleteId(item.id)}>삭제</Button>
+                          <Button size="sm" variant="destructive" className="text-xs h-7 px-2" onClick={() => openDeleteDialog(item.id)}>삭제</Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -751,18 +784,61 @@ export default function ItemsPage() {
         onClose={() => { setFormOpen(false); setEditItem(null) }}
         onSaved={() => { setFormOpen(false); setEditItem(null); fetchItems() }}
       />
-      <BomDialog open={!!bomItem} item={bomItem} onClose={() => setBomItem(null)} />
+      <BomDialog
+        open={!!bomItem}
+        item={bomItem}
+        onClose={() => setBomItem(null)}
+        onBomChanged={count => {
+          if (!bomItem) return
+          setItems(prev => prev.map(it =>
+            it.id === bomItem.id
+              ? { ...it, _count: { ...(it._count ?? {}), bomAsParent: count } }
+              : it
+          ))
+        }}
+      />
       <ItemBulkCreateDialog
         open={bulkFormOpen}
         onClose={() => setBulkFormOpen(false)}
         onSaved={() => { setBulkFormOpen(false); fetchItems() }}
       />
 
-      <AlertDialog open={!!deleteId} onOpenChange={open => !open && setDeleteId(null)}>
-        <AlertDialogContent>
+      <AlertDialog open={!!deleteId} onOpenChange={open => { if (!open) { setDeleteId(null); setDeleteBomEntries([]) } }}>
+        <AlertDialogContent size={deleteBomEntries.length > 0 ? 'lg' : 'default'}>
           <AlertDialogHeader>
             <AlertDialogTitle>품목을 삭제하시겠습니까?</AlertDialogTitle>
-            <AlertDialogDescription>이 작업은 되돌릴 수 없습니다.</AlertDialogDescription>
+            {deleteBomEntries.length > 0 ? (
+              <>
+                <AlertDialogDescription className="text-amber-600">
+                  아래 BOM 리스트도 삭제됩니다.
+                </AlertDialogDescription>
+                <div className="max-h-44 overflow-auto border rounded-md bg-gray-50 text-left">
+                  <table className="text-xs w-full">
+                    <thead className="sticky top-0 bg-gray-100 border-b">
+                      <tr>
+                        <th className="px-3 py-1.5 font-medium text-gray-500 whitespace-nowrap text-left">품번</th>
+                        <th className="px-3 py-1.5 font-medium text-gray-500 whitespace-nowrap text-left">품명</th>
+                        <th className="px-3 py-1.5 font-medium text-gray-500 whitespace-nowrap text-right">수량</th>
+                        <th className="px-3 py-1.5 font-medium text-gray-500 whitespace-nowrap text-left">비고</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deleteBomEntries.map((e: any) => (
+                        <tr key={e.id ?? `${e.parentId}-${e.childId}`} className="border-b border-gray-100 last:border-0">
+                          <td className="px-3 py-1.5 font-mono text-gray-700 whitespace-nowrap">{e.child?.itemCode ?? e.childId}</td>
+                          <td className="px-3 py-1.5 text-gray-600 max-w-[160px]"><span className="block truncate">{e.child?.itemName ?? '-'}</span></td>
+                          <td className="px-3 py-1.5 text-gray-700 text-right whitespace-nowrap">{e.quantity ?? '-'} {e.unit ?? ''}</td>
+                          <td className="px-3 py-1.5 text-gray-500 max-w-[120px]"><span className="block truncate">{e.memo ?? '-'}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-gray-500 text-left">계속하시겠습니까?</p>
+              </>
+            ) : (
+              <AlertDialogDescription>이 작업은 되돌릴 수 없습니다.</AlertDialogDescription>
+            )}
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>취소</AlertDialogCancel>
@@ -821,6 +897,128 @@ function TagListCell({ values }: { values: string[] }) {
   )
 }
 
+function ImagePreviewModal({ url, onClose }: { url: string; onClose: () => void }) {
+  const [transform, setTransform] = useState({ scale: 1, x: 0, y: 0 })
+  const transformRef = useRef(transform)
+  transformRef.current = transform
+  const containerRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<{ mx: number; my: number; ox: number; oy: number } | null>(null)
+  const [dragging, setDragging] = useState(false)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const rect = el.getBoundingClientRect()
+      const relX = e.clientX - rect.left - rect.width / 2
+      const relY = e.clientY - rect.top - rect.height / 2
+      const { scale, x, y } = transformRef.current
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
+      const newScale = Math.max(0.1, Math.min(20, scale * factor))
+      const ratio = newScale / scale
+      setTransform({ scale: newScale, x: relX - (relX - x) * ratio, y: relY - (relY - y) * ratio })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const startDrag = (e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    setDragging(true)
+    dragRef.current = { mx: e.clientX, my: e.clientY, ox: transform.x, oy: transform.y }
+  }
+  const onMouseMove = (e: React.MouseEvent) => {
+    const d = dragRef.current
+    if (!d) return
+    setTransform(prev => ({ ...prev, x: d.ox + e.clientX - d.mx, y: d.oy + e.clientY - d.my }))
+  }
+  const endDrag = () => { setDragging(false); dragRef.current = null }
+  const reset = () => setTransform({ scale: 1, x: 0, y: 0 })
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] bg-black/85" onClick={onClose}>
+      <div ref={containerRef} className="absolute inset-0 overflow-hidden"
+        style={{ cursor: dragging ? 'grabbing' : 'grab' }}
+        onClick={e => e.stopPropagation()}
+        onMouseDown={startDrag} onMouseMove={onMouseMove} onMouseUp={endDrag} onMouseLeave={endDrag}
+        onDoubleClick={reset}
+      >
+        <img src={url} alt="" draggable={false} style={{
+          position: 'absolute', top: '50%', left: '50%',
+          transform: `translate(calc(-50% + ${transform.x}px), calc(-50% + ${transform.y}px)) scale(${transform.scale})`,
+          transformOrigin: 'center center',
+          maxWidth: transform.scale <= 1 ? '90vw' : 'none',
+          maxHeight: transform.scale <= 1 ? '90vh' : 'none',
+          userSelect: 'none', pointerEvents: 'none', display: 'block',
+        }} />
+      </div>
+      <div className="absolute top-4 right-4 flex items-center gap-2 z-10" onClick={e => e.stopPropagation()}>
+        <span className="bg-black/60 text-white/80 text-xs px-2.5 py-1 rounded-full">{Math.round(transform.scale * 100)}%</span>
+        <button onClick={reset} className="bg-black/60 text-white text-xs px-2.5 py-1 rounded-full hover:bg-black/80">초기화</button>
+        <button onClick={onClose} className="w-8 h-8 bg-white text-gray-800 rounded-full flex items-center justify-center shadow-lg hover:bg-gray-100 text-sm font-bold">×</button>
+      </div>
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/40 text-xs whitespace-nowrap pointer-events-none">
+        스크롤: 확대/축소 · 드래그: 이동 · 더블클릭: 초기화
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+function ImageCell({ urls }: { urls: string[] }) {
+  const [open, setOpen] = useState(false)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  if (!urls || urls.length === 0) return <span className="text-gray-400 text-xs">-</span>
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button onClick={() => setOpen(v => !v)} className="inline-flex items-center gap-0.5 text-xs text-blue-600 hover:text-blue-700 cursor-pointer">
+        <svg className="w-3 h-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+        <span className="underline">{urls.length}개</span>
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 z-50 mt-0.5 border border-gray-200 rounded bg-white shadow-lg min-w-[180px] max-w-[260px] py-1">
+          {urls.map((url, i) => {
+            const filename = url.split('/').pop()?.replace(/^\d+-[\w-]+-/, '') ?? url
+            return (
+              <button key={i} type="button"
+                onClick={() => { setPreviewUrl(url); setOpen(false) }}
+                className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 w-full text-left"
+              >
+                <img src={url} alt="" className="w-7 h-7 rounded object-cover shrink-0 border border-gray-100" />
+                <span className="text-xs text-gray-700 truncate">{filename}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {previewUrl && <ImagePreviewModal url={previewUrl} onClose={() => setPreviewUrl(null)} />}
+    </div>
+  )
+}
+
 function DrawingsCell({ urls }: { urls: string[] }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -873,7 +1071,7 @@ function TooltipCell({ value, className = '' }: { value: string | null | undefin
   return (
     <>
       <div onMouseEnter={handleMouseEnter} onMouseLeave={() => setTooltip(null)}>
-        <span ref={spanRef} className={`block truncate text-xs text-gray-700 ${className}`}>{value}</span>
+        <span ref={spanRef} className={`block truncate text-xs text-gray-900 ${className}`}>{value}</span>
       </div>
       {tooltip && createPortal(
         <div style={{ position: 'fixed', top: tooltip.top, left: tooltip.left, zIndex: 9999 }}

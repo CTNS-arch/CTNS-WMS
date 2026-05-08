@@ -31,8 +31,7 @@ const DEFAULTS: Record<string, SelectOption[]> = {
     { value: 'PK', label: '포장자재',     colorIndex: 5, code: 'PK' },
     { value: 'FS', label: '체결부품',     colorIndex: 6, code: 'FS' },
     { value: 'SM', label: '부자재/소모품', colorIndex: 7, code: 'SM' },
-    { value: 'RM', label: '일반자재',     colorIndex: 8, code: 'RM' },
-    { value: 'OT', label: '생품/기타',    colorIndex: 9, code: 'OT' },
+    { value: 'OT', label: '샘플/기타',    colorIndex: 9, code: 'OT' },
   ],
   chemistryType: [
     { value: 'NMC',   label: 'NMC',   colorIndex: 0, code: 'NM' },

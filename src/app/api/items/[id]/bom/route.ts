@@ -32,13 +32,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const line = await prisma.bOM.create({
       data: { parentId: id, childId, quantity: parseFloat(quantity), unit, memo: memo || null },
-      include: {
-        child: {
-          select: { id: true, itemCode: true, itemName: true, unit: true, category: true, subCategory: true },
-        },
-      },
     })
-    return NextResponse.json({ success: true, data: line }, { status: 201 })
+    const child = await prisma.item.findUnique({
+      where: { id: childId },
+      select: { id: true, itemCode: true, itemName: true, unit: true, category: true, subCategory: true },
+    })
+    return NextResponse.json({ success: true, data: { ...line, child } }, { status: 201 })
   } catch (err: any) {
     if (err.code === 'P2002')
       return NextResponse.json({ success: false, message: '이미 등록된 품목입니다.' }, { status: 409 })

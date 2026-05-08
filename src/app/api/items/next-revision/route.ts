@@ -7,12 +7,21 @@ export async function GET(req: NextRequest) {
     if (!baseCode)
       return NextResponse.json({ success: false, message: 'baseCode required' }, { status: 400 })
 
+    // 현재 품목 + 삭제된 품목(히스토리) 모두 포함해 최대 버전 산출 (순차 실행)
     const siblings = await prisma.item.findMany({
       where: { itemCode: { startsWith: baseCode + '-' } },
       select: { itemCode: true },
     })
+    let history: { itemCode: string }[] = []
+    try {
+      history = await prisma.itemCodeHistory.findMany({
+        where: { itemCode: { startsWith: baseCode + '-' } },
+        select: { itemCode: true },
+      })
+    } catch {}
 
-    const maxVersion = siblings.reduce((max, s) => {
+    const allCodes = [...siblings, ...history]
+    const maxVersion = allCodes.reduce((max, s) => {
       const v = parseInt(s.itemCode.split('-').pop() ?? '0', 10)
       return Math.max(max, isNaN(v) ? 0 : v)
     }, 0)

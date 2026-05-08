@@ -31,15 +31,27 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 }
 
-export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const bomCount = await prisma.bOM.count({ where: { OR: [{ parentId: id }, { childId: id }] } })
-    if (bomCount > 0)
+    const force = new URL(req.url).searchParams.get('force') === 'true'
+
+    const bomEntries = await prisma.bOM.findMany({
+      where: { OR: [{ parentId: id }, { childId: id }] },
+      include: { parent: { select: { itemCode: true, itemName: true } }, child: { select: { itemCode: true, itemName: true } } },
+    })
+
+    if (bomEntries.length > 0 && !force) {
       return NextResponse.json(
-        { success: false, message: 'BOM에 사용 중인 품목입니다. BOM 구성을 먼저 해제해주세요.' },
+        { success: false, code: 'BOM_CONFLICT', bom: bomEntries },
         { status: 409 }
       )
+    }
+
+    if (bomEntries.length > 0) {
+      await prisma.bOM.deleteMany({ where: { OR: [{ parentId: id }, { childId: id }] } })
+    }
+
     await prisma.item.delete({ where: { id } })
     return NextResponse.json({ success: true, message: '삭제되었습니다.' })
   } catch (err: any) {

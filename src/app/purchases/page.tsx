@@ -43,7 +43,7 @@ const SUB_CAT_LABEL: Record<string, string> = {
   BP: '배터리팩', BM: 'BMS', PC: 'PCM',
   CL: '셀', EL: '전장/전기부품', ME: '기구/외장부품',
   CD: '도전재', PK: '포장자재', FS: '체결부품',
-  SM: '부자재/소모품', RM: '일반자재', OT: '생품/기타',
+  SM: '부자재/소모품', RM: '일반자재', OT: '샘플/기타',
 }
 
 type Approver = { order: number; role: string; name: string }

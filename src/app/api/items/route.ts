@@ -89,7 +89,21 @@ export async function GET(req: NextRequest) {
       prisma.item.count({ where }),
     ])
 
-    return NextResponse.json({ success: true, data: { items, total, page, limit } })
+    // BOM 구성 수 (parentId 기준 groupBy — include+read도 Neon HTTP에서 ITX 유발 가능)
+    const itemIds = items.map(i => i.id)
+    const bomGroups = itemIds.length > 0
+      ? await prisma.bOM.groupBy({
+          by: ['parentId'],
+          where: { parentId: { in: itemIds } },
+          _count: { _all: true },
+        })
+      : []
+    const bomCountMap: Record<string, number> = Object.fromEntries(
+      bomGroups.map((b: any) => [b.parentId, b._count._all])
+    )
+    const itemsWithCount = items.map(i => ({ ...i, _count: { bomAsParent: bomCountMap[i.id] ?? 0 } }))
+
+    return NextResponse.json({ success: true, data: { items: itemsWithCount, total, page, limit } })
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 })
   }
@@ -107,7 +121,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 동일 베이스 코드를 가진 기존 품목 조회
+    // 동일 베이스 코드를 가진 기존 품목 + 히스토리 조회 (삭제된 코드도 재사용 방지)
+    // Promise.all 대신 순차 실행 — Neon HTTP에서 동시 read도 ITX를 유발할 수 있음
     const segments = (itemCode as string).split('-')
     const baseCode = segments.slice(0, -1).join('-')
 
@@ -115,11 +130,20 @@ export async function POST(req: NextRequest) {
       where: { itemCode: { startsWith: baseCode + '-' } },
       select: { itemCode: true },
     })
+    let history: { itemCode: string }[] = []
+    try {
+      history = await prisma.itemCodeHistory.findMany({
+        where: { itemCode: { startsWith: baseCode + '-' } },
+        select: { itemCode: true },
+      })
+    } catch {}
 
-    // 제출된 품번이 이미 존재하면 다음 일련번호로 자동 설정
-    if (siblings.some(s => s.itemCode === itemCode)) {
-      const maxVersion = siblings.reduce((max, s) => {
-        const v = parseInt(s.itemCode.split('-').pop() ?? '0', 10)
+    const allCodes = new Set([...siblings.map(s => s.itemCode), ...history.map(h => h.itemCode)])
+
+    // 제출된 품번이 이미 존재(또는 히스토리에 있으면) 다음 일련번호로 자동 설정
+    if (allCodes.has(itemCode as string)) {
+      const maxVersion = [...allCodes].reduce((max, code) => {
+        const v = parseInt(code.split('-').pop() ?? '0', 10)
         return Math.max(max, isNaN(v) ? 0 : v)
       }, 0)
       const newVersion = maxVersion + 1
@@ -130,6 +154,14 @@ export async function POST(req: NextRequest) {
     const item = await prisma.item.create({
       data: { itemCode, itemName, unit, category, subCategory, status, ...rest },
     })
+
+    // 히스토리에 코드 기록 (이미 있으면 무시 — upsert는 HTTP 모드 트랜잭션 불가)
+    try {
+      await prisma.itemCodeHistory.createMany({
+        data: [{ itemCode: item.itemCode }],
+        skipDuplicates: true,
+      })
+    } catch {}
 
     return NextResponse.json({ success: true, data: item }, { status: 201 })
   } catch (err: any) {

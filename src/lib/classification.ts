@@ -22,7 +22,6 @@ export const SUB_OPTIONS: Record<string, SelectOption[]> = {
     { value: 'CMB', label: 'Communication Board',    colorIndex: 6, code: 'CMB' },
     { value: 'JTB', label: 'Junction Box',           colorIndex: 7, code: 'JTB' },
     { value: 'HRN', label: 'Harness',                colorIndex: 8, code: 'HRN' },
-    { value: 'ETC', label: '그 외',                  colorIndex: 9, code: 'ETC' },
   ],
   COMPONENT: [
     { value: 'CL', label: '셀',           colorIndex: 1, code: 'CL' },
@@ -32,8 +31,7 @@ export const SUB_OPTIONS: Record<string, SelectOption[]> = {
     { value: 'PK', label: '포장자재',      colorIndex: 5, code: 'PK' },
     { value: 'FS', label: '체결부품',      colorIndex: 6, code: 'FS' },
     { value: 'SM', label: '부자재/소모품', colorIndex: 7, code: 'SM' },
-    { value: 'RM', label: '일반자재',      colorIndex: 8, code: 'RM' },
-    { value: 'OT', label: '생품/기타',     colorIndex: 9, code: 'OT' },
+    { value: 'OT', label: '샘플/기타',     colorIndex: 9, code: 'OT' },
   ],
 }
 

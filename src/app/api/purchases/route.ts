@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: '수량과 단위가 입력된 품목이 필요합니다.' }, { status: 400 })
     }
 
-    const request = await prisma.purchaseRequest.create({
+    const created = await prisma.purchaseRequest.create({
       data: {
         title: title.trim(),
         department: department?.trim() || '생산구매팀',
@@ -74,6 +74,9 @@ export async function POST(req: NextRequest) {
           })),
         },
       },
+    })
+    const request = await prisma.purchaseRequest.findUnique({
+      where: { id: created.id },
       include: {
         items: { orderBy: { lineNo: 'asc' } },
         requester: { select: { name: true, email: true } },

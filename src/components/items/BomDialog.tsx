@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import ItemFormDialog from '@/components/items/ItemFormDialog'
 
 const CAT_LABEL: Record<string, string> = { PRODUCT: '완제품', ASSEMBLY: '반제품', COMPONENT: '자재' }
 const CAT_COLOR: Record<string, string> = {
@@ -14,7 +15,7 @@ const SUB_LABEL: Record<string, string> = {
   BP: '배터리팩', BM: 'BMS', PC: 'PCM',
   CL: '셀', EL: '전장/전기부품', ME: '기구/외장부품',
   CD: '도전재', PK: '포장자재', FS: '체결부품',
-  SM: '부자재/소모품', RM: '일반자재', OT: '생품/기타',
+  SM: '부자재/소모품', RM: '일반자재', OT: '샘플/기타',
   PO: 'Soft pack', CAS: 'Case', PRA: 'Power Relay Assembly',
 }
 
@@ -41,14 +42,17 @@ interface Props {
   open: boolean
   item: any
   onClose: () => void
+  onBomChanged?: (count: number) => void
 }
 
-export default function BomDialog({ open, item, onClose }: Props) {
+export default function BomDialog({ open, item, onClose, onBomChanged }: Props) {
   const [rows, setRows] = useState<BomRow[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
   const [searches, setSearches] = useState<Record<string, SearchState>>({})
   const [deleting, setDeleting] = useState(false)
+  const [viewItem, setViewItem] = useState<any>(null)
+  const [isDirty, setIsDirty] = useState(false)
 
   const searchTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const dropdownRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -81,6 +85,7 @@ export default function BomDialog({ open, item, onClose }: Props) {
       fetchBom()
       setSelectedKeys(new Set())
       setSearches({})
+      setIsDirty(false)
     }
   }, [open, fetchBom])
 
@@ -137,6 +142,7 @@ export default function BomDialog({ open, item, onClose }: Props) {
       const json = await res.json()
       if (json.success) {
         setRows(prev => prev.map(r => r._key === rowKey ? { ...r, id: json.data.id } : r))
+        setIsDirty(true)
       } else {
         toast.error(json.message)
         setRows(prev => prev.map(r => r._key === rowKey ? { ...r, childId: undefined, child: undefined, quantity: '', unit: '', memo: '' } : r))
@@ -156,11 +162,41 @@ export default function BomDialog({ open, item, onClose }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ quantity: row.quantity, unit: row.unit, memo: row.memo }),
       })
+      setIsDirty(true)
     } catch {}
   }
 
   const updateField = (rowKey: string, field: 'quantity' | 'unit' | 'memo', value: string) => {
     setRows(prev => prev.map(r => r._key === rowKey ? { ...r, [field]: value } : r))
+  }
+
+  const handleCloneRow = (row: BomRow) => {
+    const newRow: BomRow = { _key: newKey(), childId: row.childId, child: row.child, quantity: row.quantity, unit: row.unit, memo: row.memo }
+    setRows(prev => {
+      const idx = prev.findIndex(r => r._key === row._key)
+      if (idx === -1) return prev
+      const next = [...prev]
+      next.splice(idx + 1, 0, newRow)
+      return next
+    })
+  }
+
+  const handleDeleteRow = async (row: BomRow) => {
+    if (row.id) {
+      try {
+        await fetch(`/api/items/${item.id}/bom/${row.id}`, { method: 'DELETE' })
+      } catch {}
+    }
+    setRows(prev => {
+      const remaining = prev.filter(r => r._key !== row._key)
+      const last = remaining[remaining.length - 1]
+      if (!last || last.childId) remaining.push({ _key: newKey(), quantity: '', unit: '', memo: '' })
+      return remaining
+    })
+    if (row.id) {
+      setSelectedKeys(prev => { const s = new Set(prev); s.delete(row._key); return s })
+      setIsDirty(true)
+    }
   }
 
   const handleDeleteSelected = async () => {
@@ -180,6 +216,7 @@ export default function BomDialog({ open, item, onClose }: Props) {
         return remaining
       })
       setSelectedKeys(new Set())
+      setIsDirty(true)
       toast.success(`${toDelete.length}개 항목이 삭제되었습니다.`)
     } finally {
       setDeleting(false)
@@ -187,7 +224,7 @@ export default function BomDialog({ open, item, onClose }: Props) {
   }
 
   const handlePrint = () => {
-    const savedRows = rows.filter(r => r.id)
+    const savedRows = rows.filter(r => r.child)
     const rowsHtml = savedRows.map((r, i) => `
       <tr>
         <td>${i + 1}</td>
@@ -227,6 +264,29 @@ export default function BomDialog({ open, item, onClose }: Props) {
     w.print()
   }
 
+  const handleViewItem = async (child: any) => {
+    try {
+      const res = await fetch(`/api/items/${child.id}`)
+      const json = await res.json()
+      if (json.success) setViewItem(json.data)
+      else toast.error('품목 정보를 불러오지 못했습니다.')
+    } catch {
+      toast.error('품목 정보를 불러오지 못했습니다.')
+    }
+  }
+
+  const handleClose = () => {
+    if (isDirty) onBomChanged?.(rows.filter(r => r.id).length)
+    onClose()
+  }
+
+  const handleSave = () => {
+    const count = rows.filter(r => r.id).length
+    onBomChanged?.(count)
+    setIsDirty(false)
+    toast.success('BOM이 저장되었습니다.')
+  }
+
   if (!open) return null
 
   const savedRows = rows.filter(r => r.id)
@@ -234,17 +294,18 @@ export default function BomDialog({ open, item, onClose }: Props) {
   const allSelected = selectableRows.length > 0 && selectableRows.every(r => selectedKeys.has(r._key))
   const existingChildIds = new Set(rows.filter(r => r.childId).map(r => r.childId!))
 
-  // precompute display numbers
+  // precompute display numbers (저장 행 + 복제 미저장 행 모두 포함)
   const displayNums = new Map<string, number>()
   let cnt = 0
-  rows.forEach(r => { if (r.id) displayNums.set(r._key, ++cnt) })
+  rows.forEach(r => { if (r.child) displayNums.set(r._key, ++cnt) })
 
   const cell = 'h-7 w-full bg-transparent px-2 text-xs focus:bg-white focus:ring-1 focus:ring-blue-400 focus:outline-none hover:bg-gray-50 transition-colors rounded border-0 disabled:opacity-30 disabled:cursor-not-allowed'
 
   return (
+    <>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div
         className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
@@ -276,7 +337,7 @@ export default function BomDialog({ open, item, onClose }: Props) {
               </svg>
               PDF 출력
             </Button>
-            <button onClick={onClose}
+            <button onClick={handleClose}
               className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors text-lg leading-none">
               ×
             </button>
@@ -318,6 +379,7 @@ export default function BomDialog({ open, item, onClose }: Props) {
                 <col style={{ width: 76 }} />
                 <col style={{ width: 60 }} />
                 <col style={{ width: 200 }} />
+                <col style={{ width: 80 }} />
               </colgroup>
               <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -338,6 +400,7 @@ export default function BomDialog({ open, item, onClose }: Props) {
                   <th className="px-2 py-2.5 text-right text-gray-500 font-medium">수량 <span className="text-red-400">*</span></th>
                   <th className="px-2 py-2.5 text-center text-gray-500 font-medium">단위</th>
                   <th className="px-2 py-2.5 text-left text-gray-500 font-medium">비고</th>
+                  <th className="py-2.5 text-center text-gray-400 font-medium text-[10px]">작업</th>
                 </tr>
               </thead>
               <tbody>
@@ -353,7 +416,7 @@ export default function BomDialog({ open, item, onClose }: Props) {
                     >
                       {/* 체크 */}
                       <td className="py-1 text-center">
-                        {isSaved && (
+                        {row.child && (
                           <input type="checkbox" checked={isSel}
                             onChange={() => setSelectedKeys(prev => {
                               const s = new Set(prev)
@@ -370,7 +433,11 @@ export default function BomDialog({ open, item, onClose }: Props) {
 
                       {/* 품번 (검색 or 표시) */}
                       <td className="px-0.5 py-0.5 border-r border-gray-100">
-                        {row.child ? (
+                        {row.child && isSaved ? (
+                          <div className="flex items-center h-7 px-2">
+                            <span className="font-mono text-gray-700 truncate text-xs">{row.child.itemCode}</span>
+                          </div>
+                        ) : row.child && !isSaved ? (
                           <div className="flex items-center h-7 px-2">
                             <span className="font-mono text-gray-700 truncate text-xs">{row.child.itemCode}</span>
                           </div>
@@ -394,7 +461,7 @@ export default function BomDialog({ open, item, onClose }: Props) {
                               />
                             </div>
                             {search?.open && (
-                              <div className="absolute top-full left-0 z-50 mt-1 border border-gray-200 rounded-lg bg-white shadow-xl overflow-hidden" style={{ width: 420, maxHeight: 224 }}>
+                              <div className="absolute top-full left-0 z-50 mt-1 border border-gray-200 rounded-lg bg-white shadow-xl overflow-hidden" style={{ width: 580, maxHeight: 224 }}>
                                 {search.results.length === 0 ? (
                                   <div className="px-4 py-3 text-xs text-gray-400 text-center">
                                     {search.query.trim() ? '검색 결과 없음' : '불러오는 중...'}
@@ -409,7 +476,7 @@ export default function BomDialog({ open, item, onClose }: Props) {
                                         <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0 ${CAT_COLOR[r.category] ?? 'bg-gray-100 text-gray-600'}`}>
                                           {CAT_LABEL[r.category]?.[0]}
                                         </span>
-                                        <span className="font-mono text-xs text-gray-700 w-36 shrink-0 truncate">{r.itemCode}</span>
+                                        <span className="font-mono text-xs text-gray-700 w-52 shrink-0 truncate">{r.itemCode}</span>
                                         <span className="text-xs text-gray-600 flex-1 truncate">{r.itemName}</span>
                                         <span className="text-xs text-gray-400 shrink-0">{r.unit}</span>
                                       </div>
@@ -480,6 +547,37 @@ export default function BomDialog({ open, item, onClose }: Props) {
                           className={cell}
                         />
                       </td>
+
+                      {/* 작업 버튼 */}
+                      <td className="py-1 px-1">
+                        <div className="flex items-center justify-center gap-0.5">
+                          {row.child && (
+                            <button onClick={() => handleViewItem(row.child!)} title="보기"
+                              className="w-6 h-6 flex items-center justify-center rounded text-blue-400 hover:text-blue-600 hover:bg-blue-50">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                              </svg>
+                            </button>
+                          )}
+                          {row.child && (
+                            <button onClick={() => handleCloneRow(row)} title="복제"
+                              className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                              </svg>
+                            </button>
+                          )}
+                          {row.child && (
+                            <button onClick={() => handleDeleteRow(row)} title="삭제"
+                              className="w-6 h-6 flex items-center justify-center rounded text-gray-300 hover:text-red-500 hover:bg-red-50">
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   )
                 })}
@@ -493,9 +591,25 @@ export default function BomDialog({ open, item, onClose }: Props) {
           <span className="text-xs text-gray-400">
             {savedRows.length === 0 ? '구성 품목 없음' : `총 ${savedRows.length}개 구성 품목`}
           </span>
-          <Button size="sm" variant="outline" className="text-xs h-8 rounded-lg px-5" onClick={onClose}>닫기</Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" className="text-xs h-8 rounded-lg px-5" onClick={handleClose}>닫기</Button>
+            <Button size="sm" className="text-xs h-8 rounded-lg px-5" onClick={handleSave} disabled={!isDirty}>
+              저장
+            </Button>
+          </div>
         </div>
       </div>
     </div>
+
+    {viewItem && (
+      <ItemFormDialog
+        open={!!viewItem}
+        item={viewItem}
+        viewOnly
+        onClose={() => setViewItem(null)}
+        onSaved={() => {}}
+      />
+    )}
+  </>
   )
 }

@@ -173,6 +173,7 @@ model Item {
   // 파일 (URL 배열)
   drawings   String[] // 도면 (어셈블리, 제품)
   specSheets String[] // 스펙시트 (셀)
+  images     String[] // 이미지
 
   // 컴포넌트 전용
   color String? // 색상
@@ -188,6 +189,8 @@ model Item {
   stocks            Stock[]
   stockTransactions StockTransaction[]
   costs             ItemCost[]
+  stockCostLayers   StockCostLayer[]
+  supplierItems     SupplierItem[]
 }
 
 model ItemCost {
@@ -226,6 +229,8 @@ model StockTransaction {
   quantity Float
   memo     String?
   userId   String?
+  unitCost  Decimal? @db.Decimal(15, 4)
+  currency  String?
   createdAt DateTime   @default(now())
 
   item Item  @relation(fields: [itemId], references: [id])
@@ -277,4 +282,91 @@ model BOM {
   child  Item @relation("ChildItem", fields: [childId], references: [id])
 
   @@unique([parentId, childId])
+}
+
+model ItemCodeHistory {
+  itemCode  String   @id
+  createdAt DateTime @default(now())
+}
+
+// ── 재고 원가 레이어 (FIFO) ─────────────────────────────────
+
+model StockCostLayer {
+  id         String     @id @default(cuid())
+  itemId     String
+  department Department
+  unitCost   Decimal    @db.Decimal(15, 4)
+  currency   String     @default("KRW")
+  origQty    Float
+  remainQty  Float
+  createdAt  DateTime   @default(now())
+
+  item Item @relation(fields: [itemId], references: [id])
+}
+
+// ── 공급처 관리 ────────────────────────────────────────────
+
+enum SupplierStatus {
+  ACTIVE   // 사용
+  INACTIVE // 미사용
+}
+
+enum SupplierRegion {
+  DOMESTIC // 국내
+  OVERSEAS // 해외
+}
+
+model Supplier {
+  id              String         @id @default(cuid())
+  supplierCode    String         @unique
+  companyName     String
+  status          SupplierStatus @default(ACTIVE)
+  region          SupplierRegion @default(DOMESTIC)
+  businessRegNo   String?
+  url             String?
+  bankName        String?
+  accountNumber   String?
+  accountHolder   String?
+  subCategory     String?
+  note            String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  contacts SupplierContact[]
+  items    SupplierItem[]
+  files    SupplierFile[]
+}
+
+model SupplierContact {
+  id         String   @id @default(cuid())
+  supplierId String
+  name       String
+  title      String?
+  phone      String?
+  email      String?
+  createdAt  DateTime @default(now())
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+}
+
+model SupplierItem {
+  supplierId String
+  itemId     String
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  item     Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@id([supplierId, itemId])
+}
+
+model SupplierFile {
+  id         String   @id @default(cuid())
+  supplierId String
+  fileName   String
+  fileUrl    String
+  fileSize   Int?
+  mimeType   String?
+  createdAt  DateTime @default(now())
+
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
 }
