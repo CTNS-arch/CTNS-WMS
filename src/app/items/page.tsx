@@ -338,6 +338,10 @@ export default function ItemsPage() {
   )
   const hasBom = (cat: string) => cat === 'PRODUCT' || cat === 'ASSEMBLY'
 
+  // 중분류 코드 → 한글명
+  const subLabelMap: Record<string, string> = {}
+  Object.values(SUB_OPTIONS).forEach(opts => opts.forEach(o => { subLabelMap[o.value] = o.label }))
+
   // formFactor 코드 → 한글명 조회 맵 (정적 기본값 + 동적 localStorage 우선)
   const formFactorLabelMap: Record<string, string> = {}
   Object.values(THIRD_OPTIONS).forEach(opts => opts.forEach(o => { formFactorLabelMap[o.value] = o.label }))
@@ -557,11 +561,11 @@ export default function ItemsPage() {
                 <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={resetFilters} disabled={!hasActiveFilters}>
                   초기화
                 </Button>
-                <Button size="sm" className="flex-1 text-xs" onClick={() => { setEditItem(null); setFormOpen(true) }}>
+                <Button size="sm" className="flex-1 text-xs" disabled={!filterCategory} onClick={() => { setEditItem(null); setFormOpen(true) }}>
                   + 등록
                 </Button>
               </div>
-              <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => setBulkFormOpen(true)}>
+              <Button variant="outline" size="sm" className="w-full text-xs" disabled={!filterCategory} onClick={() => setBulkFormOpen(true)}>
                 일괄 등록
               </Button>
             </div>
@@ -775,7 +779,7 @@ export default function ItemsPage() {
                         <TooltipCell value={item.itemName} />
                       </TableCell>
                       <TableCell><TooltipCell value={CATEGORY_LABEL[item.category] ?? item.category} /></TableCell>
-                      <TableCell><TooltipCell value={item.subCategory} /></TableCell>
+                      <TableCell><TooltipCell value={item.subCategory ? (subLabelMap[item.subCategory] ?? item.subCategory) : null} /></TableCell>
                       {isCompOther && <TableCell><TooltipCell value={item.formFactor ? (formFactorLabelMap[item.formFactor] ?? item.formFactor) : null} /></TableCell>}
                       {(isProd || isPO) && <>
                         <TableCell><TooltipCell value={item.chemistryType} /></TableCell>

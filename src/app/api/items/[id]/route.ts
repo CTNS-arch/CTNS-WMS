@@ -52,7 +52,16 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       await prisma.bOM.deleteMany({ where: { OR: [{ parentId: id }, { childId: id }] } })
     }
 
-    await prisma.item.delete({ where: { id } })
+    // 재고 트랜잭션 / 재고 레이어 / 재고 먼저 삭제 (cascade 미설정)
+    await prisma.stockTransaction.deleteMany({ where: { itemId: id } })
+    await prisma.stockCostLayer.deleteMany({ where: { itemId: id } })
+    await prisma.stock.deleteMany({ where: { itemId: id } })
+
+    const item = await prisma.item.delete({ where: { id } })
+
+    // 품번 코드 히스토리도 삭제 (코드 완전 초기화)
+    await prisma.itemCodeHistory.deleteMany({ where: { itemCode: item.itemCode } })
+
     return NextResponse.json({ success: true, message: '삭제되었습니다.' })
   } catch (err: any) {
     if (err.code === 'P2025') return NextResponse.json({ success: false, message: '품목을 찾을 수 없습니다.' }, { status: 404 })
