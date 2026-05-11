@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, Fragment } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import ItemFormDialog from '@/components/items/ItemFormDialog'
@@ -56,6 +56,39 @@ interface Props {
   onBomChanged?: (count: number) => void
 }
 
+interface PrintRow {
+  child: any
+  childId: string
+  quantity: string
+  unit: string
+  memo: string
+  level: number
+}
+
+async function buildLeveledRows(items: PrintRow[], level: number, visited: Set<string>): Promise<PrintRow[]> {
+  const result: PrintRow[] = []
+  for (const item of items) {
+    if (!item.child) continue
+    result.push({ ...item, level })
+    if (item.child.category === 'ASSEMBLY' && !visited.has(item.childId)) {
+      visited.add(item.childId)
+      try {
+        const res = await fetch(`/api/items/${item.childId}/bom`)
+        const json = await res.json()
+        if (json.success && json.data.length > 0) {
+          const subItems: PrintRow[] = json.data.map((l: any) => ({
+            child: l.child, childId: l.childId, quantity: String(l.quantity),
+            unit: l.unit ?? '', memo: l.memo ?? '', level: level + 1,
+          }))
+          const nested = await buildLeveledRows(subItems, level + 1, visited)
+          result.push(...nested)
+        }
+      } catch {}
+    }
+  }
+  return result
+}
+
 export default function BomDialog({ open, item, onClose, onBomChanged }: Props) {
   const [rows, setRows] = useState<BomRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -64,6 +97,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
   const [deleting, setDeleting] = useState(false)
   const [viewItem, setViewItem] = useState<any>(null)
   const [isDirty, setIsDirty] = useState(false)
+  const [childBoms, setChildBoms] = useState<Record<string, { items: any[]; loading: boolean; expanded: boolean }>>({})
 
   const searchTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const dropdownRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -91,12 +125,32 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
     }
   }, [item?.id])
 
+  const fetchChildBom = useCallback(async (rowKey: string, childId: string) => {
+    setChildBoms(prev => ({ ...prev, [rowKey]: { items: [], loading: true, expanded: true } }))
+    try {
+      const res = await fetch(`/api/items/${childId}/bom`)
+      const json = await res.json()
+      setChildBoms(prev => ({ ...prev, [rowKey]: { items: json.success ? json.data : [], loading: false, expanded: true } }))
+    } catch {
+      setChildBoms(prev => ({ ...prev, [rowKey]: { items: [], loading: false, expanded: true } }))
+    }
+  }, [])
+
+  const toggleChildBom = (rowKey: string, childId: string) => {
+    if (childBoms[rowKey]?.expanded) {
+      setChildBoms(prev => ({ ...prev, [rowKey]: { ...prev[rowKey], expanded: false } }))
+    } else {
+      fetchChildBom(rowKey, childId)
+    }
+  }
+
   useEffect(() => {
     if (open) {
       fetchBom()
       setSelectedKeys(new Set())
       setSearches({})
       setIsDirty(false)
+      setChildBoms({})
     }
   }, [open, fetchBom])
 
@@ -154,6 +208,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
       if (json.success) {
         setRows(prev => prev.map(r => r._key === rowKey ? { ...r, id: json.data.id } : r))
         setIsDirty(true)
+        if (selectedItem.category === 'ASSEMBLY') fetchChildBom(rowKey, selectedItem.id)
       } else {
         toast.error(json.message)
         setRows(prev => prev.map(r => r._key === rowKey ? { ...r, childId: undefined, child: undefined, quantity: '', unit: '', memo: '' } : r))
@@ -198,6 +253,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
         await fetch(`/api/items/${item.id}/bom/${row.id}`, { method: 'DELETE' })
       } catch {}
     }
+    setChildBoms(prev => { const n = { ...prev }; delete n[row._key]; return n })
     setRows(prev => {
       const remaining = prev.filter(r => r._key !== row._key)
       const last = remaining[remaining.length - 1]
@@ -226,6 +282,11 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
         if (!last || last.childId) remaining.push({ _key: newKey(), quantity: '', unit: '', memo: '' })
         return remaining
       })
+      setChildBoms(prev => {
+        const n = { ...prev }
+        toDelete.forEach(r => delete n[r._key])
+        return n
+      })
       setSelectedKeys(new Set())
       setIsDirty(true)
       toast.success(`${toDelete.length}개 항목이 삭제되었습니다.`)
@@ -234,23 +295,33 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
     }
   }
 
-  const handlePrint = () => {
-    const savedRows = rows.filter(r => r.child)
-    const rowsHtml = savedRows.map((r, i) => `
-      <tr>
-        <td>${i + 1}</td>
-        <td style="font-family:monospace">${r.child?.itemCode ?? ''}</td>
+  const handlePrint = async () => {
+    const w = window.open('', '_blank', 'width=960,height=700')
+    if (!w) return
+
+    const rootItems: PrintRow[] = rows.filter(r => r.child).map(r => ({
+      child: r.child!, childId: r.childId!, quantity: r.quantity,
+      unit: r.unit, memo: r.memo, level: 1,
+    }))
+    const allRows = await buildLeveledRows(rootItems, 1, new Set([item?.id ?? '']))
+
+    const LEVEL_COLORS = ['', '#f0f4ff', '#f5f0ff', '#f0fff4', '#fff8f0']
+    const rowsHtml = allRows.map((r, i) => {
+      const bg = r.level > 1 ? (LEVEL_COLORS[r.level] ?? '#f9f9f9') : ''
+      const indent = r.level > 1 ? `${'　'.repeat(r.level - 1)}└ ` : ''
+      return `<tr style="background:${bg}">
+        <td style="text-align:center">${i + 1}</td>
+        <td style="text-align:center;color:#888;font-size:10px">${r.level}</td>
+        <td>${indent}<span style="font-family:monospace">${r.child?.itemCode ?? ''}</span></td>
         <td>${r.child?.itemName ?? ''}</td>
         <td>${CAT_LABEL[r.child?.category ?? ''] ?? ''}</td>
         <td>${r.child?.subCategory ? (SUB_LABEL[r.child.subCategory] ?? r.child.subCategory) : ''}</td>
         <td style="text-align:right">${r.quantity}</td>
         <td>${r.unit}</td>
         <td>${r.memo}</td>
-      </tr>
-    `).join('')
+      </tr>`
+    }).join('')
 
-    const w = window.open('', '_blank', 'width=900,height=700')
-    if (!w) return
     w.document.write(`<!DOCTYPE html><html><head>
       <title>BOM - ${item?.itemCode ?? ''}</title>
       <style>
@@ -260,14 +331,13 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
         table { border-collapse: collapse; width: 100%; }
         th, td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; font-size: 11px; }
         th { background: #f5f5f5; font-weight: 600; }
-        tr:nth-child(even) td { background: #fafafa; }
         @media print { body { padding: 12px; } }
       </style>
     </head><body>
       <h2>BOM 구성 관리</h2>
-      <div class="sub">${item?.itemCode ?? ''} — ${item?.itemName ?? ''} &nbsp;|&nbsp; 총 ${savedRows.length}개 구성 품목</div>
+      <div class="sub">${item?.itemCode ?? ''} — ${item?.itemName ?? ''} &nbsp;|&nbsp; 총 ${allRows.length}개 구성 품목</div>
       <table>
-        <thead><tr><th>#</th><th>품번</th><th>품명</th><th>대분류</th><th>중분류</th><th>수량</th><th>단위</th><th>비고</th></tr></thead>
+        <thead><tr><th>#</th><th>레벨</th><th>품번</th><th>품명</th><th>대분류</th><th>중분류</th><th>수량</th><th>단위</th><th>비고</th></tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>
     </body></html>`)
@@ -427,9 +497,12 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                   const isSel = selectedKeys.has(row._key)
                   const search = searches[row._key]
                   const num = displayNums.get(row._key) ?? ''
+                  const isAssembly = row.child?.category === 'ASSEMBLY' && !!row.id
+                  const childBom = childBoms[row._key]
 
                   return (
-                    <tr key={row._key}
+                    <Fragment key={row._key}>
+                    <tr
                       className={`border-b border-gray-100 transition-colors ${isSel ? 'bg-blue-50' : 'hover:bg-gray-50/60'}`}
                     >
                       {/* 체크 */}
@@ -619,6 +692,15 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                       {/* 작업 버튼 */}
                       <td className="py-1 px-1">
                         <div className="flex items-center justify-center gap-0.5">
+                          {isAssembly && (
+                            <button onClick={() => toggleChildBom(row._key, row.childId!)}
+                              title={childBom?.expanded ? '접기' : '하위 BOM 펼치기'}
+                              className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${childBom?.expanded ? 'text-purple-500 bg-purple-50' : 'text-gray-300 hover:text-purple-500 hover:bg-purple-50'}`}>
+                              <svg className={`w-3 h-3 transition-transform ${childBom?.expanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                          )}
                           {row.child && (
                             <button onClick={() => handleViewItem(row.child!)} title="보기"
                               className="w-6 h-6 flex items-center justify-center rounded text-blue-400 hover:text-blue-600 hover:bg-blue-50">
@@ -647,6 +729,39 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                         </div>
                       </td>
                     </tr>
+                  {isAssembly && childBom?.expanded && (
+                    childBom.loading ? (
+                      <tr key={`${row._key}-loading`}>
+                        <td colSpan={10} className="py-2 text-center text-xs text-gray-400 bg-purple-50/20">불러오는 중...</td>
+                      </tr>
+                    ) : childBom.items.length === 0 ? (
+                      <tr key={`${row._key}-empty`}>
+                        <td colSpan={10} className="py-1.5 text-center text-xs text-gray-300 bg-purple-50/10">하위 BOM 없음</td>
+                      </tr>
+                    ) : (
+                      childBom.items.map((sub: any, si: number) => (
+                        <tr key={`${row._key}-s${si}`} className="bg-purple-50/20 border-b border-purple-100/40">
+                          <td className="py-1"></td>
+                          <td className="py-1 text-center text-gray-300 text-[10px]">└</td>
+                          <td className="px-2 py-1 pl-5 border-r border-gray-100">
+                            <span className="font-mono text-gray-400 truncate text-xs">{sub.child?.itemCode}</span>
+                          </td>
+                          <td className="px-2 py-1 text-gray-500 truncate border-r border-gray-100 text-xs">{sub.child?.itemName}</td>
+                          <td className="px-2 py-1 border-r border-gray-100">
+                            {sub.child && <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${CAT_COLOR[sub.child.category] ?? 'bg-gray-100 text-gray-600'}`}>{CAT_LABEL[sub.child.category] ?? sub.child.category}</span>}
+                          </td>
+                          <td className="px-2 py-1 border-r border-gray-100">
+                            {sub.child?.subCategory && <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{SUB_LABEL[sub.child.subCategory] ?? sub.child.subCategory}</span>}
+                          </td>
+                          <td className="px-2 py-1 text-right text-xs text-gray-400 border-r border-gray-100 tabular-nums">{sub.quantity}</td>
+                          <td className="px-2 py-1 text-center text-xs text-gray-400 border-r border-gray-100">{sub.unit}</td>
+                          <td className="px-2 py-1 text-xs text-gray-300">{sub.memo}</td>
+                          <td></td>
+                        </tr>
+                      ))
+                    )
+                  )}
+                  </Fragment>
                   )
                 })}
               </tbody>
