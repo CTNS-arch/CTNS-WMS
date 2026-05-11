@@ -79,6 +79,7 @@ const NAV_GROUPS = [
       {
         href: '/admin/users',
         label: '사용자 관리',
+        masterOnly: true,
         icon: (
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
@@ -102,6 +103,8 @@ const NAV_GROUPS = [
 export default function Sidebar() {
   const pathname = usePathname()
   const { data: session } = useSession()
+
+  const isMasterAdmin = session?.user?.roles?.includes('MASTER_ADMIN') ?? false
 
   const isActive = (href: string) =>
     href === '/' ? pathname === '/' : pathname.startsWith(href)
@@ -132,7 +135,7 @@ export default function Sidebar() {
               {group.label}
             </p>
             <div className="space-y-0.5">
-              {group.items.map(item => (
+              {group.items.filter(item => !item.masterOnly || isMasterAdmin).map(item => (
                 <a
                   key={item.href}
                   href={item.href}

@@ -103,10 +103,24 @@ export async function GET(req: NextRequest) {
     )
     const itemsWithCount = items.map(i => ({ ...i, _count: { bomAsParent: bomCountMap[i.id] ?? 0 } }))
 
-    return NextResponse.json({ success: true, data: { items: itemsWithCount, total, page, limit } })
+    return NextResponse.json(
+      { success: true, data: { items: itemsWithCount, total, page, limit } },
+      { headers: { 'Access-Control-Allow-Origin': 'https://ctns-quote.vercel.app' } },
+    )
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 })
   }
+}
+
+export async function OPTIONS() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      'Access-Control-Allow-Origin': 'https://ctns-quote.vercel.app',
+      'Access-Control-Allow-Methods': 'GET, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    },
+  })
 }
 
 export async function POST(req: NextRequest) {

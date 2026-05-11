@@ -3,6 +3,8 @@
 import { signIn } from 'next-auth/react'
 import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
+import Image from 'next/image'
+import iconPng from '../icon.png'
 
 const ERROR_MESSAGES: Record<string, string> = {
   Configuration:    '서버 설정 오류입니다. 관리자에게 문의하세요.',
@@ -44,14 +46,7 @@ function LoginPage() {
 
         {/* 로고 */}
         <div className="flex flex-col items-center gap-3">
-          <svg width="56" height="56" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <rect width="100" height="100" fill="#2235CC"/>
-            <path d="M82 23 L90 31 L90 47 L82 39 Z" fill="#0A0A0A"/>
-            <path d="M82 61 L90 69 L90 83 L82 75 Z" fill="#0A0A0A"/>
-            <path d="M18 75 L18 83 L82 83 Q90 83 90 75 L82 75 Q82 79 77 79 L18 79 Z" fill="#0A0A0A"/>
-            <path d="M12 23 L77 23 Q83 23 83 29 Q83 39 77 39 L30 39 L30 61 L77 61 Q83 61 83 67 Q83 77 77 77 L12 77 Z" fill="white"/>
-            <path d="M12 15 L77 15 Q91 15 91 25 L91 29 Q91 23 77 23 L12 23 Z" fill="#00C8F0"/>
-          </svg>
+          <Image src={iconPng} alt="CTNS 로고" width={56} height={56} className="rounded-xl" />
           <div className="text-center">
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">CTNS WMS</h1>
             <p className="text-sm text-gray-500 mt-0.5">(주)씨티엔에스 물류 관리 시스템</p>
