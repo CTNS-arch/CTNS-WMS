@@ -187,6 +187,37 @@ const DEFAULTS: Record<string, SelectOption[]> = {
     { value: 'SL', label: '실리콘케이스',    colorIndex: 6, code: 'SL' },
     { value: 'WD', label: '나무케이스',      colorIndex: 5, code: 'WD' },
   ],
+  // 도전재 부품 유형
+  cdComponentType: [
+    { value: 'NI', label: '니켈스트립', colorIndex: 9, code: 'NI' },
+    { value: 'BS', label: '버스바',     colorIndex: 9, code: 'BS' },
+    { value: 'CT', label: '구리테이프', colorIndex: 2, code: 'CT' },
+    { value: 'WT', label: '연결탭',     colorIndex: 9, code: 'WT' },
+  ],
+  // 포장자재 부품 유형
+  pkComponentType: [
+    { value: 'BX', label: '박스',   colorIndex: 5, code: 'BX' },
+    { value: 'BC', label: '에어캡', colorIndex: 0, code: 'BC' },
+    { value: 'FC', label: '완충재', colorIndex: 2, code: 'FC' },
+    { value: 'SH', label: '완충시트', colorIndex: 3, code: 'SH' },
+  ],
+  // 체결부품 부품 유형
+  fsComponentType: [
+    { value: 'SC', label: '나사',   colorIndex: 9, code: 'SC' },
+    { value: 'BT', label: '볼트',   colorIndex: 9, code: 'BT' },
+    { value: 'NT', label: '너트',   colorIndex: 9, code: 'NT' },
+    { value: 'WS', label: '와셔',   colorIndex: 9, code: 'WS' },
+    { value: 'RI', label: '리벳',   colorIndex: 3, code: 'RI' },
+  ],
+  // 부자재/소모품 부품 유형
+  smComponentType: [
+    { value: 'TP', label: '테이프',     colorIndex: 5, code: 'TP' },
+    { value: 'GL', label: '접착제',     colorIndex: 2, code: 'GL' },
+    { value: 'SD', label: '솔더',       colorIndex: 9, code: 'SD' },
+    { value: 'IB', label: '절연테이프', colorIndex: 7, code: 'IB' },
+  ],
+  // 샘플/기타 유형
+  otComponentType: [],
 }
 
 const STORAGE_KEY = 'erp-select-options-v3'
@@ -293,9 +324,15 @@ export function addCellModelGroup(manufacturer: string): void {
   saveGroups(_groups)
 }
 
+export function isCellModelCodeTaken(code: string): boolean {
+  if (!_groups) _groups = loadGroups()
+  return _groups.flatMap(g => g.models).some(m => m.code.toUpperCase() === code.toUpperCase())
+}
+
 export function addCellModelEntry(manufacturer: string, modelLabel: string, code: string): void {
   if (!_groups) _groups = loadGroups()
   const value = `${manufacturer} ${modelLabel}`
+  if (isCellModelCodeTaken(code)) return
   _groups = _groups.map(g => {
     if (g.manufacturer !== manufacturer) return g
     if (g.models.find(m => m.value === value)) return g
@@ -310,6 +347,26 @@ export function addCellModelEntry(manufacturer: string, modelLabel: string, code
     _store = { ..._store, cellModel: [...flat, { value, label: value, colorIndex: ci, code }] }
     saveAll(_store)
   }
+}
+
+export function deleteCellModelGroup(manufacturer: string): void {
+  if (!_groups) _groups = loadGroups()
+  _groups = _groups.filter(g => g.manufacturer !== manufacturer)
+  saveGroups(_groups)
+  if (!_store) _store = loadAll()
+  _store = { ..._store, cellModel: (_store.cellModel ?? []).filter(o => !o.value.startsWith(manufacturer + ' ')) }
+  saveAll(_store)
+}
+
+export function deleteCellModelEntry(manufacturer: string, value: string): void {
+  if (!_groups) _groups = loadGroups()
+  _groups = _groups.map(g =>
+    g.manufacturer !== manufacturer ? g : { ...g, models: g.models.filter(m => m.value !== value) }
+  )
+  saveGroups(_groups)
+  if (!_store) _store = loadAll()
+  _store = { ..._store, cellModel: (_store.cellModel ?? []).filter(o => o.value !== value) }
+  saveAll(_store)
 }
 
 export function deleteOption(field: string, value: string): SelectOption[] {
@@ -330,12 +387,18 @@ export function resetToDefault(field: string): SelectOption[] {
   return copy
 }
 
+export function isCodeTaken(field: string, code: string): boolean {
+  if (!_store) _store = loadAll()
+  return (_store[field] ?? []).some(o => o.code?.toUpperCase() === code.toUpperCase())
+}
+
 export function addOption(field: string, label: string, code?: string): SelectOption[] {
   if (!_store) _store = loadAll()
   const existing = _store[field] ?? []
   if (existing.find(o => o.label.toLowerCase() === label.toLowerCase())) return existing
+  if (code && existing.find(o => o.code?.toUpperCase() === code.toUpperCase())) return existing
   const newOpt: SelectOption = {
-    value: label,
+    value: code ?? label,
     label,
     colorIndex: existing.length % PALETTE.length,
     ...(code ? { code } : {}),
@@ -353,4 +416,10 @@ export function updateOption(field: string, value: string, updates: { label?: st
   _store = { ..._store, [field]: updated }
   saveAll(_store)
   return updated
+}
+
+export function reorderOptions(field: string, ordered: SelectOption[]): void {
+  if (!_store) _store = loadAll()
+  _store = { ..._store, [field]: ordered }
+  saveAll(_store)
 }

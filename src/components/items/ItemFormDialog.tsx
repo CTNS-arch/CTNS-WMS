@@ -126,7 +126,7 @@ function CellModelPicker({
 
   return (
     <>
-      <LevelRow label="셀제조사">
+      <LevelRow label="제조사">
         <TagSelect
           value={selMfr}
           onChange={v => { setSelMfr(v); onChange('') }}
@@ -136,7 +136,7 @@ function CellModelPicker({
         />
       </LevelRow>
       {selMfr && (
-        <LevelRow label="셀모델">
+        <LevelRow label="셀 모델">
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
               <div className="flex-1">
@@ -201,7 +201,7 @@ function ClassificationTree({
   onSub: (v: string) => void
   onThird: (field: string, v: string) => void
   onSelectCLItem?: (item: { chemistryType: string | null; cellModel: string | null }) => void
-  onAddOpt: (key: string) => (label: string) => void
+  onAddOpt: (key: string) => (label: string, code?: string) => void
   onSet: (key: string, val: any) => void
   readOnly?: boolean
 }) {
@@ -292,7 +292,7 @@ function ClassificationTree({
         {row('1분류', catLabel)}
         {row('2분류', subLabel)}
         {third && row(third.label, thirdLabel)}
-        {(isBP || isCL) && cellModel && row('셀모델', cellModel)}
+        {(isBP || isCL) && cellModel && row('셀 모델', cellModel)}
         {isBP && seriesCount && row('직렬(S)', `${seriesCount}S`)}
         {isBP && parallelCount && row('병렬(P)', `${parallelCount}P`)}
         {isBP && circuit && row('회로', circuitLabel)}
@@ -332,6 +332,7 @@ function ClassificationTree({
                     options={thirdOptions}
                     onAdd={canAddThird ? onAddOpt(third.optKey!) : () => {}}
                     placeholder={`${third.label} 선택`}
+                    requireCode={canAddThird && (third.optKey === 'elComponentType' || third.optKey === 'meComponentType')}
                   />
                 </LevelRow>
               )}
@@ -705,7 +706,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
   const handleCategory = (v: string) => setForm((f: any) => ({ ...f, category: v, subCategory: '', chemistryType: '', formFactor: '', itemCode: '' }))
   const handleSub = (v: string) => setForm((f: any) => ({ ...f, subCategory: v, chemistryType: '', formFactor: '' }))
   const handleThird = (field: string, v: string) => set(field, v)
-  const addOpt = (key: string) => (label: string) => { addOption(key, label); reload() }
+  const addOpt = (key: string) => (label: string, code?: string) => { addOption(key, label, code); reload() }
 
   const isBP = isBatteryPack(form.category, form.subCategory)
   const isCL = form.category === 'COMPONENT' && form.subCategory === 'CL'
@@ -764,8 +765,8 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
   const formTitle = viewOnly ? '품목 상세' : item?.id ? '품목 수정' : item ? `리비전 등록 (Rev.${item.revisionNumber})` : '품목 등록'
 
   const handleSubmit = async () => {
-    if (!form.itemName || !form.unit || !form.category || !form.subCategory) {
-      toast.error('품명, 단위, 1분류, 2분류는 필수입니다.')
+    if (!form.itemName || !form.category || !form.subCategory) {
+      toast.error('품명, 1분류, 2분류는 필수입니다.')
       return
     }
     if (form.itemCode.includes('?') && (codeType === 'bp' || codeType === 'bms' || codeType === 'component')) {
@@ -879,12 +880,14 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
             <Field label="품명" required>
               <Input value={form.itemName} onChange={e => set('itemName', e.target.value)} placeholder="예) 배터리팩 48V100Ah" />
             </Field>
-            <Field label="단위" required>
+            <Field label="단위">
               <TagSelect value={form.unit} onChange={v => set('unit', v)} options={opts.unit ?? []} onAdd={addOpt('unit')} placeholder="단위 선택" />
             </Field>
-            <Field label="고객사">
-              <TagMultiSelect value={form.vendors} onChange={v => set('vendors', v)} options={opts.vendor ?? []} onAdd={addOpt('vendor')} placeholder="고객사 선택 또는 입력 후 만들기" />
-            </Field>
+            {form.category !== 'COMPONENT' && (
+              <Field label="고객사">
+                <TagMultiSelect value={form.vendors} onChange={v => set('vendors', v)} options={opts.vendor ?? []} onAdd={addOpt('vendor')} placeholder="고객사 선택 또는 입력 후 만들기" />
+              </Field>
+            )}
           </div>
 
           {/* ── 물리 규격 ── */}
@@ -904,7 +907,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
               <TagSelect value={form.material} onChange={v => set('material', v)} options={opts.material ?? []} onAdd={addOpt('material')} placeholder="재질 선택" />
             </Field>
             {isBP && (
-              <Field label="팩 타입">
+              <Field label="팩타입">
                 <TagSelect value={form.packType} onChange={v => set('packType', v)} options={opts.packType ?? []} onAdd={addOpt('packType')} placeholder="소프트팩 / 하드팩" />
               </Field>
             )}
@@ -1036,8 +1039,8 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
             )}
           </div>
 
-          {/* ── 도면 ── */}
-          <div className="space-y-3">
+          {/* ── 도면 (자재 제외) ── */}
+          {form.category !== 'COMPONENT' && <div className="space-y-3">
             <SectionHeader title="도면" />
             {!viewOnly && (
               <div
@@ -1093,7 +1096,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
                 })}
               </div>
             )}
-          </div>
+          </div>}
 
           {/* ── 스펙시트 (셀 전용) ── */}
           {isCL && (

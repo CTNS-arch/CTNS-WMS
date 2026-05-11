@@ -17,7 +17,7 @@ import {
 import ItemFormDialog from '@/components/items/ItemFormDialog'
 import BomDialog from '@/components/items/BomDialog'
 import ItemBulkCreateDialog from '@/components/items/ItemBulkCreateDialog'
-import { CATEGORY_OPTIONS, SUB_OPTIONS } from '@/lib/classification'
+import { CATEGORY_OPTIONS, SUB_OPTIONS, THIRD_LEVEL, THIRD_OPTIONS } from '@/lib/classification'
 import { getOptions, type SelectOption } from '@/lib/select-options'
 
 const CATEGORY_LABEL: Record<string, string> = { PRODUCT: '완제품', ASSEMBLY: '반제품', COMPONENT: '자재' }
@@ -73,6 +73,7 @@ export default function ItemsPage() {
   const [filterHeightMin, setFilterHeightMin] = useState('')
   const [filterDiameterMin, setFilterDiameterMin] = useState('')
   const [filterWeightMin, setFilterWeightMin] = useState('')
+  const [filterFormFactor, setFilterFormFactor] = useState<string[]>([])
 
   // ── 정렬 ──
   const [sortBy, setSortBy] = useState('createdAt')
@@ -129,10 +130,20 @@ export default function ItemsPage() {
   const isPO       = isAsm && filterSubCategory.length > 0 && filterSubCategory.every(s => s === 'PO')
   const isBmsPcm   = isAsm && filterSubCategory.length > 0 && filterSubCategory.every(s => ['BM', 'PC'].includes(s))
   const isAsmGeneric = isAsm && !isPO && !isBmsPcm
+  const isCell      = isComp && filterSubCategory.length > 0 && filterSubCategory.every(s => s === 'CL')
+  const isCompOther = isComp && !isCell
+
+  // 소분류(3분류) 필터: COMPONENT + CL 제외 단일 중분류 선택 시
+  const singleNonClSub = isComp && filterSubCategory.length === 1 && filterSubCategory[0] !== 'CL'
+    ? filterSubCategory[0] : null
+  const thirdDef = singleNonClSub ? (THIRD_LEVEL[singleNonClSub] ?? null) : null
+  const formFactorOpts = thirdDef
+    ? (thirdDef.optKey ? getOptions(thirdDef.optKey) : (thirdDef.staticOptions ?? []))
+    : []
 
   // 뷰별 총 컬럼 수 (colSpan 계산용) — BOM 컬럼은 isComp 제외
   const hasBomCol = !isComp
-  const colCount = isAll ? 11 : (isProd || isPO) ? 24 : isBmsPcm ? 15 : isAsmGeneric ? 19 : (isComp ? 16 : 17)
+  const colCount = isAll ? 11 : (isProd || isPO) ? 24 : isBmsPcm ? 15 : isAsmGeneric ? 19 : isCell ? 26 : isCompOther ? 22 : 17
 
   const fetchItems = useCallback(async () => {
     setLoading(true)
@@ -147,6 +158,7 @@ export default function ItemsPage() {
     const packParam = toParam(filterPackType)
     const matParam = toParam(filterMaterial)
     const vendorParam = toParam(filterVendor)
+    const ffParam = toParam(filterFormFactor)
     if (subParam) params.set('subCategory', subParam)
     if (statusParam) params.set('status', statusParam)
     if (chemParam) params.set('chemistryType', chemParam)
@@ -154,6 +166,7 @@ export default function ItemsPage() {
     if (circuitParam) params.set('circuit', circuitParam)
     if (packParam) params.set('packType', packParam)
     if (matParam) params.set('material', matParam)
+    if (ffParam) params.set('formFactor', ffParam)
     if (vendorParam) params.set('vendor', vendorParam)
     if (filterSeriesCount) params.set('seriesCount', filterSeriesCount)
     if (filterParallelCount) params.set('parallelCount', filterParallelCount)
@@ -170,7 +183,7 @@ export default function ItemsPage() {
     setLoading(false)
   }, [page, search, filterCategory, filterSubCategory, filterStatus,
     filterChemistry, filterCellModel, filterCircuit, filterPackType, filterMaterial,
-    filterVendor, filterSeriesCount, filterParallelCount, filterLayerCount,
+    filterFormFactor, filterVendor, filterSeriesCount, filterParallelCount, filterLayerCount,
     filterLengthMin, filterWidthMin, filterHeightMin, filterDiameterMin, filterWeightMin,
     sortBy, sortOrder])
 
@@ -189,6 +202,7 @@ export default function ItemsPage() {
     setFilterCategory(''); setFilterSubCategory([]); setFilterStatus([])
     setFilterChemistry([]); setFilterCellModel([]); setFilterCircuit([])
     setFilterPackType([]); setFilterMaterial([]); setFilterVendor([])
+    setFilterFormFactor([])
     setFilterSeriesCount(''); setFilterParallelCount(''); setFilterLayerCount('')
     setFilterLengthMin(''); setFilterWidthMin(''); setFilterHeightMin(''); setFilterDiameterMin(''); setFilterWeightMin('')
     setPage(1); setSelected(new Set())
@@ -203,6 +217,7 @@ export default function ItemsPage() {
       setFilterChemistry([]); setFilterCellModel([]); setFilterCircuit([])
       setFilterPackType([]); setFilterSeriesCount(''); setFilterParallelCount(''); setFilterLayerCount('')
     }
+    setFilterFormFactor([])
     if (next === 'PRODUCT') {
       setFilterLengthMin(''); setFilterWidthMin(''); setFilterHeightMin(''); setFilterDiameterMin(''); setFilterWeightMin('')
     }
@@ -317,14 +332,21 @@ export default function ItemsPage() {
   const hasActiveFilters = !!(
     search || filterCategory || filterSubCategory.length || filterStatus.length ||
     filterChemistry.length || filterCellModel.length || filterCircuit.length ||
-    filterPackType.length || filterMaterial.length || filterVendor.length ||
+    filterPackType.length || filterMaterial.length || filterFormFactor.length || filterVendor.length ||
     filterSeriesCount || filterParallelCount || filterLayerCount ||
     filterLengthMin || filterWidthMin || filterHeightMin || filterDiameterMin || filterWeightMin
   )
   const hasBom = (cat: string) => cat === 'PRODUCT' || cat === 'ASSEMBLY'
 
+  // formFactor 코드 → 한글명 조회 맵 (정적 기본값 + 동적 localStorage 우선)
+  const formFactorLabelMap: Record<string, string> = {}
+  Object.values(THIRD_OPTIONS).forEach(opts => opts.forEach(o => { formFactorLabelMap[o.value] = o.label }))
+  ;['elComponentType', 'meComponentType', 'cdComponentType', 'pkComponentType',
+    'fsComponentType', 'smComponentType', 'rmComponentType', 'otComponentType']
+    .forEach(key => getOptions(key).forEach((o: SelectOption) => { formFactorLabelMap[o.value] = o.label }))
+
   // 뷰별 테이블 너비
-  const tableWidth = isAll ? 1335 : (isProd || isPO) ? 2360 : isBmsPcm ? 1690 : isAsmGeneric ? 1930 : (isComp ? 1690 : 1770)
+  const tableWidth = isAll ? 1335 : (isProd || isPO) ? 2360 : isBmsPcm ? 1690 : isAsmGeneric ? 1930 : isCell ? 2700 : isCompOther ? 2190 : 1770
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -357,6 +379,7 @@ export default function ItemsPage() {
                 value={filterSubCategory}
                 onChange={v => {
                   setFilterSubCategory(v)
+                  setFilterFormFactor([])
                   if (!filterCategory && v.length > 0) {
                     const newSub = v.find(s => !filterSubCategory.includes(s)) ?? v[v.length - 1]
                     for (const [cat, opts] of Object.entries(SUB_OPTIONS)) {
@@ -371,6 +394,17 @@ export default function ItemsPage() {
                 wrap
               />
             </FilterSection>
+
+            {singleNonClSub && formFactorOpts.length > 0 && (
+              <FilterSection label={thirdDef!.label}>
+                <MultiPillGroup
+                  options={formFactorOpts.map(o => ({ value: o.value, label: o.label }))}
+                  value={filterFormFactor}
+                  onChange={v => { setFilterFormFactor(v); resetAndPage() }}
+                  wrap
+                />
+              </FilterSection>
+            )}
 
             <FilterSection label="상태">
               <MultiPillGroup
@@ -586,6 +620,8 @@ export default function ItemsPage() {
                 {/* 대분류, 중분류: 항상 */}
                 <col style={{ width: 80 }} />
                 <col style={{ width: 80 }} />
+                {/* 소분류: 셀이외자재 전용 */}
+                {isCompOther && <col style={{ width: 90 }} />}
                 {/* 완제품/소프트팩: 화학계, 셀모델, 회로, 팩타입 */}
                 {(isProd || isPO) && <><col style={{ width: 80 }} /><col style={{ width: 110 }} /><col style={{ width: 80 }} /><col style={{ width: 80 }} /></>}
                 {/* BMS/PCM: 제조사, 최대직렬, 연속방전 */}
@@ -596,11 +632,17 @@ export default function ItemsPage() {
                 {isAll && <col style={{ width: 100 }} />}
                 {/* 완제품/소프트팩: 직렬, 병렬, 단수 */}
                 {(isProd || isPO) && <><col style={{ width: 65 }} /><col style={{ width: 65 }} /><col style={{ width: 60 }} /></>}
-                {/* 물리규격: 일반반제품 + 자재 */}
-                {(isAsmGeneric || isComp) && <><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /></>}
-                {/* 재질: BMS/PCM 및 전체보기 제외 */}
-                {!isBmsPcm && !isAll && <col style={{ width: 85 }} />}
-                {/* 이미지: 반제품(일반/BMS)/자재에서 재질 다음 */}
+                {/* 물리규격 */}
+                {isAsmGeneric && <><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /></>}
+                {/* 셀: 화학계, 셀모델, 직경, 높이, 전기사양 11개, 스펙시트 */}
+                {isCell && <><col style={{ width: 85 }} /><col style={{ width: 120 }} /><col style={{ width: 75 }} /><col style={{ width: 75 }} /><col style={{ width: 105 }} /><col style={{ width: 85 }} /><col style={{ width: 105 }} /><col style={{ width: 90 }} /><col style={{ width: 80 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 85 }} /><col style={{ width: 85 }} /><col style={{ width: 80 }} /></>}
+                {/* 셀이외자재: 가로, 세로, 높이, 내경가로, 내경세로, 내경높이, 직경, 두께, 무게 */}
+                {isCompOther && <><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 80 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /></>}
+                {/* 재질: 일반반제품·셀이외자재 */}
+                {(isAsmGeneric || isCompOther) && <col style={{ width: 85 }} />}
+                {/* 색상: 셀이외자재 */}
+                {isCompOther && <col style={{ width: 85 }} />}
+                {/* 이미지 */}
                 {(isAsmGeneric || isComp || isBmsPcm) && <col style={{ width: 100 }} />}
                 {/* 일반반제품: 고객사 */}
                 {isAsmGeneric && <col style={{ width: 80 }} />}
@@ -630,9 +672,10 @@ export default function ItemsPage() {
                   <TableHead style={{ left: 320 }} className="sticky z-20 bg-gray-50 whitespace-nowrap text-xs border-r border-gray-300">품목명</TableHead>
                   <TableHead className="whitespace-nowrap text-xs">대분류</TableHead>
                   <TableHead className="whitespace-nowrap text-xs">중분류</TableHead>
+                  {isCompOther && <TableHead className="whitespace-nowrap text-xs">소분류</TableHead>}
                   {(isProd || isPO) && <>
                     <TableHead className="whitespace-nowrap text-xs">화학계</TableHead>
-                    <TableHead className="whitespace-nowrap text-xs">셀모델</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">셀 모델</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">회로</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">팩타입</TableHead>
                   </>}
@@ -648,14 +691,44 @@ export default function ItemsPage() {
                     <TableHead className="whitespace-nowrap text-xs">병렬(P)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">단수</TableHead>
                   </>}
-                  {(isAsmGeneric || isComp) && <>
+                  {isAsmGeneric && <>
                     <TableHead className="whitespace-nowrap text-xs">길이(mm)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">폭(mm)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">높이(mm)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">직경(mm)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">무게(g)</TableHead>
                   </>}
-                  {!isBmsPcm && !isAll && <TableHead className="whitespace-nowrap text-xs">재질</TableHead>}
+                  {isCell && <>
+                    <TableHead className="whitespace-nowrap text-xs">화학계</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">셀 모델</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">직경(mm)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">높이(mm)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">방전종료전압(V)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">공칭전압(V)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">충전종료전압(V)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">공칭용량(Ah)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">에너지(Wh)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">피크충전전류(A)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">피크방전전류(A)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">연속충전전류(A)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">연속방전전류(A)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">충전 C-rate</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">방전 C-rate</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">스펙시트</TableHead>
+                  </>}
+                  {isCompOther && <>
+                    <TableHead className="whitespace-nowrap text-xs">가로(mm)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">세로(mm)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">높이(mm)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">내경 가로(mm)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">내경 세로(mm)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">내경 높이(mm)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">직경(mm)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">두께(mm)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">무게(g)</TableHead>
+                  </>}
+                  {(isAsmGeneric || isCompOther) && <TableHead className="whitespace-nowrap text-xs">재질</TableHead>}
+                  {isCompOther && <TableHead className="whitespace-nowrap text-xs">색상</TableHead>}
                   {(isAsmGeneric || isComp || isBmsPcm) && <TableHead className="whitespace-nowrap text-xs">이미지</TableHead>}
                   {isAsmGeneric && <TableHead className="whitespace-nowrap text-xs">고객사</TableHead>}
                   {(isProd || isPO) && <>
@@ -703,6 +776,7 @@ export default function ItemsPage() {
                       </TableCell>
                       <TableCell><TooltipCell value={CATEGORY_LABEL[item.category] ?? item.category} /></TableCell>
                       <TableCell><TooltipCell value={item.subCategory} /></TableCell>
+                      {isCompOther && <TableCell><TooltipCell value={item.formFactor ? (formFactorLabelMap[item.formFactor] ?? item.formFactor) : null} /></TableCell>}
                       {(isProd || isPO) && <>
                         <TableCell><TooltipCell value={item.chemistryType} /></TableCell>
                         <TableCell><TooltipCell value={item.cellModel} /></TableCell>
@@ -721,14 +795,44 @@ export default function ItemsPage() {
                         <TableCell className="text-xs text-center text-gray-900">{item.parallelCount ?? '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.layerCount ?? '-'}</TableCell>
                       </>}
-                      {(isAsmGeneric || isComp) && <>
+                      {isAsmGeneric && <>
                         <TableCell className="text-xs text-center text-gray-900">{item.length != null ? Number(item.length) : '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.width != null ? Number(item.width) : '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.height != null ? Number(item.height) : '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.diameter != null ? Number(item.diameter) : '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.weight != null ? Number(item.weight) : '-'}</TableCell>
                       </>}
-                      {!isBmsPcm && !isAll && <TableCell><TooltipCell value={item.material} /></TableCell>}
+                      {isCell && <>
+                        <TableCell><TooltipCell value={item.chemistryType} /></TableCell>
+                        <TableCell><TooltipCell value={item.cellModel} /></TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.diameter != null ? Number(item.diameter) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.height != null ? Number(item.height) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.dischargeCutoffVoltage != null ? Number(item.dischargeCutoffVoltage) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.nominalVoltage != null ? Number(item.nominalVoltage) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.chargeCutoffVoltage != null ? Number(item.chargeCutoffVoltage) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.nominalCapacity != null ? Number(item.nominalCapacity) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.energy != null ? Number(item.energy) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.maxChargeCurrent != null ? Number(item.maxChargeCurrent) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.maxDischargeCurrent != null ? Number(item.maxDischargeCurrent) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.continuousChargeCurrent != null ? Number(item.continuousChargeCurrent) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.continuousDischargeCurrent != null ? Number(item.continuousDischargeCurrent) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.chargeCRate != null ? Number(item.chargeCRate) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.dischargeCRate != null ? Number(item.dischargeCRate) : '-'}</TableCell>
+                        <TableCell><DrawingsCell urls={item.drawings ?? []} /></TableCell>
+                      </>}
+                      {isCompOther && <>
+                        <TableCell className="text-xs text-center text-gray-900">{item.length != null ? Number(item.length) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.width != null ? Number(item.width) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.height != null ? Number(item.height) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.innerLength != null ? Number(item.innerLength) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.innerWidth != null ? Number(item.innerWidth) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.innerHeight != null ? Number(item.innerHeight) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.diameter != null ? Number(item.diameter) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.thickness != null ? Number(item.thickness) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.weight != null ? Number(item.weight) : '-'}</TableCell>
+                      </>}
+                      {(isAsmGeneric || isCompOther) && <TableCell><TooltipCell value={item.material} /></TableCell>}
+                      {isCompOther && <TableCell><TooltipCell value={item.color} /></TableCell>}
                       {(isAsmGeneric || isComp || isBmsPcm) && <TableCell><ImageCell urls={item.images ?? []} /></TableCell>}
                       {isAsmGeneric && <TableCell><TagListCell values={item.vendors ?? []} /></TableCell>}
                       {(isProd || isPO) && <>

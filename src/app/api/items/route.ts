@@ -54,6 +54,8 @@ export async function GET(req: NextRequest) {
     if (packVal) where.packType = toIn(packVal) as any
     const matVal = multiIn(searchParams.get('material'))
     if (matVal) where.material = toIn(matVal) as any
+    const ffVal = multiIn(searchParams.get('formFactor'))
+    if (ffVal) where.formFactor = toIn(ffVal) as any
     const vendorParam = searchParams.get('vendor')
     if (vendorParam) {
       const vals = vendorParam.split(',').filter(Boolean)

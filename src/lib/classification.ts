@@ -98,12 +98,12 @@ export const THIRD_LEVEL: Record<string, ThirdLevelDef | null> = {
   CL: { field: 'chemistryType', label: '화학계',    optKey: 'chemistryType' },
   EL: { field: 'formFactor',    label: '부품 유형', optKey: 'elComponentType' },
   ME: { field: 'formFactor',    label: '부품 유형', optKey: 'meComponentType' },
-  CD: { field: 'formFactor',    label: '도전재 종류', staticOptions: THIRD_OPTIONS.CD },
-  PK: { field: 'formFactor',    label: '포장 종류',   staticOptions: THIRD_OPTIONS.PK },
-  FS: { field: 'formFactor',    label: '체결 종류',   staticOptions: THIRD_OPTIONS.FS },
-  SM: { field: 'formFactor',    label: '소모품 종류', staticOptions: THIRD_OPTIONS.SM },
-  RM: { field: 'formFactor',    label: '자재 종류',   staticOptions: THIRD_OPTIONS.RM },
-  OT: { field: 'formFactor',    label: '기타 종류',   staticOptions: THIRD_OPTIONS.OT },
+  CD: { field: 'formFactor',    label: '도전재 종류', optKey: 'cdComponentType', staticOptions: THIRD_OPTIONS.CD },
+  PK: { field: 'formFactor',    label: '포장 종류',   optKey: 'pkComponentType', staticOptions: THIRD_OPTIONS.PK },
+  FS: { field: 'formFactor',    label: '체결 종류',   optKey: 'fsComponentType', staticOptions: THIRD_OPTIONS.FS },
+  SM: { field: 'formFactor',    label: '소모품 종류', optKey: 'smComponentType', staticOptions: THIRD_OPTIONS.SM },
+  RM: { field: 'formFactor',    label: '자재 종류',   optKey: 'rmComponentType', staticOptions: THIRD_OPTIONS.RM },
+  OT: { field: 'formFactor',    label: '기타 종류',   optKey: 'otComponentType', staticOptions: THIRD_OPTIONS.OT },
 }
 
 export function showElec(sub: string) {

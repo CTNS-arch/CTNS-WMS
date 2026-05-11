@@ -4,6 +4,8 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import ItemFormDialog from '@/components/items/ItemFormDialog'
+import { THIRD_OPTIONS } from '@/lib/classification'
+import { getOptions } from '@/lib/select-options'
 
 const CAT_LABEL: Record<string, string> = { PRODUCT: '완제품', ASSEMBLY: '반제품', COMPONENT: '자재' }
 const CAT_COLOR: Record<string, string> = {
@@ -11,12 +13,21 @@ const CAT_COLOR: Record<string, string> = {
   ASSEMBLY:  'bg-purple-100 text-purple-700',
   COMPONENT: 'bg-emerald-100 text-emerald-700',
 }
+const STATUS_LABEL: Record<string, string> = { ACTIVE: '사용', INACTIVE: '미사용', RESTRICTED: '사용금지', DISCONTINUED: '단종' }
+const STATUS_COLOR: Record<string, string> = {
+  ACTIVE:       'bg-green-100 text-green-700',
+  INACTIVE:     'bg-gray-100 text-gray-600',
+  RESTRICTED:   'bg-yellow-100 text-yellow-700',
+  DISCONTINUED: 'bg-red-100 text-red-700',
+}
 const SUB_LABEL: Record<string, string> = {
   BP: '배터리팩', BM: 'BMS', PC: 'PCM',
   CL: '셀', EL: '전장/전기부품', ME: '기구/외장부품',
   CD: '도전재', PK: '포장자재', FS: '체결부품',
   SM: '부자재/소모품', RM: '일반자재', OT: '샘플/기타',
   PO: 'Soft pack', CAS: 'Case', PRA: 'Power Relay Assembly',
+  DST: 'Distribution Board', SWB: 'Switch Box', DRV: 'Driver',
+  CMB: 'Communication Board', JTB: 'Junction Box', HRN: 'Harness',
 }
 
 interface BomRow {
@@ -109,8 +120,8 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
     searchTimers.current[rowKey] = setTimeout(async () => {
       try {
         const url = q.trim()
-          ? `/api/items?search=${encodeURIComponent(q)}&limit=12`
-          : `/api/items?limit=12&sortBy=createdAt&sortOrder=desc`
+          ? `/api/items?search=${encodeURIComponent(q)}&category=ASSEMBLY,COMPONENT&limit=12`
+          : `/api/items?category=ASSEMBLY,COMPONENT&limit=12&sortBy=createdAt&sortOrder=desc`
         const res = await fetch(url)
         const json = await res.json()
         if (json.success) {
@@ -289,6 +300,13 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
 
   if (!open) return null
 
+  // formFactor 코드 → 한글명
+  const formFactorLabelMap: Record<string, string> = {}
+  Object.values(THIRD_OPTIONS).forEach(opts => opts.forEach(o => { formFactorLabelMap[o.value] = o.label }))
+  ;['elComponentType', 'meComponentType', 'cdComponentType', 'pkComponentType',
+    'fsComponentType', 'smComponentType', 'rmComponentType', 'otComponentType']
+    .forEach(key => getOptions(key).forEach(o => { formFactorLabelMap[o.value] = o.label }))
+
   const savedRows = rows.filter(r => r.id)
   const selectableRows = savedRows
   const allSelected = selectableRows.length > 0 && selectableRows.every(r => selectedKeys.has(r._key))
@@ -461,27 +479,77 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                               />
                             </div>
                             {search?.open && (
-                              <div className="absolute top-full left-0 z-50 mt-1 border border-gray-200 rounded-lg bg-white shadow-xl overflow-hidden" style={{ width: 580, maxHeight: 224 }}>
+                              <div
+                                className="absolute top-full left-0 z-50 mt-1 border border-gray-200 rounded-lg bg-white shadow-xl"
+                                style={{ width: 960, maxHeight: 320, overflowY: 'auto', overflowX: 'auto' }}
+                              >
                                 {search.results.length === 0 ? (
                                   <div className="px-4 py-3 text-xs text-gray-400 text-center">
                                     {search.query.trim() ? '검색 결과 없음' : '불러오는 중...'}
                                   </div>
                                 ) : (
-                                  <div className="overflow-y-auto" style={{ maxHeight: 224 }}>
-                                    {search.results.map((r: any) => (
-                                      <div key={r.id}
-                                        onMouseDown={() => handleItemSelect(row._key, r)}
-                                        className="flex items-center gap-2 px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50 last:border-0"
-                                      >
-                                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold shrink-0 ${CAT_COLOR[r.category] ?? 'bg-gray-100 text-gray-600'}`}>
-                                          {CAT_LABEL[r.category]?.[0]}
-                                        </span>
-                                        <span className="font-mono text-xs text-gray-700 w-52 shrink-0 truncate">{r.itemCode}</span>
-                                        <span className="text-xs text-gray-600 flex-1 truncate">{r.itemName}</span>
-                                        <span className="text-xs text-gray-400 shrink-0">{r.unit}</span>
-                                      </div>
-                                    ))}
-                                  </div>
+                                  <table style={{ minWidth: 960, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                                    <colgroup>
+                                      <col style={{ width: 65 }} />
+                                      <col style={{ width: 155 }} />
+                                      <col />
+                                      <col style={{ width: 60 }} />
+                                      <col style={{ width: 120 }} />
+                                      <col style={{ width: 48 }} />
+                                      <col style={{ width: 68 }} />
+                                      <col style={{ width: 100 }} />
+                                      <col style={{ width: 44 }} />
+                                      <col style={{ width: 44 }} />
+                                      <col style={{ width: 90 }} />
+                                    </colgroup>
+                                    <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
+                                      <tr>
+                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">상태</th>
+                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">품번</th>
+                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">품명</th>
+                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">대분류</th>
+                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">중분류</th>
+                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">단위</th>
+                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">화학계</th>
+                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">셀 모델</th>
+                                        <th className="px-2 py-2 text-center text-[10px] font-semibold text-gray-400 whitespace-nowrap">S</th>
+                                        <th className="px-2 py-2 text-center text-[10px] font-semibold text-gray-400 whitespace-nowrap">P</th>
+                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">소분류</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {search.results.map((r: any) => (
+                                        <tr key={r.id}
+                                          onMouseDown={() => handleItemSelect(row._key, r)}
+                                          className="cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-0 transition-colors"
+                                        >
+                                          <td className="px-2 py-1.5">
+                                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold whitespace-nowrap ${STATUS_COLOR[r.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                                              {STATUS_LABEL[r.status] ?? r.status}
+                                            </span>
+                                          </td>
+                                          <td className="px-2 py-1.5 font-mono text-[11px] text-gray-700 truncate">{r.itemCode}</td>
+                                          <td className="px-2 py-1.5 text-xs text-gray-800 truncate">{r.itemName}</td>
+                                          <td className="px-2 py-1.5">
+                                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold whitespace-nowrap ${CAT_COLOR[r.category] ?? 'bg-gray-100 text-gray-600'}`}>
+                                              {CAT_LABEL[r.category] ?? r.category}
+                                            </span>
+                                          </td>
+                                          <td className="px-2 py-1.5 text-xs text-gray-600 truncate">
+                                            {r.subCategory ? (SUB_LABEL[r.subCategory] ?? r.subCategory) : <span className="text-gray-300">—</span>}
+                                          </td>
+                                          <td className="px-2 py-1.5 text-xs text-gray-500">{r.unit || <span className="text-gray-300">—</span>}</td>
+                                          <td className="px-2 py-1.5 text-xs text-gray-500 truncate">{r.chemistryType || <span className="text-gray-300">—</span>}</td>
+                                          <td className="px-2 py-1.5 text-xs text-gray-500 truncate">{r.cellModel || <span className="text-gray-300">—</span>}</td>
+                                          <td className="px-2 py-1.5 text-xs text-gray-500 text-center tabular-nums">{r.seriesCount ?? <span className="text-gray-300">—</span>}</td>
+                                          <td className="px-2 py-1.5 text-xs text-gray-500 text-center tabular-nums">{r.parallelCount ?? <span className="text-gray-300">—</span>}</td>
+                                          <td className="px-2 py-1.5 text-xs text-gray-500 truncate">
+                                            {r.formFactor ? (formFactorLabelMap[r.formFactor] ?? r.formFactor) : <span className="text-gray-300">—</span>}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
                                 )}
                               </div>
                             )}

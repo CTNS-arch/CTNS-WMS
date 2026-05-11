@@ -49,7 +49,7 @@ function getSubOpts(type: BulkType, subMap: Record<string, SelectOption[]>): Sel
 }
 
 const DIALOG_W: Record<BulkType, number> = {
-  BATTERY: 1500, BMS: 1360, ASSEMBLY_OTHER: 960, CELL: 1260, COMPONENT_OTHER: 1700,
+  BATTERY: 1500, BMS: 1360, ASSEMBLY_OTHER: 1020, CELL: 1600, COMPONENT_OTHER: 1800,
 }
 
 // ── 행 구조 ────────────────────────────────────────────────
@@ -78,6 +78,17 @@ interface BulkRow {
   manufacturer: string
   maxSeriesCount: string
   continuousDischargeCurrent: string
+  // CELL 전기 사양
+  dischargeCutoffVoltage: string
+  nominalVoltage: string
+  chargeCutoffVoltage: string
+  nominalCapacity: string
+  energy: string
+  maxChargeCurrent: string
+  maxDischargeCurrent: string
+  continuousChargeCurrent: string
+  chargeCRate: string
+  dischargeCRate: string
   // COMPONENT_OTHER 물리 규격
   length: string; width: string; height: string
   diameter: string
@@ -96,6 +107,9 @@ function emptyRow(): BulkRow {
     seriesCount: '', parallelCount: '', circuit: '',
     specialOptions: [], certifications: [], drawings: [], vendors: [],
     manufacturer: '', maxSeriesCount: '', continuousDischargeCurrent: '',
+    dischargeCutoffVoltage: '', nominalVoltage: '', chargeCutoffVoltage: '',
+    nominalCapacity: '', energy: '', maxChargeCurrent: '', maxDischargeCurrent: '',
+    continuousChargeCurrent: '', chargeCRate: '', dischargeCRate: '',
     length: '', width: '', height: '', diameter: '',
     innerLength: '', innerWidth: '', innerHeight: '',
     weight: '', thickness: '', material: '', color: '',
@@ -456,7 +470,21 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
           Object.assign(payload, { manufacturer: row.manufacturer || null, maxSeriesCount: ni(row.maxSeriesCount), continuousDischargeCurrent: n(row.continuousDischargeCurrent), specialOptions: row.specialOptions })
           break
         case 'CELL':
-          Object.assign(payload, { chemistryType: row.chemistryType || null, cellModel: row.cellModel || null })
+          Object.assign(payload, {
+            chemistryType: row.chemistryType || null,
+            cellModel: row.cellModel || null,
+            dischargeCutoffVoltage: n(row.dischargeCutoffVoltage),
+            nominalVoltage: n(row.nominalVoltage),
+            chargeCutoffVoltage: n(row.chargeCutoffVoltage),
+            nominalCapacity: n(row.nominalCapacity),
+            energy: n(row.energy),
+            maxChargeCurrent: n(row.maxChargeCurrent),
+            maxDischargeCurrent: n(row.maxDischargeCurrent),
+            continuousChargeCurrent: n(row.continuousChargeCurrent),
+            continuousDischargeCurrent: n(row.continuousDischargeCurrent),
+            chargeCRate: n(row.chargeCRate),
+            dischargeCRate: n(row.dischargeCRate),
+          })
           break
         case 'COMPONENT_OTHER': {
           const thirdDef = THIRD_LEVEL[sub]
@@ -535,9 +563,9 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                   : bulkType === 'COMPONENT_OTHER' ? 100
                   : 90 // ASSEMBLY_OTHER
   // ASSEMBLY_OTHER: 영문 긴 라벨(Power Relay Assembly 등) 대응
-  // COMPONENT_OTHER: 한글 라벨 + 소분류까지 고려
-  const subColW   = bulkType === 'ASSEMBLY_OTHER'   ? 150
-                  : bulkType === 'COMPONENT_OTHER'  ? 120
+  // COMPONENT_OTHER: 한글 라벨 + 소분류까지 고려 (코드 포함 표시로 길어짐)
+  const subColW   = bulkType === 'ASSEMBLY_OTHER'   ? 200
+                  : bulkType === 'COMPONENT_OTHER'  ? 170
                   : 110
 
   const thL  = 'px-1.5 py-2.5 text-left text-[11px] text-gray-600 font-semibold whitespace-nowrap'
@@ -681,8 +709,19 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
 
                     {/* CELL 전용 */}
                     {bulkType === 'CELL' && <th className={thSm} style={{ width: 110 }}>화학계</th>}
-                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 110 }}>셀제조사</th>}
-                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 120 }}>셀모델</th>}
+                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 110 }}>제조사</th>}
+                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 120 }}>셀 모델</th>}
+                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>방전종료전압(V)</th>}
+                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>공칭전압(V)</th>}
+                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>충전종료전압(V)</th>}
+                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>공칭용량(Ah)</th>}
+                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>에너지(Wh)</th>}
+                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>피크충전(A)</th>}
+                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>피크방전(A)</th>}
+                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>연속충전(A)</th>}
+                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>연속방전(A)</th>}
+                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>충전C-rate</th>}
+                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>방전C-rate</th>}
 
                     {/* COMPONENT_OTHER 전용 */}
                     {bulkType === 'COMPONENT_OTHER' && <th className={thSm} style={{ width: 64 }}>가로</th>}
@@ -702,7 +741,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     {(bulkType === 'BATTERY' || bulkType === 'BMS') && <th className={thSm} style={{ width: 130 }}>특수옵션</th>}
                     {bulkType === 'BATTERY' && <th className={thSm} style={{ width: 120 }}>인증</th>}
                     {bulkType === 'BATTERY' && <th className={thSm} style={{ width: 64 }}>도면</th>}
-                    {bulkType !== 'COMPONENT_OTHER' && <th className={thSm} style={{ width: 130 }}>고객사</th>}
+                    {bulkType !== 'COMPONENT_OTHER' && bulkType !== 'CELL' && <th className={thSm} style={{ width: 130 }}>고객사</th>}
                     <th className={thL} style={{ width: 120 }}>비고</th>
                     <th className={thL} style={{ width: 180 }}>BOM 연결 <span className="text-gray-400 font-normal">(완제품/반제품)</span></th>
                     <th className="py-2.5 text-center text-[10px] text-gray-400 font-medium" style={{ width: 52 }}>작업</th>
@@ -750,7 +789,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     const ts = (w: number, val: string, onChange: (v: string) => void, optList: SelectOption[], optKey: string, ph = '—', disabled = false) => (
                       <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: w }}>
                         <TagSelect value={val} onChange={onChange} options={optList} disabled={disabled}
-                          onAdd={lbl => { addOption(optKey, lbl); reloadOpts() }}
+                          onAdd={(lbl, code) => { addOption(optKey, lbl, code); reloadOpts() }}
                           placeholder={ph} portal size="sm" />
                       </td>
                     )
@@ -818,7 +857,8 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                                     }
                                   }}
                                   options={thirdOpts}
-                                  onAdd={canAddThird ? lbl => { addOption(thirdDef!.optKey!, lbl); reloadOpts() } : () => {}}
+                                  onAdd={canAddThird ? (lbl, code) => { addOption(thirdDef!.optKey!, lbl, code); reloadOpts() } : () => {}}
+                                  requireCode={!!(canAddThird && (thirdDef?.optKey === 'elComponentType' || thirdDef?.optKey === 'meComponentType'))}
                                   placeholder="—" portal size="sm" />
                               : <span className="text-gray-300 text-xs px-2 block py-1.5">—</span>}
                           </td>
@@ -914,6 +954,17 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                               placeholder="셀모델" portal size="sm" />
                           </td>
                         )}
+                        {bulkType === 'CELL' && num(68, 'dischargeCutoffVoltage', '0.00')}
+                        {bulkType === 'CELL' && num(68, 'nominalVoltage', '0.00')}
+                        {bulkType === 'CELL' && num(68, 'chargeCutoffVoltage', '0.00')}
+                        {bulkType === 'CELL' && num(68, 'nominalCapacity', '0.000')}
+                        {bulkType === 'CELL' && num(68, 'energy', '0.00')}
+                        {bulkType === 'CELL' && num(68, 'maxChargeCurrent', '0.00')}
+                        {bulkType === 'CELL' && num(68, 'maxDischargeCurrent', '0.00')}
+                        {bulkType === 'CELL' && num(68, 'continuousChargeCurrent', '0.00')}
+                        {bulkType === 'CELL' && num(68, 'continuousDischargeCurrent', '0.00')}
+                        {bulkType === 'CELL' && num(68, 'chargeCRate', '0.00')}
+                        {bulkType === 'CELL' && num(68, 'dischargeCRate', '0.00')}
 
                         {/* ── COMPONENT_OTHER 전용 ── */}
                         {bulkType === 'COMPONENT_OTHER' && num(64, 'length', '0.00')}
@@ -931,7 +982,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                         {/* 단위 (공통) */}
                         <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 80 }}>
                           <TagSelect value={row.unit} onChange={v => upd(row._key, 'unit', v)} options={opts.unit ?? []}
-                            onAdd={lbl => { addOption('unit', lbl); reloadOpts() }}
+                            onAdd={(lbl, code) => { addOption('unit', lbl, code); reloadOpts() }}
                             placeholder="단위" portal size="sm" />
                         </td>
 
@@ -951,8 +1002,8 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                           </td>
                         )}
 
-                        {/* 고객사 (COMPONENT_OTHER 제외) */}
-                        {bulkType !== 'COMPONENT_OTHER' && tms(130, row.vendors, v => upd(row._key, 'vendors', v), opts.vendor ?? [], 'vendor', '고객사')}
+                        {/* 고객사 (COMPONENT_OTHER, CELL 제외) */}
+                        {bulkType !== 'COMPONENT_OTHER' && bulkType !== 'CELL' && tms(130, row.vendors, v => upd(row._key, 'vendors', v), opts.vendor ?? [], 'vendor', '고객사')}
 
                         {/* 비고 */}
                         <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 120 }}>
