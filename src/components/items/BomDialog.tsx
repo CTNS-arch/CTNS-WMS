@@ -94,13 +94,25 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
   const [loading, setLoading] = useState(false)
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
   const [searches, setSearches] = useState<Record<string, SearchState>>({})
-  const [deleting, setDeleting] = useState(false)
   const [viewItem, setViewItem] = useState<any>(null)
   const [isDirty, setIsDirty] = useState(false)
-  const [childBoms, setChildBoms] = useState<Record<string, { items: any[]; loading: boolean; expanded: boolean }>>({})
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+  const [childBoms, setChildBoms] = useState<Record<string, { items: any[]; loading: boolean }>>({})
 
   const searchTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const dropdownRefs = useRef<Record<string, HTMLDivElement | null>>({})
+
+  const fetchChildBom = useCallback(async (rowKey: string, childId: string) => {
+    setChildBoms(prev => ({ ...prev, [rowKey]: { items: [], loading: true } }))
+    try {
+      const res = await fetch(`/api/items/${childId}/bom`)
+      const json = await res.json()
+      setChildBoms(prev => ({ ...prev, [rowKey]: { items: json.success ? json.data : [], loading: false } }))
+    } catch {
+      setChildBoms(prev => ({ ...prev, [rowKey]: { items: [], loading: false } }))
+    }
+  }, [])
 
   const fetchBom = useCallback(async () => {
     if (!item?.id) return
@@ -119,30 +131,17 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
           memo: l.memo ?? '',
         }))
         setRows([...existingRows, { _key: newKey(), quantity: '', unit: '', memo: '' }])
+        // 반제품 행 자동 펼치기
+        for (const row of existingRows) {
+          if (row.child?.category === 'ASSEMBLY' && row.childId) {
+            fetchChildBom(row._key, row.childId)
+          }
+        }
       }
     } finally {
       setLoading(false)
     }
-  }, [item?.id])
-
-  const fetchChildBom = useCallback(async (rowKey: string, childId: string) => {
-    setChildBoms(prev => ({ ...prev, [rowKey]: { items: [], loading: true, expanded: true } }))
-    try {
-      const res = await fetch(`/api/items/${childId}/bom`)
-      const json = await res.json()
-      setChildBoms(prev => ({ ...prev, [rowKey]: { items: json.success ? json.data : [], loading: false, expanded: true } }))
-    } catch {
-      setChildBoms(prev => ({ ...prev, [rowKey]: { items: [], loading: false, expanded: true } }))
-    }
-  }, [])
-
-  const toggleChildBom = (rowKey: string, childId: string) => {
-    if (childBoms[rowKey]?.expanded) {
-      setChildBoms(prev => ({ ...prev, [rowKey]: { ...prev[rowKey], expanded: false } }))
-    } else {
-      fetchChildBom(rowKey, childId)
-    }
-  }
+  }, [item?.id, fetchChildBom])
 
   useEffect(() => {
     if (open) {
@@ -150,6 +149,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
       setSelectedKeys(new Set())
       setSearches({})
       setIsDirty(false)
+      setDeletedIds(new Set())
       setChildBoms({})
     }
   }, [open, fetchBom])
@@ -186,9 +186,8 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
     }, q.trim() ? 250 : 0)
   }, [])
 
-  const handleItemSelect = async (rowKey: string, selectedItem: any) => {
+  const handleItemSelect = (rowKey: string, selectedItem: any) => {
     setSearches(prev => ({ ...prev, [rowKey]: { query: '', results: [], open: false } }))
-
     setRows(prev => {
       const idx = prev.findIndex(r => r._key === rowKey)
       if (idx === -1) return prev
@@ -197,43 +196,13 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
       if (idx === prev.length - 1) newRows.push({ _key: newKey(), quantity: '', unit: '', memo: '' })
       return newRows
     })
-
-    try {
-      const res = await fetch(`/api/items/${item.id}/bom`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ childId: selectedItem.id, quantity: 1, unit: selectedItem.unit || '', memo: '' }),
-      })
-      const json = await res.json()
-      if (json.success) {
-        setRows(prev => prev.map(r => r._key === rowKey ? { ...r, id: json.data.id } : r))
-        setIsDirty(true)
-        if (selectedItem.category === 'ASSEMBLY') fetchChildBom(rowKey, selectedItem.id)
-      } else {
-        toast.error(json.message)
-        setRows(prev => prev.map(r => r._key === rowKey ? { ...r, childId: undefined, child: undefined, quantity: '', unit: '', memo: '' } : r))
-      }
-    } catch {
-      toast.error('저장에 실패했습니다.')
-    }
-  }
-
-  const handleFieldBlur = async (rowKey: string) => {
-    const row = rows.find(r => r._key === rowKey)
-    if (!row?.id) return
-    if (!row.quantity || parseFloat(row.quantity) <= 0) return
-    try {
-      await fetch(`/api/items/${item.id}/bom/${row.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quantity: row.quantity, unit: row.unit, memo: row.memo }),
-      })
-      setIsDirty(true)
-    } catch {}
+    setIsDirty(true)
+    if (selectedItem.category === 'ASSEMBLY') fetchChildBom(rowKey, selectedItem.id)
   }
 
   const updateField = (rowKey: string, field: 'quantity' | 'unit' | 'memo', value: string) => {
     setRows(prev => prev.map(r => r._key === rowKey ? { ...r, [field]: value } : r))
+    setIsDirty(true)
   }
 
   const handleCloneRow = (row: BomRow) => {
@@ -245,14 +214,11 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
       next.splice(idx + 1, 0, newRow)
       return next
     })
+    setIsDirty(true)
   }
 
-  const handleDeleteRow = async (row: BomRow) => {
-    if (row.id) {
-      try {
-        await fetch(`/api/items/${item.id}/bom/${row.id}`, { method: 'DELETE' })
-      } catch {}
-    }
+  const handleDeleteRow = (row: BomRow) => {
+    if (row.id) setDeletedIds(prev => new Set([...prev, row.id!]))
     setChildBoms(prev => { const n = { ...prev }; delete n[row._key]; return n })
     setRows(prev => {
       const remaining = prev.filter(r => r._key !== row._key)
@@ -260,39 +226,29 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
       if (!last || last.childId) remaining.push({ _key: newKey(), quantity: '', unit: '', memo: '' })
       return remaining
     })
-    if (row.id) {
+    if (row.child) {
       setSelectedKeys(prev => { const s = new Set(prev); s.delete(row._key); return s })
       setIsDirty(true)
     }
   }
 
-  const handleDeleteSelected = async () => {
-    const toDelete = rows.filter(r => r.id && selectedKeys.has(r._key))
+  const handleDeleteSelected = () => {
+    const toDelete = rows.filter(r => selectedKeys.has(r._key) && r.child)
     if (toDelete.length === 0) return
     if (!confirm(`선택한 ${toDelete.length}개 항목을 삭제하시겠습니까?`)) return
 
-    setDeleting(true)
-    try {
-      for (const row of toDelete) {
-        await fetch(`/api/items/${item.id}/bom/${row.id}`, { method: 'DELETE' })
-      }
-      setRows(prev => {
-        const remaining = prev.filter(r => !selectedKeys.has(r._key) || !r.id)
-        const last = remaining[remaining.length - 1]
-        if (!last || last.childId) remaining.push({ _key: newKey(), quantity: '', unit: '', memo: '' })
-        return remaining
-      })
-      setChildBoms(prev => {
-        const n = { ...prev }
-        toDelete.forEach(r => delete n[r._key])
-        return n
-      })
-      setSelectedKeys(new Set())
-      setIsDirty(true)
-      toast.success(`${toDelete.length}개 항목이 삭제되었습니다.`)
-    } finally {
-      setDeleting(false)
-    }
+    const idsToMark = toDelete.filter(r => r.id).map(r => r.id!)
+    if (idsToMark.length > 0) setDeletedIds(prev => new Set([...prev, ...idsToMark]))
+
+    setChildBoms(prev => { const n = { ...prev }; toDelete.forEach(r => delete n[r._key]); return n })
+    setRows(prev => {
+      const remaining = prev.filter(r => !selectedKeys.has(r._key) || !r.child)
+      const last = remaining[remaining.length - 1]
+      if (!last || last.childId) remaining.push({ _key: newKey(), quantity: '', unit: '', memo: '' })
+      return remaining
+    })
+    setSelectedKeys(new Set())
+    setIsDirty(true)
   }
 
   const handlePrint = async () => {
@@ -356,16 +312,54 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
     }
   }
 
-  const handleClose = () => {
-    if (isDirty) onBomChanged?.(rows.filter(r => r.id).length)
-    onClose()
-  }
+  const handleClose = () => { onClose() }
 
-  const handleSave = () => {
-    const count = rows.filter(r => r.id).length
-    onBomChanged?.(count)
-    setIsDirty(false)
-    toast.success('BOM이 저장되었습니다.')
+  const handleSave = async () => {
+    if (!isDirty || saving) return
+    setSaving(true)
+    try {
+      // 1. 삭제된 행 서버 반영
+      for (const id of deletedIds) {
+        await fetch(`/api/items/${item.id}/bom/${id}`, { method: 'DELETE' })
+      }
+
+      // 2. 새 행 POST (id 없고 childId 있는 행)
+      const newRows = rows.filter(r => !r.id && r.childId && r.child)
+      for (const row of newRows) {
+        const qty = parseFloat(row.quantity) || 1
+        const res = await fetch(`/api/items/${item.id}/bom`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ childId: row.childId, quantity: qty, unit: row.unit || '', memo: row.memo || '' }),
+        })
+        const json = await res.json()
+        if (json.success) {
+          setRows(prev => prev.map(r => r._key === row._key ? { ...r, id: json.data.id } : r))
+        } else {
+          toast.error(json.message ?? '일부 항목 저장 실패')
+        }
+      }
+
+      // 3. 기존 행 PUT (id 있는 행)
+      const existingRows = rows.filter(r => r.id && r.childId && r.quantity && parseFloat(r.quantity) > 0)
+      for (const row of existingRows) {
+        await fetch(`/api/items/${item.id}/bom/${row.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ quantity: row.quantity, unit: row.unit, memo: row.memo }),
+        })
+      }
+
+      setDeletedIds(new Set())
+      setIsDirty(false)
+      const activeCount = rows.filter(r => r.child).length
+      onBomChanged?.(activeCount)
+      toast.success('BOM이 저장되었습니다.')
+    } catch {
+      toast.error('저장 중 오류가 발생했습니다.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   if (!open) return null
@@ -377,8 +371,8 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
     'fsComponentType', 'smComponentType', 'rmComponentType', 'otComponentType']
     .forEach(key => getOptions(key).forEach(o => { formFactorLabelMap[o.value] = o.label }))
 
-  const savedRows = rows.filter(r => r.id)
-  const selectableRows = savedRows
+  const activeRows = rows.filter(r => r.child)
+  const selectableRows = activeRows
   const allSelected = selectableRows.length > 0 && selectableRows.every(r => selectedKeys.has(r._key))
   const existingChildIds = new Set(rows.filter(r => r.childId).map(r => r.childId!))
 
@@ -409,7 +403,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                 {CAT_LABEL[item?.category] ?? item?.category}
               </span>
               <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                {savedRows.length}개 구성 품목
+                {activeRows.length}개 구성 품목
               </span>
             </div>
             <p className="text-xs text-gray-500 font-mono">
@@ -436,8 +430,8 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
         {selectedKeys.size > 0 && (
           <div className="flex items-center gap-2.5 px-6 py-2 bg-blue-50 border-b shrink-0">
             <span className="text-xs text-blue-700 font-medium">{selectedKeys.size}개 선택됨</span>
-            <Button size="sm" variant="destructive" className="h-6 text-xs px-3" onClick={handleDeleteSelected} disabled={deleting}>
-              {deleting ? '삭제 중...' : '선택 삭제'}
+            <Button size="sm" variant="destructive" className="h-6 text-xs px-3" onClick={handleDeleteSelected}>
+              선택 삭제
             </Button>
             <button className="text-xs text-gray-400 hover:text-gray-600" onClick={() => setSelectedKeys(new Set())}>
               선택 해제
@@ -658,7 +652,6 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                         <input type="number" min="0" step="any"
                           value={row.quantity}
                           onChange={e => updateField(row._key, 'quantity', e.target.value)}
-                          onBlur={() => handleFieldBlur(row._key)}
                           placeholder="수량"
                           disabled={!row.child}
                           className={cell + ' text-right'}
@@ -670,7 +663,6 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                         <input
                           value={row.unit}
                           onChange={e => updateField(row._key, 'unit', e.target.value)}
-                          onBlur={() => handleFieldBlur(row._key)}
                           placeholder="단위"
                           disabled={!row.child}
                           className={cell + ' text-center'}
@@ -682,7 +674,6 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                         <input
                           value={row.memo}
                           onChange={e => updateField(row._key, 'memo', e.target.value)}
-                          onBlur={() => handleFieldBlur(row._key)}
                           placeholder="비고"
                           disabled={!row.child}
                           className={cell}
@@ -692,15 +683,6 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                       {/* 작업 버튼 */}
                       <td className="py-1 px-1">
                         <div className="flex items-center justify-center gap-0.5">
-                          {isAssembly && (
-                            <button onClick={() => toggleChildBom(row._key, row.childId!)}
-                              title={childBom?.expanded ? '접기' : '하위 BOM 펼치기'}
-                              className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${childBom?.expanded ? 'text-purple-500 bg-purple-50' : 'text-gray-300 hover:text-purple-500 hover:bg-purple-50'}`}>
-                              <svg className={`w-3 h-3 transition-transform ${childBom?.expanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                              </svg>
-                            </button>
-                          )}
                           {row.child && (
                             <button onClick={() => handleViewItem(row.child!)} title="보기"
                               className="w-6 h-6 flex items-center justify-center rounded text-blue-400 hover:text-blue-600 hover:bg-blue-50">
@@ -729,7 +711,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                         </div>
                       </td>
                     </tr>
-                  {isAssembly && childBom?.expanded && (
+                  {isAssembly && childBom && (
                     childBom.loading ? (
                       <tr key={`${row._key}-loading`}>
                         <td colSpan={10} className="py-2 text-center text-xs text-gray-400 bg-purple-50/20">불러오는 중...</td>
@@ -772,12 +754,12 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
         {/* 푸터 */}
         <div className="px-6 py-3 border-t bg-white shrink-0 flex items-center justify-between">
           <span className="text-xs text-gray-400">
-            {savedRows.length === 0 ? '구성 품목 없음' : `총 ${savedRows.length}개 구성 품목`}
+            {activeRows.length === 0 ? '구성 품목 없음' : `총 ${activeRows.length}개 구성 품목`}
           </span>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" className="text-xs h-8 rounded-lg px-5" onClick={handleClose}>닫기</Button>
-            <Button size="sm" className="text-xs h-8 rounded-lg px-5" onClick={handleSave} disabled={!isDirty}>
-              저장
+            <Button size="sm" className="text-xs h-8 rounded-lg px-5" onClick={handleSave} disabled={!isDirty || saving}>
+              {saving ? '저장 중...' : '저장'}
             </Button>
           </div>
         </div>

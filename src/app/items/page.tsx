@@ -350,7 +350,7 @@ export default function ItemsPage() {
     .forEach(key => getOptions(key).forEach((o: SelectOption) => { formFactorLabelMap[o.value] = o.label }))
 
   // 뷰별 테이블 너비
-  const tableWidth = isAll ? 1335 : (isProd || isPO) ? 2360 : isBmsPcm ? 1690 : isAsmGeneric ? 1930 : isCell ? 2700 : isCompOther ? 2190 : 1770
+  const tableWidth = isAll ? 1385 : (isProd || isPO) ? 2410 : isBmsPcm ? 1740 : isAsmGeneric ? 1980 : isCell ? 2750 : isCompOther ? 2240 : 1820
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -623,7 +623,7 @@ export default function ItemsPage() {
                 <col style={{ width: 200 }} />
                 {/* 대분류, 중분류: 항상 */}
                 <col style={{ width: 80 }} />
-                <col style={{ width: 80 }} />
+                <col style={{ width: 130 }} />
                 {/* 소분류: 셀이외자재 전용 */}
                 {isCompOther && <col style={{ width: 90 }} />}
                 {/* 완제품/소프트팩: 화학계, 셀모델, 회로, 팩타입 */}
