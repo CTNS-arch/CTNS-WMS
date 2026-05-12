@@ -184,13 +184,14 @@ model Item {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bomAsParent       BOM[]              @relation("ParentItem")
-  bomAsChild        BOM[]              @relation("ChildItem")
+  bomAsParent       BOM[]                @relation("ParentItem")
+  bomAsChild        BOM[]                @relation("ChildItem")
   stocks            Stock[]
   stockTransactions StockTransaction[]
   costs             ItemCost[]
   stockCostLayers   StockCostLayer[]
   supplierItems     SupplierItem[]
+  purchaseItems     PurchaseRequestItem[]
 }
 
 model ItemCost {
@@ -239,8 +240,10 @@ model StockTransaction {
 
 model PurchaseRequest {
   id           String         @id @default(cuid())
-  title        String
-  department   String         @default("생산구매팀")
+  documentNo    String?        @unique // 구매코드 (자동부여, 중복 불가)
+  title         String
+  requesterName String?        // 요청자 이름 (자유입력)
+  department    String         @default("생산구매팀")
   requestDate  DateTime       @default(now())
   status       PurchaseStatus @default(PENDING)
   memo         String?
@@ -251,21 +254,69 @@ model PurchaseRequest {
 
   requester User?                  @relation(fields: [requesterId], references: [id])
   items     PurchaseRequestItem[]
+  files     PurchaseFile[]
 }
 
 model PurchaseRequestItem {
   id                String  @id @default(cuid())
   purchaseRequestId String
   lineNo            Int
-  workCode          String?
-  category          String?
-  midCategory       String?
-  subCategory       String?
-  bomNo             String?
-  spec              String?
-  quantity          Float
-  unit              String  @default("EA")
-  purchaseReason    String?
+
+  // ── 요청자 작성 ──────────────────────────────────────────
+  workCode              String?   // 프로젝트코드
+  itemId                String?   // 품목 FK
+  category              String?   // 대분류
+  midCategory           String?   // 중분류
+  subCategory           String?   // 소분류
+  bomNo                 String?   // 품목코드
+  spec                  String?   // 품목명
+  quantity              Float
+  unit                  String    @default("EA")
+  currency              String?   @default("KRW") // 통화 (KRW/USD/CNY)
+  supplyAmount          Float?    // 공급금액
+  taxAmount             Float?    // 세액
+  purchaseReason        String?   // 구매사유
+  requestedDeliveryDate DateTime? // 입고희망일
+  supplier              String?   // 공급자
+  deliveryLocation      String?   // 입고장소 (창원/부산)
+
+  // ── 구매자 작성 ──────────────────────────────────────────
+  domestic              String?   // 국내/해외
+  orderMethod           String?   // 주문방식 (이메일/전화/온라인/방문)
+  orderNo               String?   // 주문번호
+  plannedShipDate       DateTime? // 출고예정일
+  actualShipDate        DateTime? // 출고일
+  shippingMethod        String?   // 운송방법 (해운/항공/업체 직배송)
+  trackingNo            String?   // 송장번호
+  boxCount              Int?      // 박스수량
+  remittanceDate        DateTime? // 송금일
+  paymentDate           DateTime? // 결제일
+  buyerCurrency         String?   // 통화 (구매자)
+  buyerSupplyAmount     Float?    // 공급금액 (구매자)
+  buyerTaxAmount        Float?    // 세액 (구매자)
+  additionalCost        Float?    // 부대비용
+  portArrivalDate       DateTime? // 항구도착일
+  loadingDate           DateTime? // 선적일
+  estimatedArrivalDate  DateTime? // 도착예정일
+  actualReceiptDate     DateTime? // 입고일
+  blNo                  String?   // BL No.
+  buyerMemo             String?   // 비고
+  exchangeRate          Float?    // 환율 (결제 시점 기준)
+  krwAmount             Float?    // 원화 환산 금액
+  unitPrice             Float?    // 단가 (구매금액 ÷ 수량)
+
+  purchaseRequest PurchaseRequest @relation(fields: [purchaseRequestId], references: [id], onDelete: Cascade)
+  item            Item?           @relation(fields: [itemId], references: [id])
+}
+
+model PurchaseFile {
+  id                String          @id @default(cuid())
+  purchaseRequestId String
+  fileName          String
+  fileUrl           String
+  fileType          String?         // 견적서, 발주서, 기타
+  fileSize          Int?
+  uploadedAt        DateTime        @default(now())
 
   purchaseRequest PurchaseRequest @relation(fields: [purchaseRequestId], references: [id], onDelete: Cascade)
 }

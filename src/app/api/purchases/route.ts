@@ -11,11 +11,19 @@ export async function GET(req: NextRequest) {
     const limit = Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10))
     const skip = (page - 1) * limit
 
+    const department = searchParams.get('department')
+
     const where: any = {}
     if (status) where.status = status as PurchaseStatus
-    if (search?.trim()) where.title = { contains: search.trim(), mode: 'insensitive' }
+    if (department) where.department = department
+    if (search?.trim()) {
+      where.OR = [
+        { documentNo: { contains: search.trim(), mode: 'insensitive' } },
+        { title: { contains: search.trim(), mode: 'insensitive' } },
+      ]
+    }
 
-    const [requests, total] = await Promise.all([
+    const [requests, total, rawCounts] = await Promise.all([
       prisma.purchaseRequest.findMany({
         where,
         skip,
@@ -24,12 +32,17 @@ export async function GET(req: NextRequest) {
         include: {
           items: { orderBy: { lineNo: 'asc' } },
           requester: { select: { name: true, email: true } },
+          files: { orderBy: { uploadedAt: 'asc' } },
         },
       }),
       prisma.purchaseRequest.count({ where }),
+      prisma.purchaseRequest.groupBy({ by: ['status'], _count: { _all: true } }),
     ])
 
-    return NextResponse.json({ success: true, data: { requests, total, page, limit } })
+    const statusCounts: Record<string, number> = {}
+    for (const row of rawCounts) statusCounts[row.status] = row._count._all
+
+    return NextResponse.json({ success: true, data: { requests, total, page, limit, statusCounts } })
   } catch (error) {
     console.error('[GET /api/purchases]', error)
     return NextResponse.json({ success: false, message: '데이터를 불러오지 못했습니다.' }, { status: 500 })
@@ -39,11 +52,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { title, department, memo, items, requesterId, approvalLine } = body
+    const { documentNo, title, requesterName, department, memo, items, requesterId, approvalLine } = body
 
-    if (!title?.trim()) {
-      return NextResponse.json({ success: false, message: '제목은 필수입니다.' }, { status: 400 })
-    }
     if (!items || items.length === 0) {
       return NextResponse.json({ success: false, message: '품목을 1개 이상 입력해주세요.' }, { status: 400 })
     }
@@ -54,7 +64,9 @@ export async function POST(req: NextRequest) {
 
     const created = await prisma.purchaseRequest.create({
       data: {
-        title: title.trim(),
+        documentNo: documentNo?.trim() || null,
+        title: title?.trim() || documentNo?.trim() || '구매요청',
+        requesterName: requesterName?.trim() || null,
         department: department?.trim() || '생산구매팀',
         memo: memo?.trim() || null,
         requesterId: requesterId || null,
@@ -63,6 +75,7 @@ export async function POST(req: NextRequest) {
           create: validItems.map((it: any, i: number) => ({
             lineNo: i + 1,
             workCode: it.workCode?.trim() || null,
+            itemId: it.itemId || null,
             category: it.category?.trim() || null,
             midCategory: it.midCategory?.trim() || null,
             subCategory: it.subCategory?.trim() || null,
@@ -70,20 +83,24 @@ export async function POST(req: NextRequest) {
             spec: it.spec?.trim() || null,
             quantity: Number(it.quantity),
             unit: it.unit?.trim() || 'EA',
+            currency: it.currency || 'KRW',
+            supplyAmount: it.supplyAmount != null ? Number(it.supplyAmount) : null,
+            taxAmount: it.taxAmount != null ? Number(it.taxAmount) : null,
             purchaseReason: it.purchaseReason?.trim() || null,
+            requestedDeliveryDate: it.requestedDeliveryDate ? new Date(it.requestedDeliveryDate) : null,
+            supplier: it.supplier?.trim() || null,
+            deliveryLocation: it.deliveryLocation?.trim() || null,
           })),
         },
       },
-    })
-    const request = await prisma.purchaseRequest.findUnique({
-      where: { id: created.id },
       include: {
         items: { orderBy: { lineNo: 'asc' } },
         requester: { select: { name: true, email: true } },
+        files: true,
       },
     })
 
-    return NextResponse.json({ success: true, data: request }, { status: 201 })
+    return NextResponse.json({ success: true, data: created }, { status: 201 })
   } catch (error) {
     console.error('[POST /api/purchases]', error)
     return NextResponse.json({ success: false, message: '구매 요청 생성에 실패했습니다.' }, { status: 500 })

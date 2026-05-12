@@ -77,7 +77,16 @@ export async function POST(req: NextRequest) {
       finalCode = `${subCategory}${String(maxSerial + 1).padStart(3, '0')}`
     }
     if (!finalCode) {
-      return NextResponse.json({ success: false, message: '회사코드 또는 소분류가 필요합니다.' }, { status: 400 })
+      // 코드/소분류 미제공 시 'VN' 접두사로 자동 생성
+      const existing = await prisma.supplier.findMany({
+        where: { supplierCode: { startsWith: 'VN' } },
+        select: { supplierCode: true },
+      })
+      const maxSerial = existing.reduce((max, s) => {
+        const serial = parseInt(s.supplierCode.slice(2), 10)
+        return isNaN(serial) ? max : Math.max(max, serial)
+      }, 0)
+      finalCode = `VN${String(maxSerial + 1).padStart(3, '0')}`
     }
 
     // Neon HTTP 어댑터는 암묵적 트랜잭션 미지원 → 중첩 create 대신 순차 createMany 사용

@@ -192,7 +192,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
       'elComponentType', 'meComponentType']
     const store: OptStore = {}
     keys.forEach(k => {
-      store[k] = (getOptions(k) as any[]).map(o => ({ value: o.value, label: o.label, colorIndex: o.colorIndex ?? 0 }))
+      store[k] = (getOptions(k) as any[]).map(o => ({ value: o.value, label: o.label, colorIndex: o.colorIndex ?? 0, code: o.code ?? o.value }))
     })
     setOpts(store)
     setCellMfrGroups([...getCellModelGroups()])
@@ -859,7 +859,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                                   options={thirdOpts}
                                   onAdd={canAddThird ? (lbl, code) => { addOption(thirdDef!.optKey!, lbl, code); reloadOpts() } : () => {}}
                                   requireCode={!!(canAddThird && (thirdDef?.optKey === 'elComponentType' || thirdDef?.optKey === 'meComponentType'))}
-                                  placeholder="—" portal size="sm" />
+                                  placeholder="—" portal size="sm" minDropdownWidth={280} />
                               : <span className="text-gray-300 text-xs px-2 block py-1.5">—</span>}
                           </td>
                         )}
