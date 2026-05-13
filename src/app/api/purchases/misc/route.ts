@@ -3,18 +3,17 @@ import { auth } from '@/auth'
 import { prisma } from '@/lib/prisma'
 
 async function buildMiscCode(): Promise<string> {
-  const prefix = 'E'
   const yy = new Date().getFullYear().toString().slice(-2)
   const existing = await prisma.purchaseRequest.findMany({
-    where: { documentNo: { startsWith: `${prefix}${yy}-` } },
+    where: { documentNo: { startsWith: `L${yy}-F` } },
     select: { documentNo: true },
   })
-  let maxSerial = 0
+  let maxSerial = 119  // 이번년도 시작: L26-F120
   for (const r of existing) {
-    const match = r.documentNo?.match(/-(\d+)$/)
+    const match = r.documentNo?.match(/-F(\d+)$/)
     if (match) maxSerial = Math.max(maxSerial, parseInt(match[1], 10))
   }
-  return `${prefix}${yy}-${String(maxSerial + 1).padStart(4, '0')}`
+  return `L${yy}-F${String(maxSerial + 1).padStart(3, '0')}`
 }
 
 export async function POST(req: NextRequest) {

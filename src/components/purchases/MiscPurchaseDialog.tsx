@@ -12,6 +12,7 @@ type UserItem = { id: string; name: string | null; email: string }
 interface Props {
   open: boolean
   editReq?: any | null
+  readOnly?: boolean
   onClose: () => void
   onSaved: (req: any) => void
   users: UserItem[]
@@ -41,7 +42,7 @@ function makeApprovalLine(drafterName: string): Approver[] {
   ]
 }
 
-export default function MiscPurchaseDialog({ open, editReq, onClose, onSaved, users, sessionName }: Props) {
+export default function MiscPurchaseDialog({ open, editReq, readOnly = false, onClose, onSaved, users, sessionName }: Props) {
   const [orderMethod,      setOrderMethod]      = useState('')
   const [title,            setTitle]            = useState('')
   const [miscWorkCode,     setMiscWorkCode]      = useState('')
@@ -214,7 +215,7 @@ export default function MiscPurchaseDialog({ open, editReq, onClose, onSaved, us
             style={{ background: 'linear-gradient(to right, #f0f9ff, #f8fafc)' }}>
             <div>
               <h2 className="text-sm font-bold text-gray-900">
-                {editReq ? '연구비 구매 요청 수정' : '일괄 구매 요청'}
+                {readOnly ? '연구비 구매 요청 조회' : editReq ? '연구비 구매 요청 수정' : '일괄 구매 요청'}
               </h2>
               <p className="text-[11px] text-gray-400 mt-0.5">개별 품목 없이 요청 건 전체를 등록합니다</p>
             </div>
@@ -223,7 +224,7 @@ export default function MiscPurchaseDialog({ open, editReq, onClose, onSaved, us
           </div>
 
           {/* 폼 */}
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          <div className={`flex-1 overflow-y-auto px-6 py-5 space-y-4 ${readOnly ? 'pointer-events-none select-none opacity-70' : ''}`}>
 
             {/* 주문방식 */}
             <div className="space-y-1.5">
@@ -482,12 +483,18 @@ export default function MiscPurchaseDialog({ open, editReq, onClose, onSaved, us
 
           {/* 푸터 */}
           <div className="px-6 py-4 border-t bg-gray-50/70 flex justify-end gap-2 shrink-0">
-            <Button variant="outline" size="sm" className="h-8 text-xs px-5"
-              onClick={onClose} disabled={saving}>취소</Button>
-            <Button size="sm" className="h-8 text-xs px-6 bg-blue-600 hover:bg-blue-700"
-              onClick={handleSave} disabled={saving}>
-              {saving ? '처리 중...' : editReq ? '수정' : '요청 등록'}
-            </Button>
+            {readOnly ? (
+              <Button variant="outline" size="sm" className="h-8 text-xs px-5" onClick={onClose}>닫기</Button>
+            ) : (
+              <>
+                <Button variant="outline" size="sm" className="h-8 text-xs px-5"
+                  onClick={onClose} disabled={saving}>취소</Button>
+                <Button size="sm" className="h-8 text-xs px-6 bg-blue-600 hover:bg-blue-700"
+                  onClick={handleSave} disabled={saving}>
+                  {saving ? '처리 중...' : editReq ? '수정' : '요청 등록'}
+                </Button>
+              </>
+            )}
           </div>
         </div>
       </div>

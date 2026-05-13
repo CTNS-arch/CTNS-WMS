@@ -207,6 +207,7 @@ export default function PurchasesPage() {
   const [statusCounts,  setStatusCounts]  = useState<Record<string, number>>({})
 
   const [formOpen,        setFormOpen]        = useState(false)
+  const [formReadOnly,    setFormReadOnly]    = useState(false)
   const [editReq,         setEditReq]         = useState<any | null>(null)
   const [form,            setForm]            = useState<FormState>(emptyForm())
   const [approvalEditing, setApprovalEditing] = useState(false)
@@ -218,6 +219,7 @@ export default function PurchasesPage() {
   const [buyerRequest, setBuyerRequest] = useState<any | null>(null)
 
   const [miscOpen,           setMiscOpen]           = useState(false)
+  const [miscReadOnly,       setMiscReadOnly]       = useState(false)
   const [miscEditReq,        setMiscEditReq]        = useState<any | null>(null)
   const [miscBuyerOpen,      setMiscBuyerOpen]      = useState(false)
   const [miscBuyerRequest,   setMiscBuyerRequest]   = useState<any | null>(null)
@@ -300,8 +302,9 @@ export default function PurchasesPage() {
     fetchNextSerial(dept)
   }
 
-  function openEdit(req: any) {
+  function openEdit(req: any, readOnly = false) {
     setEditReq(req)
+    setFormReadOnly(readOnly)
     const loaded: ItemRow[] = req.items?.length > 0
       ? req.items.map((it: any) => ({
           _key: newKey(),
@@ -656,21 +659,20 @@ export default function PurchasesPage() {
             <colgroup>
               <col style={{ width: 3 }} />
               <col style={{ width: 82 }} />
-              <col style={{ width: 90 }} />
-              <col style={{ width: 160 }} />
+              <col style={{ width: 110 }} />
               <col style={{ width: 88 }} />
-              <col style={{ width: 90 }} />
+              <col style={{ width: 110 }} />
+              <col />
               <col style={{ width: 100 }} />
               <col style={{ width: 68 }} />
-              <col style={{ width: 90 }} />
               <col style={{ width: 100 }} />
-              <col style={{ width: 90 }} />
+              <col style={{ width: 120 }} />
               <col style={{ width: 160 }} />
             </colgroup>
             <thead className="bg-white sticky top-0 z-10">
               <tr className="border-b border-gray-200">
                 <th className="w-1 p-0" />
-                {['상태', '구매요청코드', '요청제목', '요청자', '프로젝트코드', '공급처', '배송지', '총금액', '품의서번호', '사용카드', '관리'].map(h => (
+                {['상태', '구매요청코드', '요청자', '프로젝트코드', '요청제목', '공급처', '배송지', '총금액', '사용카드', '관리'].map(h => (
                   <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 whitespace-nowrap">
                     {h}
                   </th>
@@ -682,7 +684,7 @@ export default function PurchasesPage() {
                 <tr><td colSpan={12} className="px-3 py-16 text-center text-gray-400 text-xs">불러오는 중...</td></tr>
               ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-3 py-16 text-center">
+                  <td colSpan={11} className="px-3 py-16 text-center">
                     <div className="text-gray-300 text-2xl mb-2">📋</div>
                     <div className="text-gray-400 text-xs">연구비 구매 요청 내역이 없습니다.</div>
                   </td>
@@ -701,14 +703,14 @@ export default function PurchasesPage() {
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
                       {req.documentNo || <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-3 py-2 text-xs text-gray-700 max-w-[160px] truncate">
-                      {req.title || <span className="text-gray-300">—</span>}
-                    </td>
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
                       {drafter || <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
                       {req.miscWorkCode || <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-700 max-w-0 truncate">
+                      {req.title || <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
                       {req.miscSupplier || <span className="text-gray-300">—</span>}
@@ -719,9 +721,6 @@ export default function PurchasesPage() {
                     <td className="px-3 py-2 text-xs text-right tabular-nums text-gray-700 font-medium whitespace-nowrap">
                       {req.miscTotalAmount != null ? fmtMoney(req.miscTotalAmount) : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
-                      {req.miscDocumentRef || <span className="text-gray-300">—</span>}
-                    </td>
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
                       {req.cardUsed || <span className="text-gray-300">—</span>}
                     </td>
@@ -729,13 +728,21 @@ export default function PurchasesPage() {
                       <div className="flex items-center gap-1">
                         {/* 구매 요청자 전용 버튼 */}
                         {isOwn(req) && (
-                          <button
-                            onClick={() => { if (!['ORDERED', 'RECEIVED', 'REJECTED'].includes(req.status)) { setMiscEditReq(req); setMiscOpen(true) } }}
-                            disabled={['ORDERED', 'RECEIVED', 'REJECTED'].includes(req.status)}
-                            className="h-7 px-2.5 rounded text-xs font-medium border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-blue-50"
-                          >
-                            수정
-                          </button>
+                          req.status === 'PENDING' ? (
+                            <button
+                              onClick={() => { setMiscReadOnly(false); setMiscEditReq(req); setMiscOpen(true) }}
+                              className="h-7 px-2.5 rounded text-xs font-medium border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors whitespace-nowrap"
+                            >
+                              수정
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => { setMiscReadOnly(true); setMiscEditReq(req); setMiscOpen(true) }}
+                              className="h-7 px-2.5 rounded text-xs font-medium border border-gray-200 text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors whitespace-nowrap"
+                            >
+                              보기
+                            </button>
+                          )
                         )}
                         {isOwn(req) && (
                           <button
@@ -895,13 +902,21 @@ export default function PurchasesPage() {
                         <td rowSpan={groupSize} className="px-3 py-2 align-middle">
                           <div className="flex items-center gap-1">
                             {(isAdmin || isOwn(req)) && (
-                              <button
-                                onClick={() => { if (!['APPROVED', 'ORDERED', 'RECEIVED', 'REJECTED'].includes(req.status)) openEdit(req) }}
-                                disabled={['APPROVED', 'ORDERED', 'RECEIVED', 'REJECTED'].includes(req.status)}
-                                className="h-7 px-2.5 rounded text-xs font-medium border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-blue-50"
-                              >
-                                수정
-                              </button>
+                              req.status === 'PENDING' ? (
+                                <button
+                                  onClick={() => openEdit(req, false)}
+                                  className="h-7 px-2.5 rounded text-xs font-medium border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors whitespace-nowrap"
+                                >
+                                  수정
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => openEdit(req, true)}
+                                  className="h-7 px-2.5 rounded text-xs font-medium border border-gray-200 text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors whitespace-nowrap"
+                                >
+                                  보기
+                                </button>
+                              )
                             )}
                             {isAdmin && (
                               <button
@@ -956,11 +971,11 @@ export default function PurchasesPage() {
             <div className="flex items-center justify-between px-6 py-3.5 border-b shrink-0"
               style={{ background: 'linear-gradient(to right, #eff6ff, #f8fafc)' }}>
               <div className="flex items-center gap-3">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-[11px] font-semibold">
-                  <span>✏️</span> 요청자
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${formReadOnly ? 'bg-gray-100 text-gray-600' : 'bg-blue-100 text-blue-700'}`}>
+                  <span>{formReadOnly ? '👁' : '✏️'}</span> 요청자
                 </span>
                 <h2 className="text-sm font-bold text-gray-900">
-                  {editReq ? '구매 요청 수정' : '구매 요청 등록'}
+                  {formReadOnly ? '구매 요청 조회' : editReq ? '구매 요청 수정' : '구매 요청 등록'}
                 </h2>
                 {editReq && (
                   <>
@@ -975,7 +990,7 @@ export default function PurchasesPage() {
                 className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 text-lg font-light">×</button>
             </div>
 
-            <div className="flex-1 overflow-auto flex flex-col gap-0 min-h-0">
+            <div className={`flex-1 overflow-auto flex flex-col gap-0 min-h-0 ${formReadOnly ? 'pointer-events-none select-none opacity-70' : ''}`}>
 
               {/* 기본 정보 섹션 */}
               <div className="px-6 py-4 border-b bg-gray-50/50 shrink-0">
@@ -1139,7 +1154,6 @@ export default function PurchasesPage() {
                     <tbody>
                       {(() => {
                         const todayStr = new Date().toISOString().split('T')[0]
-                        const codePrefix = form.department === '연구소' ? 'L' : 'P'
                         const codeYY = String(new Date().getFullYear()).slice(-2)
                         const validKeys = !editReq
                           ? form.items
@@ -1157,7 +1171,9 @@ export default function PurchasesPage() {
                         const codePreview = editReq
                           ? (editReq.documentNo || null)
                           : (codeIdx >= 0 && nextSerial !== null)
-                            ? `${codePrefix}${codeYY}-${String(nextSerial + codeIdx).padStart(4, '0')}`
+                            ? form.department === '연구소'
+                              ? `L${codeYY}-P${String(nextSerial + codeIdx).padStart(3, '0')}`
+                              : `P${codeYY}-${String(nextSerial + codeIdx).padStart(4, '0')}`
                             : null
                         const rowBg = !isDomesticSelected ? 'bg-gray-50/60' : filled ? 'bg-blue-50/30' : 'bg-white'
                         return (
@@ -1362,11 +1378,18 @@ export default function PurchasesPage() {
                 )}
               </div>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="h-8 text-xs px-5"
-                  onClick={() => setFormOpen(false)} disabled={saving}>취소</Button>
-                <Button size="sm" className="h-8 text-xs px-6 bg-blue-600 hover:bg-blue-700" onClick={handleSave} disabled={saving}>
-                  {saving ? '저장 중...' : '저장'}
-                </Button>
+                {formReadOnly ? (
+                  <Button variant="outline" size="sm" className="h-8 text-xs px-5"
+                    onClick={() => setFormOpen(false)}>닫기</Button>
+                ) : (
+                  <>
+                    <Button variant="outline" size="sm" className="h-8 text-xs px-5"
+                      onClick={() => setFormOpen(false)} disabled={saving}>취소</Button>
+                    <Button size="sm" className="h-8 text-xs px-6 bg-blue-600 hover:bg-blue-700" onClick={handleSave} disabled={saving}>
+                      {saving ? '저장 중...' : '저장'}
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -1469,7 +1492,8 @@ export default function PurchasesPage() {
       <MiscPurchaseDialog
         open={miscOpen}
         editReq={miscEditReq}
-        onClose={() => { setMiscOpen(false); setMiscEditReq(null) }}
+        readOnly={miscReadOnly}
+        onClose={() => { setMiscOpen(false); setMiscEditReq(null); setMiscReadOnly(false) }}
         onSaved={saved => {
           setRequests(prev => {
             const exists = prev.some(r => r.id === saved.id)
