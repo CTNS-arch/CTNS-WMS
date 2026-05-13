@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { isSameItem } from '@/lib/item-duplicate-check'
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -22,6 +23,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params
     const body = await req.json()
+
+    // ── 스펙 중복 검사 (자신 제외, revisionNumber·itemCode 제외한 모든 필드) ──
+    if (body.itemName && body.category) {
+      const dupeCheck = await prisma.item.findMany({
+        where: { itemName: body.itemName, category: body.category, id: { not: id } },
+      })
+      if (dupeCheck.some(c => isSameItem(c as any, body))) {
+        return NextResponse.json({ success: false, message: '동일한 품목이 있습니다.' }, { status: 409 })
+      }
+    }
+
     const item = await prisma.item.update({ where: { id }, data: body })
     return NextResponse.json({ success: true, data: item })
   } catch (err: any) {

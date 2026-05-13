@@ -120,57 +120,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: '수량은 0보다 커야 합니다.' }, { status: 400 })
     }
 
-    // 메인 재고 트랜잭션
-    const stock = await prisma.$transaction(async tx => {
-      if (type === StockTxType.IN) {
-        const updated = await tx.stock.upsert({
-          where: { itemId_department: { itemId, department } },
-          create: { itemId, department, quantity: qty },
-          update: { quantity: { increment: qty } },
-        })
-        await tx.stockTransaction.create({
-          data: {
-            itemId, type: StockTxType.IN, toDept: department, quantity: qty,
-            memo: memo ?? null, userId: userId ?? null,
-            unitCost: unitCost != null ? Number(unitCost) : null,
-            currency: unitCost != null ? (currency ?? 'KRW') : null,
-          },
-        })
-        return updated
-      }
+    // Neon HTTP 어댑터: $transaction 미지원 → 순차 실행
+    let stock: any
 
-      if (type === StockTxType.OUT) {
-        const existing = await tx.stock.findUnique({ where: { itemId_department: { itemId, department } } })
-        if (!existing || existing.quantity < qty) throw new Error('재고가 부족합니다.')
-        const updated = await tx.stock.update({
-          where: { itemId_department: { itemId, department } },
-          data: { quantity: { decrement: qty } },
-        })
-        await tx.stockTransaction.create({
-          data: { itemId, type: StockTxType.OUT, fromDept: department, quantity: qty, memo: memo ?? null, userId: userId ?? null },
-        })
-        return updated
-      }
-
-      if (type === StockTxType.ADJUST) {
-        const updated = await tx.stock.upsert({
-          where: { itemId_department: { itemId, department } },
-          create: { itemId, department, quantity: qty },
-          update: { quantity: qty },
-        })
-        await tx.stockTransaction.create({
-          data: {
-            itemId, type: StockTxType.ADJUST, toDept: department, quantity: qty,
-            memo: memo ?? null, userId: userId ?? null,
-            unitCost: unitCost != null ? Number(unitCost) : null,
-            currency: unitCost != null ? (currency ?? 'KRW') : null,
-          },
-        })
-        return updated
-      }
-
+    if (type === StockTxType.IN) {
+      stock = await prisma.stock.upsert({
+        where: { itemId_department: { itemId, department } },
+        create: { itemId, department, quantity: qty },
+        update: { quantity: { increment: qty } },
+      })
+      await prisma.stockTransaction.create({
+        data: {
+          itemId, type: StockTxType.IN, toDept: department, quantity: qty,
+          memo: memo ?? null, userId: userId ?? null,
+          unitCost: unitCost != null ? Number(unitCost) : null,
+          currency: unitCost != null ? (currency ?? 'KRW') : null,
+        },
+      })
+    } else if (type === StockTxType.OUT) {
+      const existing = await prisma.stock.findUnique({ where: { itemId_department: { itemId, department } } })
+      if (!existing || existing.quantity < qty) throw new Error('재고가 부족합니다.')
+      stock = await prisma.stock.update({
+        where: { itemId_department: { itemId, department } },
+        data: { quantity: { decrement: qty } },
+      })
+      await prisma.stockTransaction.create({
+        data: { itemId, type: StockTxType.OUT, fromDept: department, quantity: qty, memo: memo ?? null, userId: userId ?? null },
+      })
+    } else if (type === StockTxType.ADJUST) {
+      stock = await prisma.stock.upsert({
+        where: { itemId_department: { itemId, department } },
+        create: { itemId, department, quantity: qty },
+        update: { quantity: qty },
+      })
+      await prisma.stockTransaction.create({
+        data: {
+          itemId, type: StockTxType.ADJUST, toDept: department, quantity: qty,
+          memo: memo ?? null, userId: userId ?? null,
+          unitCost: unitCost != null ? Number(unitCost) : null,
+          currency: unitCost != null ? (currency ?? 'KRW') : null,
+        },
+      })
+    } else {
       throw new Error('지원하지 않는 트랜잭션 유형입니다.')
-    })
+    }
 
     // FIFO 원가 레이어 업데이트 (재고 트랜잭션과 분리 — 실패 시 재고에 영향 없음)
     try {

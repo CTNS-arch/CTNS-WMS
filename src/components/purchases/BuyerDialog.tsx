@@ -4,26 +4,31 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
-// ── 타입 ─────────────────────────────────────────────────
+// ── 타입 ────────────────────────────────────────────────────
 interface PurchaseFile {
   id: string; fileName: string; fileUrl: string
   fileType: string | null; fileSize: number | null; uploadedAt: string
 }
 
 interface BuyerItem {
-  id: string; lineNo: number
-  bomNo: string | null; spec: string | null
-  quantity: number; unit: string
+  id: string; lineNo: number; itemId: string | null
+  bomNo: string | null; spec: string | null; quantity: number; unit: string
   currency: string | null; supplyAmount: number | null; taxAmount: number | null
-  domestic: string; orderMethod: string; orderNo: string
+  // 발주
+  domestic: string; supplierName: string; orderMethod: string; orderNo: string
+  buyerCurrency: string; exchangeRate: string
+  additionalCost: string; buyerSupplyAmount: string; buyerTaxAmount: string
+  krwAmount: string; unitPrice: string
+  // 물류
   plannedShipDate: string; actualShipDate: string
-  shippingMethod: string; trackingNo: string; boxCount: string
-  remittanceDate: string; paymentDate: string
-  buyerCurrency: string; buyerSupplyAmount: string; buyerTaxAmount: string
-  additionalCost: string; portArrivalDate: string; loadingDate: string
+  shippingMethod: string; trackingNo: string; blNo: string
+  boxCount: string; boxUnitQty: string; receiveQty: string
+  portArrivalDate: string; loadingDate: string
   estimatedArrivalDate: string; actualReceiptDate: string
-  blNo: string; buyerMemo: string
-  exchangeRate: string; krwAmount: string; unitPrice: string
+  // 정산
+  paymentMethod: string
+  payBankName: string; payAccountNumber: string; payAccountHolder: string
+  remittanceDate: string; paymentDate: string; buyerMemo: string
 }
 
 interface Props {
@@ -31,95 +36,149 @@ interface Props {
   onClose: () => void; onSaved: (updated: any) => void
 }
 
-// ── 상수 ─────────────────────────────────────────────────
-type Tab = 'order' | 'logistics' | 'payment' | 'files'
+// ── 상수 ────────────────────────────────────────────────────
+type Tab = 'order' | 'logistics' | 'payment'
 const TABS: { id: Tab; label: string }[] = [
   { id: 'order',     label: '발주 정보' },
   { id: 'logistics', label: '물류 정보' },
   { id: 'payment',   label: '정산 정보' },
-  { id: 'files',     label: '첨부 파일' },
 ]
 const STATUS_LABEL: Record<string, string> = {
-  PENDING: '검토중', ORDERED: '발주', RECEIVED: '입고완료', REJECTED: '반려',
+  PENDING: '요청', APPROVED: '검토중', ORDERED: '주문완료', RECEIVED: '입고완료', REJECTED: '반려',
 }
 const STATUS_COLOR: Record<string, string> = {
-  PENDING: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-  ORDERED: 'bg-blue-100 text-blue-700 border-blue-200',
+  PENDING:  'bg-yellow-100 text-yellow-700 border-yellow-200',
+  APPROVED: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  ORDERED:  'bg-blue-100  text-blue-700  border-blue-200',
   RECEIVED: 'bg-green-100 text-green-700 border-green-200',
-  REJECTED: 'bg-red-100 text-red-700 border-red-200',
+  REJECTED: 'bg-red-100   text-red-700   border-red-200',
 }
 const NEXT_STATUS: Record<string, string[]> = {
-  PENDING: ['ORDERED', 'REJECTED'],
-  ORDERED: ['RECEIVED', 'REJECTED'],
-  RECEIVED: [], REJECTED: ['PENDING'],
+  PENDING:  ['APPROVED', 'REJECTED'],
+  APPROVED: ['ORDERED', 'PENDING', 'REJECTED'],
+  ORDERED:  ['RECEIVED', 'PENDING', 'REJECTED'],
+  RECEIVED: ['PENDING'],
+  REJECTED: ['PENDING'],
 }
 const NEXT_STATUS_STYLE: Record<string, string> = {
-  ORDERED:  'bg-blue-600 hover:bg-blue-700 text-white',
+  APPROVED: 'bg-indigo-600 hover:bg-indigo-700 text-white',
+  ORDERED:  'bg-blue-600  hover:bg-blue-700  text-white',
   RECEIVED: 'bg-green-600 hover:bg-green-700 text-white',
-  REJECTED: 'bg-red-500 hover:bg-red-600 text-white',
-  PENDING:  'bg-gray-600 hover:bg-gray-700 text-white',
+  REJECTED: 'bg-red-500   hover:bg-red-600   text-white',
+  PENDING:  'bg-gray-600  hover:bg-gray-700  text-white',
 }
 const FILE_TYPES   = ['견적서', '발주서', '인보이스', '기타']
 const DOMESTIC_OPT = ['국내', '해외']
 const ORDER_OPT    = ['이메일', '전화', '온라인', '방문']
-const SHIP_OPT     = ['해운', '항공', '업체 직배송']
+const SHIP_OPT     = ['해운', '항공', '업체직배송 (해외)', '업체직배송 (국내)', '국내택배', '국내화물', '퀵/당일']
 const CURRENCY_OPT = ['KRW', 'USD', 'CNY']
+const PAYMENT_OPT  = ['계좌이체', '카드', '현금', '어음']
 
 function toDate(d: string | null | undefined) { return d?.slice(0, 10) ?? '' }
 
-// ── 공통 필드 컴포넌트 ────────────────────────────────────
+// ── UI 헬퍼 ─────────────────────────────────────────────────
 function Field({ label, children, cols = 1 }: {
   label: string; children: React.ReactNode; cols?: 1 | 2 | 3
 }) {
   return (
     <div className={cols === 2 ? 'col-span-2' : cols === 3 ? 'col-span-3' : ''}>
-      <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
-        {label}
-      </label>
+      {label && (
+        <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+          {label}
+        </label>
+      )}
       {children}
     </div>
   )
 }
 
-const inp = 'w-full h-8 px-2.5 text-xs rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-colors'
-const selCls = inp + ' appearance-none'
+const inp     = 'w-full h-8 px-2.5 text-xs rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-colors'
 const calcCls = 'w-full h-8 px-2.5 text-xs rounded-lg border border-amber-200 bg-amber-50 text-amber-800 font-semibold text-right flex items-center justify-end'
 
-// ── 메인 컴포넌트 ─────────────────────────────────────────
+// 드롭다운 화살표 포함 select 래퍼
+function Sel({ value, onChange, children, disabled = false }: {
+  value: string
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void
+  children: React.ReactNode
+  disabled?: boolean
+}) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        className={inp + ' appearance-none pr-7 disabled:bg-gray-50 disabled:text-gray-300'}
+      >
+        {children}
+      </select>
+      <svg
+        className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400"
+        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    </div>
+  )
+}
+
+// 섹션 헤더
+function Sec({ label, color }: { label: string; color: string }) {
+  return (
+    <div className="flex items-center gap-2 mb-2.5">
+      <span className={`text-[9px] font-bold uppercase tracking-widest shrink-0 ${color}`}>{label}</span>
+      <div className="flex-1 h-px bg-gray-200" />
+    </div>
+  )
+}
+
+// ── 메인 컴포넌트 ────────────────────────────────────────────
 export default function BuyerDialog({ open, request, onClose, onSaved }: Props) {
-  const [items,      setItems]      = useState<BuyerItem[]>([])
-  const [files,      setFiles]      = useState<PurchaseFile[]>([])
-  const [activeTab,  setActiveTab]  = useState<Tab>('order')
-  const [saving,     setSaving]     = useState(false)
-  const [dragging,   setDragging]   = useState(false)
-  const [uploading,  setUploading]  = useState(false)
-  const [fileType,   setFileType]   = useState('기타')
-  const [nextStatus, setNextStatus] = useState('')
-  const [fetchingRate, setFetchingRate] = useState<string | null>(null)
+  const [items,           setItems]           = useState<BuyerItem[]>([])
+  const [files,           setFiles]           = useState<PurchaseFile[]>([])
+  const [activeTab,       setActiveTab]       = useState<Tab>('order')
+  const [saving,          setSaving]          = useState(false)
+  const [dragging,        setDragging]        = useState(false)
+  const [uploading,       setUploading]       = useState(false)
+  const [fileType,        setFileType]        = useState('기타')
+  const [nextStatus,      setNextStatus]      = useState('')
+  const [fetchingRate,    setFetchingRate]    = useState<string | null>(null)
+  const [loadingBankInfo, setLoadingBankInfo] = useState<string | null>(null)
+  const [confirmItem,     setConfirmItem]     = useState<BuyerItem | null>(null)
+  const [receiving,       setReceiving]       = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const initItems = useCallback((raw: any[]) =>
     setItems(raw.map(it => ({
-      id: it.id, lineNo: it.lineNo,
-      bomNo: it.bomNo, spec: it.spec,
-      quantity: it.quantity, unit: it.unit,
+      id: it.id, lineNo: it.lineNo, itemId: it.itemId ?? null,
+      bomNo: it.bomNo, spec: it.spec, quantity: it.quantity, unit: it.unit,
       currency: it.currency, supplyAmount: it.supplyAmount, taxAmount: it.taxAmount,
-      domestic: it.domestic ?? '', orderMethod: it.orderMethod ?? '', orderNo: it.orderNo ?? '',
-      plannedShipDate: toDate(it.plannedShipDate), actualShipDate: toDate(it.actualShipDate),
-      shippingMethod: it.shippingMethod ?? '', trackingNo: it.trackingNo ?? '',
-      boxCount: it.boxCount != null ? String(it.boxCount) : '',
-      remittanceDate: toDate(it.remittanceDate), paymentDate: toDate(it.paymentDate),
-      buyerCurrency: it.buyerCurrency ?? 'KRW',
+      domestic:     it.domestic     ?? '',
+      supplierName: it.supplier     ?? '',
+      orderMethod:  it.orderMethod  ?? '',
+      orderNo:      it.orderNo      ?? '',
+      buyerCurrency:     it.buyerCurrency ?? 'KRW',
+      exchangeRate:      it.exchangeRate      != null ? String(it.exchangeRate)      : '',
+      additionalCost:    it.additionalCost    != null ? String(it.additionalCost)    : '',
       buyerSupplyAmount: it.buyerSupplyAmount != null ? String(it.buyerSupplyAmount) : (it.supplyAmount != null ? String(it.supplyAmount) : ''),
       buyerTaxAmount:    it.buyerTaxAmount    != null ? String(it.buyerTaxAmount)    : (it.taxAmount   != null ? String(it.taxAmount)    : ''),
-      additionalCost:    it.additionalCost    != null ? String(it.additionalCost)    : '',
-      portArrivalDate:   toDate(it.portArrivalDate), loadingDate: toDate(it.loadingDate),
+      krwAmount: it.krwAmount != null ? String(it.krwAmount) : '',
+      unitPrice: it.unitPrice != null ? String(it.unitPrice) : '',
+      plannedShipDate: toDate(it.plannedShipDate), actualShipDate: toDate(it.actualShipDate),
+      shippingMethod: it.shippingMethod ?? '', trackingNo: it.trackingNo ?? '', blNo: it.blNo ?? '',
+      boxCount:   it.boxCount   != null ? String(it.boxCount)   : '',
+      boxUnitQty: it.boxUnitQty != null ? String(it.boxUnitQty) : '',
+      receiveQty: String(it.quantity),
+      portArrivalDate:      toDate(it.portArrivalDate),
+      loadingDate:          toDate(it.loadingDate),
       estimatedArrivalDate: toDate(it.estimatedArrivalDate),
       actualReceiptDate:    toDate(it.actualReceiptDate),
-      blNo: it.blNo ?? '', buyerMemo: it.buyerMemo ?? '',
-      exchangeRate: it.exchangeRate != null ? String(it.exchangeRate) : '',
-      krwAmount:    it.krwAmount    != null ? String(it.krwAmount)    : '',
-      unitPrice:    it.unitPrice    != null ? String(it.unitPrice)    : '',
+      paymentMethod:    it.paymentMethod    ?? '',
+      payBankName:      it.payBankName      ?? '',
+      payAccountNumber: it.payAccountNumber ?? '',
+      payAccountHolder: it.payAccountHolder ?? '',
+      remittanceDate: toDate(it.remittanceDate), paymentDate: toDate(it.paymentDate),
+      buyerMemo: it.buyerMemo ?? '',
     })))
   , [])
 
@@ -131,24 +190,32 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
     setNextStatus('')
   }, [open, request, initItems])
 
-  // ── 필드 업데이트 + 자동 계산 ─────────────────────────
+  // ── 필드 업데이트 ──────────────────────────────────────────
   const upd = (id: string, field: keyof BuyerItem, val: string) =>
     setItems(prev => prev.map(it => {
       if (it.id !== id) return it
       const next = { ...it, [field]: val }
-      if (['buyerSupplyAmount','exchangeRate','additionalCost','buyerCurrency'].includes(field)) {
-        const amt    = parseFloat(field === 'buyerSupplyAmount' ? val : next.buyerSupplyAmount) || 0
-        const rate   = parseFloat(field === 'exchangeRate'      ? val : next.exchangeRate)      || 1
-        const add    = parseFloat(field === 'additionalCost'    ? val : next.additionalCost)    || 0
-        const cur    = field === 'buyerCurrency' ? val : next.buyerCurrency
-        const krw    = cur === 'KRW' ? amt : amt * rate
-        const total  = krw + add
+      // 원화 환산 자동계산
+      if (['buyerSupplyAmount', 'exchangeRate', 'additionalCost', 'buyerCurrency'].includes(field)) {
+        const amt  = parseFloat(field === 'buyerSupplyAmount' ? val : next.buyerSupplyAmount) || 0
+        const rate = parseFloat(field === 'exchangeRate'      ? val : next.exchangeRate)      || 1
+        const add  = parseFloat(field === 'additionalCost'    ? val : next.additionalCost)    || 0
+        const cur  = field === 'buyerCurrency' ? val : next.buyerCurrency
+        const krw  = cur === 'KRW' ? amt : amt * rate
         next.krwAmount = krw > 0 ? String(Math.round(krw)) : ''
-        next.unitPrice = total > 0 && next.quantity > 0 ? String(Math.round(total / next.quantity)) : ''
+        next.unitPrice = (krw + add) > 0 && next.quantity > 0
+          ? String(Math.round((krw + add) / next.quantity)) : ''
+      }
+      // 입고수량 자동계산 (박스수량 × 박스별수량)
+      if (field === 'boxCount' || field === 'boxUnitQty') {
+        const boxes  = parseFloat(field === 'boxCount'   ? val : next.boxCount)   || 0
+        const perBox = parseFloat(field === 'boxUnitQty' ? val : next.boxUnitQty) || 0
+        if (boxes > 0 && perBox > 0) next.receiveQty = String(boxes * perBox)
       }
       return next
     }))
 
+  // ── 환율 조회 ──────────────────────────────────────────────
   const fetchRate = async (id: string, currency: string) => {
     if (currency === 'KRW') { upd(id, 'exchangeRate', ''); return }
     setFetchingRate(id)
@@ -163,7 +230,130 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
     finally { setFetchingRate(null) }
   }
 
-  // ── 저장 ─────────────────────────────────────────────
+  // ── 공급처 은행정보 불러오기 ──────────────────────────────
+  const loadBankInfo = async (itemId: string, supplierName: string) => {
+    if (!supplierName.trim()) { toast.error('공급처를 먼저 입력해주세요.'); return }
+    setLoadingBankInfo(itemId)
+    try {
+      const res  = await fetch(`/api/suppliers?search=${encodeURIComponent(supplierName.trim())}&limit=1`)
+      const json = await res.json()
+      if (json.success && json.data.suppliers[0]) {
+        const s = json.data.suppliers[0]
+        setItems(prev => prev.map(it =>
+          it.id !== itemId ? it : {
+            ...it,
+            payBankName:      s.bankName      ?? it.payBankName,
+            payAccountNumber: s.accountNumber ?? it.payAccountNumber,
+            payAccountHolder: s.accountHolder ?? it.payAccountHolder,
+          }
+        ))
+        toast.success('공급처 정보를 불러왔습니다.')
+      } else {
+        toast.error('해당 공급처를 찾을 수 없습니다.')
+      }
+    } catch { toast.error('공급처 정보 조회 실패') }
+    finally { setLoadingBankInfo(null) }
+  }
+
+  // ── 재고 입고 ──────────────────────────────────────────────
+  const doReceive = async (it: BuyerItem) => {
+    setConfirmItem(null)
+    if (!it.itemId) {
+      toast.error('품목이 ERP 품목과 연결되지 않아 재고 입고를 진행할 수 없습니다.')
+      return
+    }
+    if (!it.receiveQty || Number(it.receiveQty) <= 0) {
+      toast.error('총 수량을 입력해주세요.')
+      return
+    }
+    const dept = request.department === '연구소' ? 'LAB' : 'PRODUCTION'
+    const deptLabel = dept === 'LAB' ? '연구소' : '생산구매팀'
+    const todayStr = new Date().toISOString().slice(0, 10)
+    setReceiving(true)
+    try {
+      const stockRes = await fetch('/api/stock', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itemId: it.itemId, department: dept, type: 'IN',
+          quantity: Number(it.receiveQty),
+          memo: `구매요청 ${request.documentNo ?? request.id} 입고`,
+          unitCost: it.unitPrice ? Number(it.unitPrice) : null,
+          currency: 'KRW',
+        }),
+      })
+      const stockJson = await stockRes.json()
+      if (!stockJson.success) throw new Error(stockJson.message)
+
+      // actualReceiptDate를 DB에 저장하기 위해 buyerItems와 함께 PATCH
+      const receiptDate = it.actualReceiptDate || todayStr
+
+      // krwAmount: 저장된 값 우선, 없으면 buyerSupplyAmount로 환산
+      function resolveKrwAmount(item: BuyerItem): number | null {
+        if (item.krwAmount) return Number(item.krwAmount)
+        const sa  = item.buyerSupplyAmount ? Number(item.buyerSupplyAmount) : null
+        if (sa == null) return null
+        const cur = item.buyerCurrency || 'KRW'
+        if (cur === 'KRW') return sa
+        const rate = item.exchangeRate ? Number(item.exchangeRate) : null
+        return rate ? Math.round(sa * rate) : null
+      }
+
+      const patchRes = await fetch(`/api/purchases/${request.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'RECEIVED',
+          buyerItems: items.map(item => {
+            const krwAmount = resolveKrwAmount(item)
+            const add       = item.additionalCost ? Number(item.additionalCost) : 0
+            const unitPrice = krwAmount != null && item.quantity > 0
+              ? Math.round((krwAmount + add) / item.quantity)
+              : (item.unitPrice ? Number(item.unitPrice) : null)
+            return {
+              id: item.id,
+              supplier:            item.supplierName || null,
+              domestic:            item.domestic,
+              orderMethod:         item.orderMethod,
+              orderNo:             item.orderNo,
+              plannedShipDate:     item.plannedShipDate || null,
+              actualShipDate:      item.actualShipDate  || null,
+              shippingMethod:      item.shippingMethod,
+              trackingNo:          item.trackingNo,
+              blNo:                item.blNo,
+              boxCount:            item.boxCount    ? Number(item.boxCount)    : null,
+              boxUnitQty:          item.boxUnitQty  ? Number(item.boxUnitQty)  : null,
+              portArrivalDate:     item.portArrivalDate      || null,
+              loadingDate:         item.loadingDate          || null,
+              estimatedArrivalDate:item.estimatedArrivalDate || null,
+              actualReceiptDate:   item.id === it.id ? receiptDate : (item.actualReceiptDate || null),
+              buyerCurrency:       item.buyerCurrency     || null,
+              exchangeRate:        item.exchangeRate      ? Number(item.exchangeRate)      : null,
+              additionalCost:      add || null,
+              buyerSupplyAmount:   item.buyerSupplyAmount ? Number(item.buyerSupplyAmount) : null,
+              buyerTaxAmount:      item.buyerTaxAmount    ? Number(item.buyerTaxAmount)    : null,
+              krwAmount,
+              unitPrice,
+              paymentMethod:       item.paymentMethod    || null,
+              payBankName:         item.payBankName      || null,
+              payAccountNumber:    item.payAccountNumber || null,
+              payAccountHolder:    item.payAccountHolder || null,
+              remittanceDate:      item.remittanceDate || null,
+              paymentDate:         item.paymentDate    || null,
+              buyerMemo:           item.buyerMemo,
+            }
+          }),
+        }),
+      })
+      const patchJson = await patchRes.json()
+      if (patchJson.success) onSaved({ ...patchJson.data, files })
+
+      toast.success(`[${deptLabel}] 재고 입고 완료 (+${Number(it.receiveQty).toLocaleString()} ${it.unit})`)
+      if (!it.actualReceiptDate)
+        upd(it.id, 'actualReceiptDate', todayStr)
+    } catch (e: any) { toast.error(e.message || '재고 입고 실패') }
+    finally { setReceiving(false) }
+  }
+
+  // ── 저장 ──────────────────────────────────────────────────
   const handleSave = async () => {
     if (saving) return
     setSaving(true)
@@ -171,23 +361,30 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
       const body: any = {
         buyerItems: items.map(it => ({
           id: it.id,
-          domestic: it.domestic, orderMethod: it.orderMethod, orderNo: it.orderNo,
+          supplier:     it.supplierName || null,
+          domestic:     it.domestic,
+          orderMethod:  it.orderMethod, orderNo: it.orderNo,
           plannedShipDate: it.plannedShipDate || null, actualShipDate: it.actualShipDate || null,
-          shippingMethod: it.shippingMethod, trackingNo: it.trackingNo,
-          boxCount: it.boxCount ? Number(it.boxCount) : null,
-          remittanceDate: it.remittanceDate || null, paymentDate: it.paymentDate || null,
-          buyerCurrency: it.buyerCurrency || null,
-          buyerSupplyAmount: it.buyerSupplyAmount ? Number(it.buyerSupplyAmount) : null,
-          buyerTaxAmount:    it.buyerTaxAmount    ? Number(it.buyerTaxAmount)    : null,
-          additionalCost:    it.additionalCost    ? Number(it.additionalCost)    : null,
+          shippingMethod: it.shippingMethod, trackingNo: it.trackingNo, blNo: it.blNo,
+          boxCount:   it.boxCount   ? Number(it.boxCount)   : null,
+          boxUnitQty: it.boxUnitQty ? Number(it.boxUnitQty) : null,
           portArrivalDate:      it.portArrivalDate      || null,
           loadingDate:          it.loadingDate          || null,
           estimatedArrivalDate: it.estimatedArrivalDate || null,
           actualReceiptDate:    it.actualReceiptDate    || null,
-          blNo: it.blNo, buyerMemo: it.buyerMemo,
-          exchangeRate: it.exchangeRate ? Number(it.exchangeRate) : null,
-          krwAmount:    it.krwAmount    ? Number(it.krwAmount)    : null,
-          unitPrice:    it.unitPrice    ? Number(it.unitPrice)    : null,
+          buyerCurrency:     it.buyerCurrency     || null,
+          exchangeRate:      it.exchangeRate      ? Number(it.exchangeRate)      : null,
+          additionalCost:    it.additionalCost    ? Number(it.additionalCost)    : null,
+          buyerSupplyAmount: it.buyerSupplyAmount ? Number(it.buyerSupplyAmount) : null,
+          buyerTaxAmount:    it.buyerTaxAmount    ? Number(it.buyerTaxAmount)    : null,
+          krwAmount: it.krwAmount ? Number(it.krwAmount) : null,
+          unitPrice: it.unitPrice ? Number(it.unitPrice) : null,
+          paymentMethod:    it.paymentMethod    || null,
+          payBankName:      it.payBankName      || null,
+          payAccountNumber: it.payAccountNumber || null,
+          payAccountHolder: it.payAccountHolder || null,
+          remittanceDate: it.remittanceDate || null, paymentDate: it.paymentDate || null,
+          buyerMemo: it.buyerMemo,
         })),
       }
       if (nextStatus) body.status = nextStatus
@@ -199,12 +396,11 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
       if (!json.success) throw new Error(json.message)
       toast.success('저장되었습니다.')
       onSaved({ ...json.data, files })
-    } catch (e: any) {
-      toast.error(e.message || '저장 실패')
-    } finally { setSaving(false) }
+    } catch (e: any) { toast.error(e.message || '저장 실패') }
+    finally { setSaving(false) }
   }
 
-  // ── 파일 업로드 ───────────────────────────────────────
+  // ── 파일 업로드 ───────────────────────────────────────────
   const uploadFiles = async (list: FileList | File[]) => {
     setUploading(true)
     try {
@@ -236,201 +432,321 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
   }
 
   if (!open || !request) return null
-
   const transitions = NEXT_STATUS[request.status] ?? []
 
-  // ── 탭별 콘텐츠 ──────────────────────────────────────
-  const ItemCard = ({ it }: { it: BuyerItem }) => (
-    <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-      {/* 카드 헤더 */}
-      <div className="px-4 py-3 bg-gradient-to-r from-gray-50 to-white border-b flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <span className="w-5 h-5 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold flex items-center justify-center shrink-0">
-            {it.lineNo}
-          </span>
-          <span className="font-mono text-xs font-semibold text-gray-700">{it.bomNo ?? '—'}</span>
-          {it.spec && <span className="text-xs text-gray-500 truncate max-w-[260px]">{it.spec}</span>}
-        </div>
-        <div className="flex items-center gap-3 text-xs text-gray-400 shrink-0">
-          <span>{it.quantity.toLocaleString()} {it.unit}</span>
-          {it.supplyAmount != null && (
-            <span className="font-medium text-gray-500">
-              {it.currency ?? 'KRW'} {it.supplyAmount.toLocaleString()}
-            </span>
-          )}
-        </div>
+  // ── 총액 표시 ─────────────────────────────────────────────
+  const Total = ({ it }: { it: BuyerItem }) => {
+    const t = (Number(it.buyerSupplyAmount) || 0)
+            + (Number(it.buyerTaxAmount)    || 0)
+            + (Number(it.additionalCost)    || 0)
+    return (
+      <div className={calcCls}>
+        {t > 0 ? t.toLocaleString('ko-KR') + ' ' + (it.buyerCurrency || 'KRW') : '—'}
       </div>
+    )
+  }
 
-      {/* 탭별 본문 */}
-      {activeTab === 'order' && (
-        <div className="p-4 space-y-3">
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="구분">
-              <select value={it.domestic} onChange={e => upd(it.id, 'domestic', e.target.value)} className={selCls}>
-                <option value="">—</option>
-                {DOMESTIC_OPT.map(o => <option key={o}>{o}</option>)}
-              </select>
-            </Field>
-            <Field label="주문방식">
-              <select value={it.orderMethod} onChange={e => upd(it.id, 'orderMethod', e.target.value)} className={selCls}>
-                <option value="">—</option>
-                {ORDER_OPT.map(o => <option key={o}>{o}</option>)}
-              </select>
-            </Field>
-            <Field label="주문번호">
-              <input value={it.orderNo} onChange={e => upd(it.id, 'orderNo', e.target.value)} className={inp} placeholder="주문번호 입력" />
-            </Field>
-          </div>
-          <div className="border-t border-dashed border-gray-100 pt-3">
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="결제 통화">
-                <select
-                  value={it.buyerCurrency}
-                  onChange={e => {
-                    upd(it.id, 'buyerCurrency', e.target.value)
-                    fetchRate(it.id, e.target.value)
-                  }}
-                  className={selCls}
-                >
-                  {CURRENCY_OPT.map(o => <option key={o}>{o}</option>)}
-                </select>
-              </Field>
-              <Field label="환율 (KRW 기준)">
-                <div className="flex gap-1">
-                  <input
-                    type="number"
-                    value={it.exchangeRate}
-                    onChange={e => upd(it.id, 'exchangeRate', e.target.value)}
-                    placeholder={it.buyerCurrency === 'KRW' ? '—' : '자동조회'}
-                    disabled={it.buyerCurrency === 'KRW'}
-                    className={inp + ' text-right flex-1 disabled:bg-gray-50 disabled:text-gray-300'}
-                  />
-                  {it.buyerCurrency !== 'KRW' && (
-                    <button
-                      onClick={() => fetchRate(it.id, it.buyerCurrency)}
-                      disabled={fetchingRate === it.id}
-                      className="px-2 h-8 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-xs text-gray-500 shrink-0 disabled:opacity-50"
-                    >
-                      {fetchingRate === it.id ? '...' : '조회'}
-                    </button>
-                  )}
-                </div>
-              </Field>
-              <div />
-            </div>
-            <div className="grid grid-cols-3 gap-3 mt-3">
-              <Field label="공급금액">
-                <input type="number" value={it.buyerSupplyAmount} onChange={e => upd(it.id, 'buyerSupplyAmount', e.target.value)} className={inp + ' text-right'} placeholder="0" />
-              </Field>
-              <Field label="세액">
-                <input type="number" value={it.buyerTaxAmount} onChange={e => upd(it.id, 'buyerTaxAmount', e.target.value)} className={inp + ' text-right'} placeholder="0" />
-              </Field>
-              <Field label="부대비용 (KRW)">
-                <input type="number" value={it.additionalCost} onChange={e => upd(it.id, 'additionalCost', e.target.value)} className={inp + ' text-right'} placeholder="0" />
-              </Field>
-            </div>
-            <div className="grid grid-cols-3 gap-3 mt-2">
-              <Field label="총액 (공급+세액+부대비용)" cols={2}>
-                <div className={calcCls}>
-                  {(() => {
-                    const t = (Number(it.buyerSupplyAmount) || 0) + (Number(it.buyerTaxAmount) || 0) + (Number(it.additionalCost) || 0)
-                    return t > 0 ? t.toLocaleString('ko-KR') + ' KRW' : '—'
-                  })()}
-                </div>
-              </Field>
-            </div>
-          </div>
-          {/* 계산 결과 */}
-          {(it.krwAmount || it.unitPrice) && (
-            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-amber-100">
-              <Field label="원화 환산금액">
-                <div className={calcCls}>
-                  {it.krwAmount ? Number(it.krwAmount).toLocaleString('ko-KR') + ' KRW' : '—'}
-                </div>
-              </Field>
-              <Field label="품목별 단가">
-                <div className={calcCls}>
-                  {it.unitPrice ? Number(it.unitPrice).toLocaleString('ko-KR') + ' KRW' : '—'}
-                </div>
-              </Field>
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'logistics' && (
-        <div className="p-4 space-y-3">
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="출고 예정일">
-              <input type="date" value={it.plannedShipDate} onChange={e => upd(it.id, 'plannedShipDate', e.target.value)} className={inp} />
-            </Field>
-            <Field label="출고일">
-              <input type="date" value={it.actualShipDate} onChange={e => upd(it.id, 'actualShipDate', e.target.value)} className={inp} />
-            </Field>
-            <Field label="운송방법">
-              <select value={it.shippingMethod} onChange={e => upd(it.id, 'shippingMethod', e.target.value)} className={selCls}>
-                <option value="">—</option>
-                {SHIP_OPT.map(o => <option key={o}>{o}</option>)}
-              </select>
-            </Field>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="송장번호" cols={2}>
-              <input value={it.trackingNo} onChange={e => upd(it.id, 'trackingNo', e.target.value)} className={inp} placeholder="송장번호 입력" />
-            </Field>
-            <Field label="박스 수량">
-              <input type="number" value={it.boxCount} onChange={e => upd(it.id, 'boxCount', e.target.value)} className={inp + ' text-right'} placeholder="0" />
-            </Field>
-          </div>
-          <div className="border-t border-dashed border-gray-100 pt-3 grid grid-cols-3 gap-3">
-            <Field label="도착 예정일">
-              <input type="date" value={it.estimatedArrivalDate} onChange={e => upd(it.id, 'estimatedArrivalDate', e.target.value)} className={inp} />
-            </Field>
-            <Field label="입고일">
-              <input type="date" value={it.actualReceiptDate} onChange={e => upd(it.id, 'actualReceiptDate', e.target.value)} className={inp} />
-            </Field>
-          </div>
-          {it.domestic === '해외' && (
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="항구 도착일">
-                <input type="date" value={it.portArrivalDate} onChange={e => upd(it.id, 'portArrivalDate', e.target.value)} className={inp} />
-              </Field>
-              <Field label="선적일">
-                <input type="date" value={it.loadingDate} onChange={e => upd(it.id, 'loadingDate', e.target.value)} className={inp} />
-              </Field>
-              <div />
-              <Field label="BL No." cols={2}>
-                <input value={it.blNo} onChange={e => upd(it.id, 'blNo', e.target.value)} className={inp} placeholder="BL 번호 입력" />
-              </Field>
-            </div>
-          )}
-        </div>
-      )}
-
-      {activeTab === 'payment' && (
-        <div className="p-4 space-y-3">
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="송금일">
-              <input type="date" value={it.remittanceDate} onChange={e => upd(it.id, 'remittanceDate', e.target.value)} className={inp} />
-            </Field>
-            <Field label="결제일">
-              <input type="date" value={it.paymentDate} onChange={e => upd(it.id, 'paymentDate', e.target.value)} className={inp} />
-            </Field>
-          </div>
-          <Field label="비고" cols={3}>
-            <textarea
-              value={it.buyerMemo}
-              onChange={e => upd(it.id, 'buyerMemo', e.target.value)}
-              rows={2}
-              placeholder="구매자 메모"
-              className="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none"
+  // ── 환율/금액 공통 블록 (발주·정산 공유) ─────────────────
+  const AmountBlock = ({ it }: { it: BuyerItem }) => (
+    <div className="space-y-2.5">
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="결제 통화">
+          <Sel value={it.buyerCurrency} onChange={e => { upd(it.id, 'buyerCurrency', e.target.value); fetchRate(it.id, e.target.value) }}>
+            {CURRENCY_OPT.map(o => <option key={o}>{o}</option>)}
+          </Sel>
+        </Field>
+        <Field label="환율 (KRW)" cols={2}>
+          <div className="flex gap-1">
+            <input
+              type="number"
+              value={it.exchangeRate}
+              onChange={e => upd(it.id, 'exchangeRate', e.target.value)}
+              placeholder={it.buyerCurrency === 'KRW' ? '—' : '자동조회'}
+              disabled={it.buyerCurrency === 'KRW'}
+              className={inp + ' text-right flex-1 disabled:bg-gray-50 disabled:text-gray-300'}
             />
+            {it.buyerCurrency !== 'KRW' && (
+              <button
+                onClick={() => fetchRate(it.id, it.buyerCurrency)}
+                disabled={fetchingRate === it.id}
+                className="px-2 h-8 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-xs text-gray-500 shrink-0 disabled:opacity-50"
+              >
+                {fetchingRate === it.id ? '…' : '조회'}
+              </button>
+            )}
+          </div>
+        </Field>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="부대비용 (KRW)">
+          <input type="number" value={it.additionalCost} onChange={e => upd(it.id, 'additionalCost', e.target.value)} className={inp + ' text-right'} placeholder="0" />
+        </Field>
+        <Field label="공급금액">
+          <input type="number" value={it.buyerSupplyAmount} onChange={e => upd(it.id, 'buyerSupplyAmount', e.target.value)} className={inp + ' text-right'} placeholder="0" />
+        </Field>
+        <Field label="세액">
+          <input type="number" value={it.buyerTaxAmount} onChange={e => upd(it.id, 'buyerTaxAmount', e.target.value)} className={inp + ' text-right'} placeholder="0" />
+        </Field>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <Field label="총액" cols={2}><Total it={it} /></Field>
+      </div>
+      {(it.krwAmount || it.unitPrice) && (
+        <div className="grid grid-cols-2 gap-3 pt-1 border-t border-amber-100">
+          <Field label="원화 환산금액">
+            <div className={calcCls}>{it.krwAmount ? Number(it.krwAmount).toLocaleString('ko-KR') + ' KRW' : '—'}</div>
+          </Field>
+          <Field label="품목별 단가">
+            <div className={calcCls}>{it.unitPrice ? Number(it.unitPrice).toLocaleString('ko-KR') + ' KRW' : '—'}</div>
           </Field>
         </div>
       )}
     </div>
   )
 
+  // ── 품목 카드 ─────────────────────────────────────────────
+  const ItemCard = ({ it }: { it: BuyerItem }) => (
+    <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+      {/* 헤더 */}
+      <div className="px-4 py-2.5 bg-gradient-to-r from-gray-50 to-white border-b flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="w-5 h-5 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold flex items-center justify-center shrink-0">
+            {it.lineNo}
+          </span>
+          <span className="font-mono text-xs font-semibold text-gray-700 shrink-0">{it.bomNo ?? '—'}</span>
+          {it.spec && <span className="text-xs text-gray-400 truncate">{it.spec}</span>}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {it.domestic && (
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+              it.domestic === '국내' ? 'bg-teal-100 text-teal-700' : 'bg-sky-100 text-sky-700'
+            }`}>{it.domestic}</span>
+          )}
+          <span className="text-xs text-gray-500 font-medium">{it.quantity.toLocaleString()} {it.unit}</span>
+          {it.supplyAmount != null && (
+            <span className="text-xs text-gray-400 font-mono">{it.currency ?? 'KRW'} {it.supplyAmount.toLocaleString()}</span>
+          )}
+        </div>
+      </div>
+
+      {/* ── 발주 정보 ── */}
+      {activeTab === 'order' && (
+        <div className="p-4 space-y-4">
+          <div>
+            <Sec label="주문" color="text-gray-500" />
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="구분">
+                <Sel value={it.domestic} onChange={e => upd(it.id, 'domestic', e.target.value)}>
+                  <option value="">선택하세요</option>
+                  {DOMESTIC_OPT.map(o => <option key={o}>{o}</option>)}
+                </Sel>
+              </Field>
+              <Field label="공급처" cols={2}>
+                <input value={it.supplierName} onChange={e => upd(it.id, 'supplierName', e.target.value)} className={inp} placeholder="공급처 입력" />
+              </Field>
+              <Field label="주문방식">
+                <Sel value={it.orderMethod} onChange={e => upd(it.id, 'orderMethod', e.target.value)}>
+                  <option value="">선택하세요</option>
+                  {ORDER_OPT.map(o => <option key={o}>{o}</option>)}
+                </Sel>
+              </Field>
+              <Field label="주문번호" cols={2}>
+                <input value={it.orderNo} onChange={e => upd(it.id, 'orderNo', e.target.value)} className={inp} placeholder="주문번호 입력" />
+              </Field>
+            </div>
+          </div>
+          <div>
+            <Sec label="금액" color="text-amber-500" />
+            <AmountBlock it={it} />
+          </div>
+        </div>
+      )}
+
+      {/* ── 물류 정보 ── */}
+      {activeTab === 'logistics' && (
+        <div className="p-4 space-y-4">
+          {/* 출고 */}
+          <div>
+            <Sec label="출고" color="text-blue-500" />
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="출고 예정일">
+                <input type="date" value={it.plannedShipDate} onChange={e => upd(it.id, 'plannedShipDate', e.target.value)} className={inp} />
+              </Field>
+              <Field label="출고일">
+                <input type="date" value={it.actualShipDate} onChange={e => upd(it.id, 'actualShipDate', e.target.value)} className={inp} />
+              </Field>
+            </div>
+          </div>
+
+          {/* 운송 */}
+          <div>
+            <Sec label="운송" color="text-indigo-500" />
+            <div className="space-y-2.5">
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="운송방법">
+                  <Sel value={it.shippingMethod} onChange={e => upd(it.id, 'shippingMethod', e.target.value)}>
+                    <option value="">선택하세요</option>
+                    {SHIP_OPT.map(o => <option key={o}>{o}</option>)}
+                  </Sel>
+                </Field>
+                <Field label="송장번호" cols={2}>
+                  <input value={it.trackingNo} onChange={e => upd(it.id, 'trackingNo', e.target.value)} className={inp} placeholder="송장번호 입력" />
+                </Field>
+              </div>
+              {it.domestic === '해외' && (
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="BL No." cols={2}>
+                    <input value={it.blNo} onChange={e => upd(it.id, 'blNo', e.target.value)} className={inp} placeholder="BL 번호 입력" />
+                  </Field>
+                </div>
+              )}
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="박스 수량">
+                  <input type="number" value={it.boxCount} onChange={e => upd(it.id, 'boxCount', e.target.value)} className={inp + ' text-right'} placeholder="0" />
+                </Field>
+                <Field label="박스별 수량">
+                  <input type="number" value={it.boxUnitQty} onChange={e => upd(it.id, 'boxUnitQty', e.target.value)} className={inp + ' text-right'} placeholder="0" />
+                </Field>
+                <Field label="총 수량">
+                  <div className="flex gap-1">
+                    <input
+                      type="number" min="0"
+                      value={it.receiveQty}
+                      onChange={e => upd(it.id, 'receiveQty', e.target.value)}
+                      className={inp + ' text-right flex-1'}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setConfirmItem(it)}
+                      disabled={!it.itemId || !it.receiveQty || Number(it.receiveQty) <= 0 || receiving}
+                      className="h-8 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                    >
+                      {receiving ? '처리중…' : '입고 확정'}
+                    </button>
+                  </div>
+                  {!it.itemId && (
+                    <p className="text-[10px] text-amber-500 mt-0.5">품목 연결 필요</p>
+                  )}
+                </Field>
+              </div>
+            </div>
+          </div>
+
+          {/* 입고 */}
+          <div>
+            <Sec label="입고" color="text-green-600" />
+            <div className="space-y-2.5">
+              {it.domestic === '해외' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="항구 도착일">
+                    <input type="date" value={it.portArrivalDate} onChange={e => upd(it.id, 'portArrivalDate', e.target.value)} className={inp} />
+                  </Field>
+                  <Field label="선적일">
+                    <input type="date" value={it.loadingDate} onChange={e => upd(it.id, 'loadingDate', e.target.value)} className={inp} />
+                  </Field>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="도착 예정일">
+                  <input type="date" value={it.estimatedArrivalDate} onChange={e => upd(it.id, 'estimatedArrivalDate', e.target.value)} className={inp} />
+                </Field>
+                <Field label="실입고일">
+                  <input type="date" value={it.actualReceiptDate} onChange={e => upd(it.id, 'actualReceiptDate', e.target.value)} className={inp} />
+                </Field>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 정산 정보 ── */}
+      {activeTab === 'payment' && (
+        <div className="p-4 space-y-4">
+          {/* 결제 방식 */}
+          <div>
+            <Sec label="결제 방식" color="text-purple-500" />
+            <div className="grid grid-cols-1 gap-3">
+              <Field label="구분">
+                <Sel value={it.paymentMethod} onChange={e => upd(it.id, 'paymentMethod', e.target.value)}>
+                  <option value="">선택하세요</option>
+                  {PAYMENT_OPT.map(o => <option key={o}>{o}</option>)}
+                </Sel>
+              </Field>
+            </div>
+          </div>
+
+          {/* 금액 (공유 블록) */}
+          <div>
+            <Sec label="금액" color="text-amber-500" />
+            <AmountBlock it={it} />
+          </div>
+
+          {/* 계좌 정보 (계좌이체 시) */}
+          {it.paymentMethod === '계좌이체' && (
+            <div>
+              <Sec label="계좌 정보" color="text-blue-500" />
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="은행" cols={2}>
+                    <div className="flex gap-1">
+                      <input
+                        value={it.payBankName}
+                        onChange={e => upd(it.id, 'payBankName', e.target.value)}
+                        className={inp + ' flex-1'}
+                        placeholder="은행명"
+                      />
+                      <button
+                        onClick={() => loadBankInfo(it.id, it.supplierName)}
+                        disabled={loadingBankInfo === it.id}
+                        className="px-2 h-8 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-[11px] text-gray-500 shrink-0 disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {loadingBankInfo === it.id ? '…' : '불러오기'}
+                      </button>
+                    </div>
+                  </Field>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="계좌번호">
+                    <input value={it.payAccountNumber} onChange={e => upd(it.id, 'payAccountNumber', e.target.value)} className={inp} placeholder="계좌번호" />
+                  </Field>
+                  <Field label="예금주">
+                    <input value={it.payAccountHolder} onChange={e => upd(it.id, 'payAccountHolder', e.target.value)} className={inp} placeholder="예금주" />
+                  </Field>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 정산 일정 */}
+          <div>
+            <Sec label="정산 일정" color="text-gray-400" />
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="송금일">
+                <input type="date" value={it.remittanceDate} onChange={e => upd(it.id, 'remittanceDate', e.target.value)} className={inp} />
+              </Field>
+              <Field label="결제일">
+                <input type="date" value={it.paymentDate} onChange={e => upd(it.id, 'paymentDate', e.target.value)} className={inp} />
+              </Field>
+            </div>
+          </div>
+
+          {/* 메모 */}
+          <div>
+            <Sec label="메모" color="text-gray-400" />
+            <textarea
+              value={it.buyerMemo}
+              onChange={e => upd(it.id, 'buyerMemo', e.target.value)}
+              rows={3}
+              placeholder="구매자 메모"
+              className="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+
+  // ── 렌더 ──────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
       <div
@@ -438,7 +754,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
         style={{ width: '90vw', maxWidth: 960, height: '90vh' }}
         onClick={e => e.stopPropagation()}
       >
-        {/* ── 헤더 ── */}
+        {/* 헤더 */}
         <div className="px-6 py-4 border-b shrink-0 bg-gradient-to-r from-purple-50 to-white">
           <div className="flex items-start justify-between">
             <div>
@@ -454,17 +770,15 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
                 <span>{new Date(request.requestDate ?? request.createdAt).toLocaleDateString('ko-KR')}</span>
                 <span className="text-gray-300">|</span>
                 <span>품목 {items.length}개</span>
-                {files.length > 0 && (
-                  <span className="text-purple-600">파일 {files.length}개</span>
-                )}
+                {files.length > 0 && <span className="text-purple-600">파일 {files.length}개</span>}
               </div>
             </div>
             <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 text-lg shrink-0">×</button>
           </div>
         </div>
 
-        {/* ── 탭 바 ── */}
-        <div className="flex border-b shrink-0 bg-white px-6 gap-0">
+        {/* 탭 바 */}
+        <div className="flex border-b shrink-0 bg-white px-6">
           {TABS.map(tab => (
             <button
               key={tab.id}
@@ -475,115 +789,111 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
                   : 'text-gray-500 hover:text-gray-700'}`}
             >
               {tab.label}
-              {tab.id === 'files' && files.length > 0 && (
-                <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600 font-semibold">
-                  {files.length}
-                </span>
-              )}
             </button>
           ))}
         </div>
 
-        {/* ── 탭 본문 ── */}
+        {/* 탭 본문 */}
         <div className="flex-1 overflow-y-auto min-h-0">
-          {activeTab !== 'files' ? (
-            <div className="p-4 space-y-3">
-              {items.length === 0 ? (
-                <div className="text-center py-12 text-gray-400 text-sm">품목이 없습니다.</div>
-              ) : items.map(it => <ItemCard key={it.id} it={it} />)}
-            </div>
-          ) : (
-            <div className="p-4 space-y-4">
-              {/* 파일 유형 선택 */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-gray-600">파일 유형</span>
-                <div className="flex gap-1">
-                  {FILE_TYPES.map(t => (
-                    <button
-                      key={t}
-                      onClick={() => setFileType(t)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
-                        fileType === t
-                          ? 'bg-purple-600 text-white border-purple-600'
-                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                      }`}
-                    >
-                      {t}
-                    </button>
-                  ))}
+          <div className="p-4 space-y-3">
+            {items.length === 0 ? (
+              <div className="text-center py-12 text-gray-400 text-sm">품목이 없습니다.</div>
+            ) : items.map(it => <ItemCard key={it.id} it={it} />)}
+
+            {/* 첨부 파일 섹션 (발주 정보 탭 하단) */}
+            {activeTab === 'order' && (
+              <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                <div className="px-4 py-2.5 bg-gradient-to-r from-gray-50 to-white border-b flex items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-600">첨부 파일</span>
+                  {files.length > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600 font-semibold">{files.length}</span>
+                  )}
                 </div>
-                <span className="text-[11px] text-gray-400">선택 후 업로드</span>
-              </div>
-
-              {/* 드래그앤드롭 */}
-              <div
-                className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
-                  dragging ? 'border-purple-400 bg-purple-50' : 'border-gray-200 hover:border-purple-300 hover:bg-purple-50/30'
-                }`}
-                onDragOver={e => { e.preventDefault(); setDragging(true) }}
-                onDragLeave={() => setDragging(false)}
-                onDrop={e => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files) }}
-                onClick={() => fileRef.current?.click()}
-              >
-                <input ref={fileRef} type="file" multiple className="hidden"
-                  onChange={e => { if (e.target.files?.length) { uploadFiles(e.target.files); e.target.value = '' } }} />
-                {uploading ? (
-                  <p className="text-sm text-purple-600 font-medium">업로드 중...</p>
-                ) : (
-                  <>
-                    <div className="w-10 h-10 mx-auto mb-3 rounded-xl bg-gray-100 flex items-center justify-center">
-                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                      </svg>
-                    </div>
-                    <p className="text-sm font-medium text-gray-600">파일을 드래그하거나 클릭하여 업로드</p>
-                    <p className="text-xs text-gray-400 mt-1">PDF, Excel, 이미지 등 모든 형식 지원</p>
-                  </>
-                )}
-              </div>
-
-              {/* 파일 목록 */}
-              {files.length > 0 && (
-                <div className="space-y-2">
-                  {files.map(f => (
-                    <div key={f.id} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gray-50 border border-gray-100 group">
-                      <div className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center shrink-0">
-                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                      </div>
-                      <select
-                        value={f.fileType ?? '기타'}
-                        onChange={e => changeFileType(f.id, e.target.value)}
-                        className="h-6 rounded-md border border-gray-200 bg-white px-1.5 text-[11px] font-medium focus:outline-none shrink-0"
+                <div className="p-4 space-y-3">
+                  {/* 파일 유형 */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider shrink-0">파일 유형</span>
+                    {FILE_TYPES.map(t => (
+                      <button
+                        key={t}
+                        onClick={() => setFileType(t)}
+                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
+                          fileType === t
+                            ? 'bg-purple-600 text-white border-purple-600'
+                            : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                        }`}
                       >
-                        {FILE_TYPES.map(t => <option key={t}>{t}</option>)}
-                      </select>
-                      <a href={f.fileUrl} target="_blank" rel="noopener noreferrer"
-                        className="flex-1 text-xs text-blue-600 hover:underline truncate">{f.fileName}</a>
-                      {f.fileSize && (
-                        <span className="text-[11px] text-gray-400 shrink-0">
-                          {f.fileSize < 1024 * 1024 ? `${Math.round(f.fileSize / 1024)} KB` : `${(f.fileSize / 1024 / 1024).toFixed(1)} MB`}
-                        </span>
-                      )}
-                      <button onClick={() => deleteFile(f.id)}
-                        className="w-6 h-6 rounded-full flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
+                        {t}
                       </button>
+                    ))}
+                  </div>
+                  {/* 업로드 영역 */}
+                  <div
+                    className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                      dragging ? 'border-purple-400 bg-purple-50' : 'border-gray-200 hover:border-purple-300 hover:bg-purple-50/30'
+                    }`}
+                    onDragOver={e => { e.preventDefault(); setDragging(true) }}
+                    onDragLeave={() => setDragging(false)}
+                    onDrop={e => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files) }}
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    <input ref={fileRef} type="file" multiple className="hidden"
+                      onChange={e => { if (e.target.files?.length) { uploadFiles(e.target.files); e.target.value = '' } }} />
+                    {uploading ? (
+                      <p className="text-xs text-purple-600 font-medium">업로드 중...</p>
+                    ) : (
+                      <p className="text-xs text-gray-400">
+                        파일을 드래그하거나 <span className="text-purple-600 font-medium underline">클릭하여 업로드</span>
+                      </p>
+                    )}
+                  </div>
+                  {/* 파일 목록 */}
+                  {files.length > 0 && (
+                    <div className="space-y-1.5">
+                      {files.map(f => (
+                        <div key={f.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 group">
+                          <div className="relative shrink-0">
+                            <select
+                              value={f.fileType ?? '기타'}
+                              onChange={e => changeFileType(f.id, e.target.value)}
+                              className="h-6 rounded border border-gray-200 bg-white pl-1.5 pr-5 text-[11px] font-medium focus:outline-none appearance-none"
+                            >
+                              {FILE_TYPES.map(t => <option key={t}>{t}</option>)}
+                            </select>
+                            <svg className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </div>
+                          <a href={f.fileUrl} target="_blank" rel="noopener noreferrer"
+                            className="flex-1 text-xs text-blue-600 hover:underline truncate">{f.fileName}</a>
+                          {f.fileSize && (
+                            <span className="text-[11px] text-gray-400 shrink-0">
+                              {f.fileSize < 1024 * 1024
+                                ? `${Math.round(f.fileSize / 1024)} KB`
+                                : `${(f.fileSize / 1024 / 1024).toFixed(1)} MB`}
+                            </span>
+                          )}
+                          <button
+                            onClick={() => deleteFile(f.id)}
+                            className="w-5 h-5 rounded-full flex items-center justify-center text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* ── 푸터 ── */}
+        {/* 푸터 */}
         <div className="px-6 py-4 border-t bg-white shrink-0">
           <div className="flex items-center justify-between">
-            {/* 상태 전환 */}
             <div className="flex items-center gap-2">
               {transitions.length > 0 ? (
                 <>
@@ -620,6 +930,51 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
           </div>
         </div>
       </div>
+
+      {/* ── 입고 확정 확인 모달 ──────────────────────────────── */}
+      {confirmItem && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={() => setConfirmItem(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-80 p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2.5 mb-4">
+              <span className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0">
+                <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              <h3 className="text-sm font-bold text-gray-900">입고 확정</h3>
+            </div>
+            <div className="mb-5 space-y-1.5 text-xs text-gray-600">
+              <div className="flex justify-between">
+                <span className="text-gray-400">품목</span>
+                <span className="font-medium text-gray-800 truncate max-w-[160px]">{confirmItem.spec ?? confirmItem.bomNo ?? '—'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">수량</span>
+                <span className="font-semibold text-emerald-700">+{Number(confirmItem.receiveQty).toLocaleString()} {confirmItem.unit}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">입고 부서</span>
+                <span className="font-medium">{request.department === '연구소' ? '연구소' : '생산구매팀'}</span>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mb-5">재고를 입고 처리하고 상태를 <strong>입고완료</strong>로 변경합니다. 계속하시겠습니까?</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmItem(null)}
+                className="flex-1 h-9 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 font-medium transition-colors"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => doReceive(confirmItem)}
+                className="flex-1 h-9 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors"
+              >
+                입고 확정
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

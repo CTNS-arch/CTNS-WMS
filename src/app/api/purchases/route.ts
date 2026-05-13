@@ -15,7 +15,12 @@ export async function GET(req: NextRequest) {
 
     const where: any = {}
     if (status) where.status = status as PurchaseStatus
-    if (department) where.department = department
+    if (department) {
+      // '연구비' 탭은 탭명 변경 전 '기타' 데이터도 포함
+      where.department = department === '연구비'
+        ? { in: ['연구비', '기타'] }
+        : department
+    }
     if (search?.trim()) {
       where.OR = [
         { documentNo: { contains: search.trim(), mode: 'insensitive' } },

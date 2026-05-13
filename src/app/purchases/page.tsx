@@ -12,11 +12,15 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import BuyerDialog from '@/components/purchases/BuyerDialog'
+import MiscPurchaseDialog from '@/components/purchases/MiscPurchaseDialog'
+import MiscBuyerDialog from '@/components/purchases/MiscBuyerDialog'
+import MiscReceiveDialog from '@/components/purchases/MiscReceiveDialog'
+import MiscReceiveViewDialog from '@/components/purchases/MiscReceiveViewDialog'
 import ItemFormDialog from '@/components/items/ItemFormDialog'
 
 // ── 상수 ──────────────────────────────────────────────────
 const STATUS_LABEL: Record<string, string> = {
-  PENDING: '검토중', APPROVED: '승인', ORDERED: '발주', RECEIVED: '입고완료', REJECTED: '반려',
+  PENDING: '요청', APPROVED: '검토중', ORDERED: '주문완료', RECEIVED: '입고완료', REJECTED: '반려',
 }
 const STATUS_COLOR: Record<string, string> = {
   PENDING:  'bg-amber-100 text-amber-700 border border-amber-200',
@@ -47,14 +51,14 @@ const STATUS_ROW: Record<string, string> = {
 const FILTER_PILLS: { value: string; label: string }[] = [
   { value: '', label: '전체' },
   { value: 'PENDING', label: '검토중' },
-  { value: 'ORDERED', label: '발주' },
+  { value: 'ORDERED', label: '주문완료' },
   { value: 'RECEIVED', label: '입고완료' },
   { value: 'REJECTED', label: '반려' },
 ]
 const DEPT_TABS = [
-  { value: '', label: '전체' },
   { value: '생산구매팀', label: '생산구매팀' },
   { value: '연구소', label: '연구소' },
+  { value: '연구비', label: '연구비' },
 ]
 const DEPT_OPTIONS       = ['생산구매팀', '연구소']
 const CURRENCY_OPTIONS   = ['KRW', 'USD', 'CNY']
@@ -75,9 +79,13 @@ const SUB_CAT_LABEL: Record<string, string> = {
 type Approver = { order: number; role: string; name: string; userId?: string }
 
 type ApprovalDefaults = { reviewerId: string; reviewerName: string; approverId: string; approverName: string }
-type AllApprovalDefaults = { prod: ApprovalDefaults; lab: ApprovalDefaults }
+type AllApprovalDefaults = { prod: ApprovalDefaults; lab: ApprovalDefaults; etc: ApprovalDefaults }
 const emptyApprovalDefaults = (): ApprovalDefaults => ({ reviewerId: '', reviewerName: '', approverId: '', approverName: '' })
-function approvalKey(dept: string) { return dept === '연구소' ? 'erp-approval-lab' : 'erp-approval-prod' }
+function approvalKey(dept: string) {
+  if (dept === '연구소') return 'erp-approval-lab'
+  if (dept === '연구비')  return 'erp-approval-etc'
+  return 'erp-approval-prod'
+}
 function loadApprovalDefaultsByDept(dept: string): ApprovalDefaults {
   try {
     const raw = typeof window !== 'undefined' ? localStorage.getItem(approvalKey(dept)) : null
@@ -175,13 +183,17 @@ export default function PurchasesPage() {
   const { data: session } = useSession()
   const sessionName = session?.user?.name ?? ''
   const isProdStock = session?.user?.roles?.includes('PROD_STOCK') ?? false
+  const isLabStock  = session?.user?.roles?.includes('LAB_STOCK')  ?? false
+  const isOwn = (req: any) => req.requester?.email === session?.user?.email
 
   const [requests,      setRequests]      = useState<any[]>([])
   const [total,         setTotal]         = useState(0)
   const [page,          setPage]          = useState(1)
   const [loading,       setLoading]       = useState(false)
   const [filterStatus,  setFilterStatus]  = useState('')
-  const [deptTab,       setDeptTab]       = useState('')
+  const [deptTab,       setDeptTab]       = useState('생산구매팀')
+  // 현재 탭 기준 관리자 여부
+  const isAdmin = deptTab === '생산구매팀' ? isProdStock : isLabStock
   const [search,        setSearch]        = useState('')
   const [searchInput,   setSearchInput]   = useState('')
   const [statusCounts,  setStatusCounts]  = useState<Record<string, number>>({})
@@ -197,6 +209,15 @@ export default function PurchasesPage() {
   const [buyerOpen,    setBuyerOpen]    = useState(false)
   const [buyerRequest, setBuyerRequest] = useState<any | null>(null)
 
+  const [miscOpen,           setMiscOpen]           = useState(false)
+  const [miscEditReq,        setMiscEditReq]        = useState<any | null>(null)
+  const [miscBuyerOpen,      setMiscBuyerOpen]      = useState(false)
+  const [miscBuyerRequest,   setMiscBuyerRequest]   = useState<any | null>(null)
+  const [miscReceiveOpen,     setMiscReceiveOpen]     = useState(false)
+  const [miscReceiveRequest,  setMiscReceiveRequest]  = useState<any | null>(null)
+  const [miscReceiveViewOpen, setMiscReceiveViewOpen] = useState(false)
+  const [miscReceiveViewReq,  setMiscReceiveViewReq]  = useState<any | null>(null)
+
   const [nextSerial,      setNextSerial]      = useState<number | null>(null)
   const [tooltipInfo,     setTooltipInfo]     = useState<{ x: number; y: number; text: string } | null>(null)
   const [itemDetailOpen,  setItemDetailOpen]  = useState(false)
@@ -204,8 +225,8 @@ export default function PurchasesPage() {
 
   const [users,          setUsers]          = useState<UserItem[]>([])
   const [settingsOpen,   setSettingsOpen]   = useState(false)
-  const [settingsDraft,  setSettingsDraft]  = useState<AllApprovalDefaults>({ prod: emptyApprovalDefaults(), lab: emptyApprovalDefaults() })
-  const [settingsDeptTab, setSettingsDeptTab] = useState<'prod' | 'lab'>('prod')
+  const [settingsDraft,  setSettingsDraft]  = useState<AllApprovalDefaults>({ prod: emptyApprovalDefaults(), lab: emptyApprovalDefaults(), etc: emptyApprovalDefaults() })
+  const [settingsDeptTab, setSettingsDeptTab] = useState<'prod' | 'lab' | 'etc'>('prod')
 
   const bomRefs      = useRef<Record<string, HTMLInputElement | null>>({})
   const supplierRefs = useRef<Record<string, HTMLInputElement | null>>({})
@@ -514,12 +535,13 @@ export default function PurchasesPage() {
           <p className="text-[11px] text-gray-400 mt-0.5">요청자가 구매를 의뢰하고 구매담당자가 처리합니다</p>
         </div>
         <div className="flex items-center gap-2">
-          {isProdStock && (
+          {(isProdStock || isLabStock) && (
             <button
               onClick={() => {
                 setSettingsDraft({
                   prod: loadApprovalDefaultsByDept('생산구매팀'),
                   lab: loadApprovalDefaultsByDept('연구소'),
+                  etc: loadApprovalDefaultsByDept('연구비'),
                 })
                 setSettingsDeptTab('prod')
                 setSettingsOpen(true)
@@ -534,10 +556,29 @@ export default function PurchasesPage() {
               </svg>
             </button>
           )}
-          <Button onClick={openCreate} size="sm"
-            className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
-            + 구매 요청
-          </Button>
+          <a
+            href="https://www.bizplay.co.kr/main_0003_01.act"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="h-8 px-3 flex items-center gap-1.5 rounded-lg border border-gray-200 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-colors font-medium"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+            </svg>
+            비즈플레이
+          </a>
+          {deptTab === '연구비' ? (
+            <Button onClick={() => { setMiscEditReq(null); setMiscOpen(true) }} size="sm"
+              className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
+              일괄 구매 요청
+            </Button>
+          ) : (
+            <Button onClick={openCreate} size="sm"
+              className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
+              + 구매 요청
+            </Button>
+          )}
         </div>
       </div>
 
@@ -601,154 +642,285 @@ export default function PurchasesPage() {
 
       {/* ── 목록 테이블 ──────────────────────────────────── */}
       <div className="flex-1 overflow-auto">
-        <table className="text-xs w-full border-collapse" style={{ minWidth: 1420 }}>
-          <colgroup>
-            <col style={{ width: 3 }} />
-            <col style={{ width: 82 }} />
-            <col style={{ width: 60 }} />
-            <col style={{ width: 90 }} />
-            <col style={{ width: 88 }} />
-            <col style={{ width: 68 }} />
-            <col style={{ width: 68 }} />
-            <col style={{ width: 100 }} />
-            <col style={{ width: 82 }} />
-            <col style={{ width: 110 }} />
-            <col style={{ width: 180 }} />
-            <col style={{ width: 80 }} />
-            <col style={{ width: 90 }} />
-            <col style={{ width: 150 }} />
-            <col style={{ width: 175 }} />
-          </colgroup>
-          <thead className="bg-white sticky top-0 z-10">
-            <tr className="border-b border-gray-200">
-              <th className="w-1 p-0" />
-              {['상태', '구분', '구매요청코드', '요청자', '배송지', '대분류', '중분류', '소분류', '품목코드', '품목명', '수량', '총액', '비고', '관리'].map(h => (
-                <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 whitespace-nowrap">
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={15} className="px-3 py-16 text-center text-gray-400 text-xs">불러오는 중...</td></tr>
-            ) : requests.length === 0 ? (
-              <tr>
-                <td colSpan={15} className="px-3 py-16 text-center">
-                  <div className="text-gray-300 text-2xl mb-2">📋</div>
-                  <div className="text-gray-400 text-xs">구매 요청 내역이 없습니다.</div>
-                </td>
+        {deptTab === '연구비' ? (
+          /* 연구비 테이블 */
+          <table className="text-xs w-full border-collapse" style={{ minWidth: 960 }}>
+            <colgroup>
+              <col style={{ width: 3 }} />
+              <col style={{ width: 82 }} />
+              <col style={{ width: 90 }} />
+              <col style={{ width: 160 }} />
+              <col style={{ width: 88 }} />
+              <col style={{ width: 90 }} />
+              <col style={{ width: 100 }} />
+              <col style={{ width: 68 }} />
+              <col style={{ width: 90 }} />
+              <col style={{ width: 100 }} />
+              <col style={{ width: 90 }} />
+              <col style={{ width: 160 }} />
+            </colgroup>
+            <thead className="bg-white sticky top-0 z-10">
+              <tr className="border-b border-gray-200">
+                <th className="w-1 p-0" />
+                {['상태', '구매요청코드', '요청제목', '요청자', '프로젝트코드', '공급처', '배송지', '총금액', '품의서번호', '사용카드', '관리'].map(h => (
+                  <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 whitespace-nowrap">
+                    {h}
+                  </th>
+                ))}
               </tr>
-            ) : (() => {
-              const flatRows: { req: any; item: any; isFirst: boolean; groupSize: number; groupIdx: number }[] = []
-              let gIdx = 0
-              for (const req of requests) {
-                const items: any[] = req.items?.length > 0 ? req.items : [null]
-                items.forEach((item: any, i: number) => {
-                  flatRows.push({ req, item, isFirst: i === 0, groupSize: items.length, groupIdx: gIdx })
-                })
-                gIdx++
-              }
-              return flatRows.map(({ req, item, isFirst, groupSize, groupIdx }) => {
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={12} className="px-3 py-16 text-center text-gray-400 text-xs">불러오는 중...</td></tr>
+              ) : requests.length === 0 ? (
+                <tr>
+                  <td colSpan={12} className="px-3 py-16 text-center">
+                    <div className="text-gray-300 text-2xl mb-2">📋</div>
+                    <div className="text-gray-400 text-xs">연구비 구매 요청 내역이 없습니다.</div>
+                  </td>
+                </tr>
+              ) : requests.map((req: any) => {
                 const drafter = getDrafter(req)
-                const itemTotal = item
-                  ? (Number(item.additionalCost) || 0) + (Number(item.supplyAmount) || 0) + (Number(item.taxAmount) || 0)
-                  : null
-                const rowCls = `border-b border-gray-100 hover:bg-gray-50/60 transition-colors ${STATUS_ROW[req.status] ?? ''} ${isFirst && groupIdx > 0 ? 'border-t-2 border-t-gray-200' : ''}`
+                const rowCls = `border-b border-gray-100 hover:bg-gray-50/60 transition-colors ${STATUS_ROW[req.status] ?? ''}`
                 return (
-                  <tr key={`${req.id}-${item?.id ?? 'empty'}`} className={rowCls}>
-                    {isFirst && (
-                      <td rowSpan={groupSize} className={`w-1 p-0 ${STATUS_STRIPE[req.status] ?? 'bg-gray-200'}`} />
-                    )}
-                    {isFirst && (
-                      <td rowSpan={groupSize} className="px-3 py-2 align-middle">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${STATUS_COLOR[req.status] ?? ''}`}>
-                          {STATUS_LABEL[req.status] ?? req.status}
-                        </span>
-                      </td>
-                    )}
-                    <td className="px-3 py-2 align-middle whitespace-nowrap">
-                      {item?.domestic ? (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${DOMESTIC_CHIP[item.domestic] ?? 'bg-gray-100 text-gray-500 border border-gray-200'}`}>
-                          {item.domestic}
-                        </span>
-                      ) : <span className="text-gray-300">—</span>}
+                  <tr key={req.id} className={rowCls}>
+                    <td className={`w-1 p-0 ${STATUS_STRIPE[req.status] ?? 'bg-gray-200'}`} />
+                    <td className="px-3 py-2 align-middle">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${STATUS_COLOR[req.status] ?? ''}`}>
+                        {STATUS_LABEL[req.status] ?? req.status}
+                      </span>
                     </td>
-                    {isFirst && (
-                      <td rowSpan={groupSize} className="px-3 py-2 align-middle whitespace-nowrap">
-                        <span className="font-mono text-xs font-semibold text-gray-700">
-                          {req.documentNo || <span className="text-gray-300">—</span>}
-                        </span>
-                      </td>
-                    )}
-                    {isFirst && (
-                      <td rowSpan={groupSize} className="px-3 py-2 text-gray-600 whitespace-nowrap text-xs align-middle">
-                        {drafter || <span className="text-gray-300">—</span>}
-                      </td>
-                    )}
-                    <td className="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">
-                      {item?.deliveryLocation || <span className="text-gray-300">—</span>}
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+                      {req.documentNo || <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap text-xs">
-                      {(item?.category && ITEM_CAT_LABEL[item.category]) || item?.category || <span className="text-gray-300">—</span>}
+                    <td className="px-3 py-2 text-xs text-gray-700 max-w-[160px] truncate">
+                      {req.title || <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap text-xs">
-                      {(item?.midCategory && SUB_CAT_LABEL[item.midCategory]) || item?.midCategory || <span className="text-gray-300">—</span>}
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+                      {drafter || <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap text-xs">
-                      {item?.subCategory || <span className="text-gray-300">—</span>}
+                    <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
+                      {req.miscWorkCode || <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      {item?.bomNo
-                        ? <span className="font-mono text-gray-700 text-xs">{item.bomNo}</span>
-                        : <span className="text-gray-300 text-xs">—</span>}
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+                      {req.miscSupplier || <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-3 py-2 text-gray-700 text-xs max-w-[160px] truncate">
-                      {item?.spec || <span className="text-gray-300">—</span>}
+                    <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
+                      {req.miscDeliveryLoc || <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap text-right text-xs tabular-nums text-gray-700">
-                      {item ? `${Number(item.quantity).toLocaleString()} ${item.unit || ''}` : <span className="text-gray-300">—</span>}
+                    <td className="px-3 py-2 text-xs text-right tabular-nums text-gray-700 font-medium whitespace-nowrap">
+                      {req.miscTotalAmount != null ? fmtMoney(req.miscTotalAmount) : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap text-right text-xs tabular-nums text-gray-700 font-medium">
-                      {itemTotal && itemTotal > 0
-                        ? fmtMoney(itemTotal)
-                        : <span className="text-gray-300">—</span>}
+                    <td className="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
+                      {req.miscDocumentRef || <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-3 py-2 text-gray-500 text-xs max-w-[150px] truncate">
-                      {item?.purchaseReason || <span className="text-gray-300">—</span>}
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+                      {req.cardUsed || <span className="text-gray-300">—</span>}
                     </td>
-                    {isFirst && (
-                      <td rowSpan={groupSize} className="px-3 py-2 align-middle">
-                        <div className="flex items-center gap-1">
+                    <td className="px-3 py-2 align-middle">
+                      <div className="flex items-center gap-1">
+                        {/* 구매 요청자 전용 버튼 */}
+                        {isOwn(req) && (
                           <button
-                            onClick={() => openEdit(req)}
-                            className="h-7 px-2.5 rounded text-xs font-medium border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors whitespace-nowrap"
+                            onClick={() => { if (!['ORDERED', 'RECEIVED', 'REJECTED'].includes(req.status)) { setMiscEditReq(req); setMiscOpen(true) } }}
+                            disabled={['ORDERED', 'RECEIVED', 'REJECTED'].includes(req.status)}
+                            className="h-7 px-2.5 rounded text-xs font-medium border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-blue-50"
                           >
                             수정
                           </button>
+                        )}
+                        {isOwn(req) && (
                           <button
-                            onClick={() => openBuyer(req)}
+                            onClick={() => { setMiscReceiveRequest(req); setMiscReceiveOpen(true) }}
+                            className="h-7 px-2.5 rounded text-xs font-medium border border-green-200 text-green-600 bg-green-50 hover:bg-green-100 transition-colors whitespace-nowrap"
+                          >
+                            입고 처리
+                          </button>
+                        )}
+                        {/* 관리자 전용 버튼 */}
+                        {isAdmin && (
+                          <button
+                            onClick={() => { setMiscBuyerRequest(req); setMiscBuyerOpen(true) }}
                             className="h-7 px-2.5 rounded text-xs font-medium border border-purple-200 text-purple-600 bg-purple-50 hover:bg-purple-100 transition-colors whitespace-nowrap"
                           >
                             구매 처리
                           </button>
-                          {req.status === 'PENDING' && (
-                            <button
-                              onClick={() => setDeleteId(req.id)}
-                              className="h-7 px-2.5 rounded text-xs font-medium border border-red-200 text-red-500 bg-red-50 hover:bg-red-100 transition-colors whitespace-nowrap"
-                            >
-                              삭제
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    )}
+                        )}
+                        {isAdmin && (
+                          <button
+                            onClick={() => { setMiscReceiveViewReq(req); setMiscReceiveViewOpen(true) }}
+                            className="h-7 px-2.5 rounded text-xs font-medium border border-teal-200 text-teal-600 bg-teal-50 hover:bg-teal-100 transition-colors whitespace-nowrap"
+                          >
+                            입고 확인
+                          </button>
+                        )}
+                        {(isAdmin || isOwn(req)) && req.status === 'PENDING' && (
+                          <button
+                            onClick={() => setDeleteId(req.id)}
+                            className="h-7 px-2.5 rounded text-xs font-medium border border-red-200 text-red-500 bg-red-50 hover:bg-red-100 transition-colors whitespace-nowrap"
+                          >
+                            삭제
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 )
-              })
-            })()}
-          </tbody>
-        </table>
+              })}
+            </tbody>
+          </table>
+        ) : (
+          /* 일반 테이블 (생산구매팀 / 연구소) */
+          <table className="text-xs w-full border-collapse" style={{ minWidth: 1360 }}>
+            <colgroup>
+              <col style={{ width: 3 }} />
+              <col style={{ width: 82 }} />
+              <col style={{ width: 60 }} />
+              <col style={{ width: 90 }} />
+              <col style={{ width: 88 }} />
+              <col style={{ width: 68 }} />
+              <col style={{ width: 110 }} />
+              <col style={{ width: 160 }} />
+              <col style={{ width: 80 }} />
+              <col style={{ width: 90 }} />
+              <col style={{ width: 100 }} />
+              <col style={{ width: 90 }} />
+              <col style={{ width: 130 }} />
+              <col style={{ width: 175 }} />
+            </colgroup>
+            <thead className="bg-white sticky top-0 z-10">
+              <tr className="border-b border-gray-200">
+                <th className="w-1 p-0" />
+                {['상태', '구분', '구매요청코드', '요청자', '배송지', '품목코드', '품목명', '수량', '총액', '공급처', '입고희망일', '구매사유', '관리'].map(h => (
+                  <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 whitespace-nowrap">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={14} className="px-3 py-16 text-center text-gray-400 text-xs">불러오는 중...</td></tr>
+              ) : requests.length === 0 ? (
+                <tr>
+                  <td colSpan={14} className="px-3 py-16 text-center">
+                    <div className="text-gray-300 text-2xl mb-2">📋</div>
+                    <div className="text-gray-400 text-xs">구매 요청 내역이 없습니다.</div>
+                  </td>
+                </tr>
+              ) : (() => {
+                const flatRows: { req: any; item: any; isFirst: boolean; groupSize: number; groupIdx: number }[] = []
+                let gIdx = 0
+                for (const req of requests) {
+                  const items: any[] = req.items?.length > 0 ? req.items : [null]
+                  items.forEach((item: any, i: number) => {
+                    flatRows.push({ req, item, isFirst: i === 0, groupSize: items.length, groupIdx: gIdx })
+                  })
+                  gIdx++
+                }
+                return flatRows.map(({ req, item, isFirst, groupSize, groupIdx }) => {
+                  const drafter = getDrafter(req)
+                  const itemTotal = item
+                    ? (Number(item.additionalCost) || 0) + (Number(item.supplyAmount) || 0) + (Number(item.taxAmount) || 0)
+                    : null
+                  const rowCls = `border-b border-gray-100 hover:bg-gray-50/60 transition-colors ${STATUS_ROW[req.status] ?? ''} ${isFirst && groupIdx > 0 ? 'border-t-2 border-t-gray-200' : ''}`
+                  return (
+                    <tr key={`${req.id}-${item?.id ?? 'empty'}`} className={rowCls}>
+                      {isFirst && (
+                        <td rowSpan={groupSize} className={`w-1 p-0 ${STATUS_STRIPE[req.status] ?? 'bg-gray-200'}`} />
+                      )}
+                      {isFirst && (
+                        <td rowSpan={groupSize} className="px-3 py-2 align-middle">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${STATUS_COLOR[req.status] ?? ''}`}>
+                            {STATUS_LABEL[req.status] ?? req.status}
+                          </span>
+                        </td>
+                      )}
+                      <td className="px-3 py-2 align-middle whitespace-nowrap">
+                        {item?.domestic
+                          ? <span className="text-xs text-gray-600">{item.domestic}</span>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      {isFirst && (
+                        <td rowSpan={groupSize} className="px-3 py-2 align-middle whitespace-nowrap">
+                          <span className="text-xs text-gray-600">
+                            {req.documentNo || <span className="text-gray-300">—</span>}
+                          </span>
+                        </td>
+                      )}
+                      {isFirst && (
+                        <td rowSpan={groupSize} className="px-3 py-2 text-gray-600 whitespace-nowrap text-xs align-middle">
+                          {drafter || <span className="text-gray-300">—</span>}
+                        </td>
+                      )}
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">
+                        {item?.deliveryLocation || <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {item?.bomNo
+                          ? <span className="font-mono text-gray-700 text-xs">{item.bomNo}</span>
+                          : <span className="text-gray-300 text-xs">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-gray-700 text-xs max-w-[140px] truncate">
+                        {item?.spec || <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-right text-xs tabular-nums text-gray-700">
+                        {item ? `${Number(item.quantity).toLocaleString()} ${item.unit || ''}` : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-right text-xs tabular-nums text-gray-700 font-medium">
+                        {itemTotal && itemTotal > 0
+                          ? fmtMoney(itemTotal)
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap text-xs">
+                        {item?.supplier || <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">
+                        {item?.requestedDeliveryDate
+                          ? item.requestedDeliveryDate.slice(0, 10)
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-gray-500 text-xs max-w-[130px] truncate">
+                        {item?.purchaseReason || <span className="text-gray-300">—</span>}
+                      </td>
+                      {isFirst && (
+                        <td rowSpan={groupSize} className="px-3 py-2 align-middle">
+                          <div className="flex items-center gap-1">
+                            {(isAdmin || isOwn(req)) && (
+                              <button
+                                onClick={() => { if (!['APPROVED', 'ORDERED', 'RECEIVED', 'REJECTED'].includes(req.status)) openEdit(req) }}
+                                disabled={['APPROVED', 'ORDERED', 'RECEIVED', 'REJECTED'].includes(req.status)}
+                                className="h-7 px-2.5 rounded text-xs font-medium border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-blue-50"
+                              >
+                                수정
+                              </button>
+                            )}
+                            {isAdmin && (
+                              <button
+                                onClick={() => openBuyer(req)}
+                                className="h-7 px-2.5 rounded text-xs font-medium border border-purple-200 text-purple-600 bg-purple-50 hover:bg-purple-100 transition-colors whitespace-nowrap"
+                              >
+                                구매 처리
+                              </button>
+                            )}
+                            {isAdmin && req.status === 'PENDING' && (
+                              <button
+                                onClick={() => setDeleteId(req.id)}
+                                className="h-7 px-2.5 rounded text-xs font-medium border border-red-200 text-red-500 bg-red-50 hover:bg-red-100 transition-colors whitespace-nowrap"
+                              >
+                                삭제
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  )
+                })
+              })()}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* ── 페이지네이션 ─────────────────────────────────── */}
@@ -886,27 +1058,27 @@ export default function PurchasesPage() {
                 <div className="border border-gray-200 rounded-xl overflow-auto flex-1 bg-white">
                   <table className="text-xs border-collapse" style={{ tableLayout: 'fixed', minWidth: 2040 }}>
                     <colgroup>
-                      <col style={{ width: 36 }} />   {/* NO */}
-                      <col style={{ width: 72 }} />   {/* 구분 */}
-                      <col style={{ width: 92 }} />   {/* 구매요청코드 */}
-                      <col style={{ width: 110 }} />  {/* 프로젝트코드 */}
-                      <col style={{ width: 130 }} />  {/* 품목 검색 */}
-                      <col style={{ width: 80 }} />   {/* 대분류 */}
-                      <col style={{ width: 110 }} />  {/* 중분류 */}
-                      <col style={{ width: 100 }} />  {/* 소분류 */}
-                      <col style={{ width: 180 }} />  {/* 품목명 */}
-                      <col style={{ width: 60 }} />   {/* 단위 */}
-                      <col style={{ width: 70 }} />   {/* 수량 */}
-                      <col style={{ width: 70 }} />   {/* 통화 */}
-                      <col style={{ width: 100 }} />  {/* 부대비용 */}
-                      <col style={{ width: 110 }} />  {/* 공급가액 */}
-                      <col style={{ width: 90 }} />   {/* 세액 */}
-                      <col style={{ width: 100 }} />  {/* 총액 */}
-                      <col style={{ width: 130 }} />  {/* 공급자 */}
-                      <col style={{ width: 90 }} />   {/* 입고장소 */}
-                      <col style={{ width: 110 }} />  {/* 입고희망일 */}
-                      <col style={{ width: 160 }} />  {/* 구매사유 */}
-                      <col style={{ width: 40 }} />   {/* 삭제 */}
+                      <col style={{ width: 36 }} />
+                      <col style={{ width: 72 }} />
+                      <col style={{ width: 92 }} />
+                      <col style={{ width: 110 }} />
+                      <col style={{ width: 130 }} />
+                      <col style={{ width: 80 }} />
+                      <col style={{ width: 110 }} />
+                      <col style={{ width: 100 }} />
+                      <col style={{ width: 180 }} />
+                      <col style={{ width: 60 }} />
+                      <col style={{ width: 70 }} />
+                      <col style={{ width: 70 }} />
+                      <col style={{ width: 100 }} />
+                      <col style={{ width: 110 }} />
+                      <col style={{ width: 90 }} />
+                      <col style={{ width: 100 }} />
+                      <col style={{ width: 130 }} />
+                      <col style={{ width: 90 }} />
+                      <col style={{ width: 110 }} />
+                      <col style={{ width: 160 }} />
+                      <col style={{ width: 40 }} />
                     </colgroup>
                     <thead className="sticky top-0 z-10">
                       <tr>
@@ -1285,6 +1457,54 @@ export default function PurchasesPage() {
         }}
       />
 
+      {/* ── 기타 구매 요청 등록/수정 다이얼로그 ─────────── */}
+      <MiscPurchaseDialog
+        open={miscOpen}
+        editReq={miscEditReq}
+        onClose={() => { setMiscOpen(false); setMiscEditReq(null) }}
+        onSaved={saved => {
+          setRequests(prev => {
+            const exists = prev.some(r => r.id === saved.id)
+            return exists ? prev.map(r => r.id === saved.id ? saved : r) : [saved, ...prev]
+          })
+          setMiscOpen(false)
+          setMiscEditReq(null)
+        }}
+        users={users}
+        sessionName={sessionName}
+      />
+
+      {/* ── 연구비 구매 처리 다이얼로그 ─────────────────── */}
+      <MiscBuyerDialog
+        open={miscBuyerOpen}
+        request={miscBuyerRequest}
+        onClose={() => { setMiscBuyerOpen(false); setMiscBuyerRequest(null) }}
+        onSaved={updated => {
+          setRequests(prev => prev.map(r => r.id === updated.id ? updated : r))
+          setMiscBuyerRequest(updated)
+          setMiscBuyerOpen(false)
+        }}
+      />
+
+      {/* ── 연구비 입고 처리 다이얼로그 (요청자) ──────────── */}
+      <MiscReceiveDialog
+        open={miscReceiveOpen}
+        request={miscReceiveRequest}
+        onClose={() => { setMiscReceiveOpen(false); setMiscReceiveRequest(null) }}
+        onSaved={updated => {
+          setRequests(prev => prev.map(r => r.id === updated.id ? updated : r))
+          setMiscReceiveOpen(false)
+          setMiscReceiveRequest(null)
+        }}
+      />
+
+      {/* ── 연구비 입고 확인 다이얼로그 (관리자) ──────────── */}
+      <MiscReceiveViewDialog
+        open={miscReceiveViewOpen}
+        request={miscReceiveViewReq}
+        onClose={() => { setMiscReceiveViewOpen(false); setMiscReceiveViewReq(null) }}
+      />
+
       {/* ── 품목 상세 다이얼로그 ─────────────────────────── */}
       <ItemFormDialog
         open={itemDetailOpen}
@@ -1347,7 +1567,7 @@ export default function PurchasesPage() {
 
             {/* 부서 탭 */}
             <div className="flex border-b">
-              {([['prod', '생산구매팀'], ['lab', '연구소']] as const).map(([key, label]) => (
+              {([['prod', '생산구매팀'], ['lab', '연구소'], ['etc', '연구비']] as const).map(([key, label]) => (
                 <button key={key}
                   onClick={() => setSettingsDeptTab(key)}
                   className={`flex-1 py-2.5 text-xs font-medium border-b-2 transition-colors ${
@@ -1404,6 +1624,7 @@ export default function PurchasesPage() {
                 onClick={() => {
                   saveApprovalDefaultsByDept('생산구매팀', settingsDraft.prod)
                   saveApprovalDefaultsByDept('연구소', settingsDraft.lab)
+                  saveApprovalDefaultsByDept('연구비', settingsDraft.etc)
                   setSettingsOpen(false)
                   toast.success('기본 결재라인이 저장되었습니다.')
                 }}>

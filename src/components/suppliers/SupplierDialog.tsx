@@ -32,7 +32,7 @@ interface SupplierFormState {
 }
 interface SupplierDialogProps {
   open: boolean; onClose: () => void
-  supplier?: any | null; onSaved: () => void
+  supplier?: any | null; onSaved: (saved?: any) => void
 }
 
 const EMPTY_FORM: SupplierFormState = {
@@ -249,7 +249,7 @@ export default function SupplierDialog({ open, onClose, supplier, onSaved }: Sup
       const json = await res.json()
       if (json.success) {
         toast.success(isEdit ? '공급처가 수정되었습니다.' : '공급처가 등록되었습니다.')
-        onSaved(); onClose()
+        onSaved(json.data); onClose()
       } else toast.error(json.message ?? '저장 실패')
     } catch { toast.error('서버 오류가 발생했습니다.') }
     finally { setSubmitting(false) }

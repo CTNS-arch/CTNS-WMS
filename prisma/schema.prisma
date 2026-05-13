@@ -30,6 +30,7 @@ model User {
   sessions          Session[]
   stockTransactions StockTransaction[]
   purchaseRequests  PurchaseRequest[]
+  itemRequests      ItemCreateRequest[]
 }
 
 model Account {
@@ -252,6 +253,19 @@ model PurchaseRequest {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
+  // ── 기타 구매 요청 전용 ──────────────────────────────────
+  miscWorkCode    String?   // 프로젝트코드
+  miscSupplier    String?   // 공급처
+  miscUrl         String?   // URL
+  miscTotalAmount Float?    // 총금액 (원)
+  miscDocumentRef String?   // 품의서번호 (30만원 이상)
+  miscDeliveryLoc  String?   // 배송지
+  miscOrderMethod  String?   // 주문방식 (이메일/전화/온라인)
+  cardUsed         String?   // 사용 카드 (구매처리)
+  miscPaymentType  String?   // 구매처리 구분 (카드/연구비 계좌이체/자계좌 이체)
+  miscExpenseRef   String?   // 비즈플레이 지출결의서 번호
+  miscTaxInvoice   String?   // 세금계산서 발행 여부 (Y/N)
+
   requester User?                  @relation(fields: [requesterId], references: [id])
   items     PurchaseRequestItem[]
   files     PurchaseFile[]
@@ -304,6 +318,11 @@ model PurchaseRequestItem {
   exchangeRate          Float?    // 환율 (결제 시점 기준)
   krwAmount             Float?    // 원화 환산 금액
   unitPrice             Float?    // 단가 (구매금액 ÷ 수량)
+  boxUnitQty            Float?    // 박스별 수량
+  paymentMethod         String?   // 정산구분 (계좌이체/카드/현금/어음)
+  payBankName           String?   // 정산 - 은행
+  payAccountNumber      String?   // 정산 - 계좌번호
+  payAccountHolder      String?   // 정산 - 예금주
 
   purchaseRequest PurchaseRequest @relation(fields: [purchaseRequestId], references: [id], onDelete: Cascade)
   item            Item?           @relation(fields: [itemId], references: [id])
@@ -353,6 +372,42 @@ model StockCostLayer {
   createdAt  DateTime   @default(now())
 
   item Item @relation(fields: [itemId], references: [id])
+}
+
+// ── 구매 카드 ──────────────────────────────────────────────
+
+model PurchaseCard {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
+
+// ── 품목 생성 요청 ──────────────────────────────────────────
+
+enum ItemRequestStatus {
+  PENDING  // 검토중
+  APPROVED // 승인
+  REJECTED // 반려
+}
+
+model ItemCreateRequest {
+  id            String            @id @default(cuid())
+  status        ItemRequestStatus @default(PENDING)
+  requesterId   String?
+  requesterName String?
+  category      String
+  subCategory   String?
+  itemName      String
+  spec          String?
+  quantity      Float?
+  unit          String?
+  workCode      String?
+  memo          String?
+  reviewMemo    String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  requester User? @relation(fields: [requesterId], references: [id])
 }
 
 // ── 공급처 관리 ────────────────────────────────────────────

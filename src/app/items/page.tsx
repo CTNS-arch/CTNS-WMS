@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { useSession } from 'next-auth/react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,6 +16,7 @@ import {
   AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import ItemFormDialog from '@/components/items/ItemFormDialog'
+import ItemRequestDialog from '@/components/items/ItemRequestDialog'
 import BomDialog from '@/components/items/BomDialog'
 import ItemBulkCreateDialog from '@/components/items/ItemBulkCreateDialog'
 import { CATEGORY_OPTIONS, SUB_OPTIONS, THIRD_LEVEL, THIRD_OPTIONS } from '@/lib/classification'
@@ -54,6 +56,11 @@ const ALL_SUB_OPTIONS = [
 const toParam = (arr: string[]) => arr.length > 0 ? arr.join(',') : undefined
 
 export default function ItemsPage() {
+  const { data: session } = useSession()
+  const canWrite = (session?.user?.roles?.includes('ITEM_WRITE') || session?.user?.roles?.includes('MASTER_ADMIN')) ?? false
+
+  const [requestFormOpen, setRequestFormOpen] = useState(false)
+
   // ── 필터 ──
   const [search, setSearch] = useState('')
   const [filterCategory, setFilterCategory] = useState('')   // 단일 선택
@@ -561,13 +568,22 @@ export default function ItemsPage() {
                 <Button variant="outline" size="sm" className="flex-1 text-xs" onClick={resetFilters} disabled={!hasActiveFilters}>
                   초기화
                 </Button>
-                <Button size="sm" className="flex-1 text-xs" disabled={!filterCategory} onClick={() => { setEditItem(null); setFormOpen(true) }}>
-                  + 등록
-                </Button>
+                {canWrite ? (
+                  <Button size="sm" className="flex-1 text-xs" disabled={!filterCategory} onClick={() => { setEditItem(null); setFormOpen(true) }}>
+                    + 등록
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" className="flex-1 text-xs border-blue-200 text-blue-600 hover:bg-blue-50"
+                    onClick={() => setRequestFormOpen(true)}>
+                    + 등록 요청
+                  </Button>
+                )}
               </div>
-              <Button variant="outline" size="sm" className="w-full text-xs" disabled={!filterCategory} onClick={() => setBulkFormOpen(true)}>
-                일괄 등록
-              </Button>
+              {canWrite && (
+                <Button variant="outline" size="sm" className="w-full text-xs" disabled={!filterCategory} onClick={() => setBulkFormOpen(true)}>
+                  일괄 등록
+                </Button>
+              )}
             </div>
           </div>
         </aside>
@@ -909,6 +925,12 @@ export default function ItemsPage() {
         open={bulkFormOpen}
         onClose={() => setBulkFormOpen(false)}
         onSaved={() => { setBulkFormOpen(false); fetchItems() }}
+      />
+
+      <ItemRequestDialog
+        open={requestFormOpen}
+        onClose={() => setRequestFormOpen(false)}
+        onSubmitted={() => setRequestFormOpen(false)}
       />
 
       <AlertDialog open={!!deleteId} onOpenChange={open => { if (!open) { setDeleteId(null); setDeleteBomEntries([]) } }}>

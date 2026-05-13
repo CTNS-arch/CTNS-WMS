@@ -24,7 +24,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   try {
     const { id } = await params
     const body = await req.json()
-    const { documentNo, title, requesterName, department, memo, status, items, buyerItems, approvalLine } = body
+    const {
+      documentNo, title, requesterName, department, memo, status, items, buyerItems, approvalLine,
+      miscWorkCode, miscSupplier, miscUrl, miscTotalAmount, miscDocumentRef, miscDeliveryLoc, miscOrderMethod,
+      cardUsed, miscPaymentType, miscExpenseRef, miscTaxInvoice,
+    } = body
 
     const data: any = {}
     if (status !== undefined)        data.status = status as PurchaseStatus
@@ -34,14 +38,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (department !== undefined)    data.department = department.trim()
     if (memo !== undefined)          data.memo = memo?.trim() || null
     if (approvalLine !== undefined)  data.approvalLine = approvalLine ? JSON.stringify(approvalLine) : null
+    if (miscWorkCode !== undefined)    data.miscWorkCode    = miscWorkCode?.trim()    || null
+    if (miscSupplier !== undefined)    data.miscSupplier    = miscSupplier?.trim()    || null
+    if (miscUrl !== undefined)         data.miscUrl         = miscUrl?.trim()         || null
+    if (miscTotalAmount !== undefined) data.miscTotalAmount = miscTotalAmount != null  ? Number(miscTotalAmount) : null
+    if (miscDocumentRef !== undefined) data.miscDocumentRef = miscDocumentRef?.trim() || null
+    if (miscDeliveryLoc !== undefined)  data.miscDeliveryLoc  = miscDeliveryLoc?.trim()  || null
+    if (miscOrderMethod !== undefined)  data.miscOrderMethod  = miscOrderMethod?.trim()  || null
+    if (cardUsed !== undefined)         data.cardUsed         = cardUsed?.trim()         || null
+    if (miscPaymentType !== undefined)  data.miscPaymentType  = miscPaymentType?.trim()  || null
+    if (miscExpenseRef !== undefined)   data.miscExpenseRef   = miscExpenseRef?.trim()   || null
+    if (miscTaxInvoice !== undefined)   data.miscTaxInvoice   = miscTaxInvoice?.trim()   || null
 
-    const updated = await prisma.$transaction(async (tx) => {
-      // 요청자 모드: 품목 전체 교체
-      if (items !== undefined) {
-        await tx.purchaseRequestItem.deleteMany({ where: { purchaseRequestId: id } })
-        const validItems = items.filter((it: any) => it.quantity && Number(it.quantity) > 0 && it.unit?.trim())
-        data.items = {
-          create: validItems.map((it: any, i: number) => ({
+    // Neon HTTP 어댑터: $transaction 미지원 → 순차 실행
+    // 요청자 모드: 품목 전체 교체
+    if (items !== undefined) {
+      await prisma.purchaseRequestItem.deleteMany({ where: { purchaseRequestId: id } })
+      const validItems = items.filter((it: any) => it.quantity && Number(it.quantity) > 0 && it.unit?.trim())
+      for (let i = 0; i < validItems.length; i++) {
+        const it = validItems[i]
+        await prisma.purchaseRequestItem.create({
+          data: {
+            purchaseRequestId: id,
             lineNo: i + 1,
             domestic: it.domestic?.trim() || null,
             workCode: it.workCode?.trim() || null,
@@ -61,54 +79,61 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             requestedDeliveryDate: it.requestedDeliveryDate ? new Date(it.requestedDeliveryDate) : null,
             supplier: it.supplier?.trim() || null,
             deliveryLocation: it.deliveryLocation?.trim() || null,
-          })),
-        }
+          },
+        })
       }
+    }
 
-      // 구매자 모드: 품목별 구매 필드만 업데이트
-      if (buyerItems !== undefined && Array.isArray(buyerItems)) {
-        for (const bi of buyerItems) {
-          if (!bi.id) continue
-          await tx.purchaseRequestItem.update({
-            where: { id: bi.id },
-            data: {
-              domestic: bi.domestic?.trim() || null,
-              orderMethod: bi.orderMethod?.trim() || null,
-              orderNo: bi.orderNo?.trim() || null,
-              plannedShipDate: bi.plannedShipDate ? new Date(bi.plannedShipDate) : null,
-              actualShipDate: bi.actualShipDate ? new Date(bi.actualShipDate) : null,
-              shippingMethod: bi.shippingMethod?.trim() || null,
-              trackingNo: bi.trackingNo?.trim() || null,
-              boxCount: bi.boxCount != null ? Number(bi.boxCount) : null,
-              remittanceDate: bi.remittanceDate ? new Date(bi.remittanceDate) : null,
-              paymentDate: bi.paymentDate ? new Date(bi.paymentDate) : null,
-              buyerCurrency: bi.buyerCurrency || null,
-              buyerSupplyAmount: bi.buyerSupplyAmount != null ? Number(bi.buyerSupplyAmount) : null,
-              buyerTaxAmount: bi.buyerTaxAmount != null ? Number(bi.buyerTaxAmount) : null,
-              additionalCost: bi.additionalCost != null ? Number(bi.additionalCost) : null,
-              portArrivalDate: bi.portArrivalDate ? new Date(bi.portArrivalDate) : null,
-              loadingDate: bi.loadingDate ? new Date(bi.loadingDate) : null,
-              estimatedArrivalDate: bi.estimatedArrivalDate ? new Date(bi.estimatedArrivalDate) : null,
-              actualReceiptDate: bi.actualReceiptDate ? new Date(bi.actualReceiptDate) : null,
-              blNo: bi.blNo?.trim() || null,
-              buyerMemo: bi.buyerMemo?.trim() || null,
-              exchangeRate: bi.exchangeRate != null ? Number(bi.exchangeRate) : null,
-              krwAmount: bi.krwAmount != null ? Number(bi.krwAmount) : null,
-              unitPrice: bi.unitPrice != null ? Number(bi.unitPrice) : null,
-            },
-          })
-        }
+    // 구매자 모드: 품목별 구매 필드만 업데이트
+    if (buyerItems !== undefined && Array.isArray(buyerItems)) {
+      for (const bi of buyerItems) {
+        if (!bi.id) continue
+        await prisma.purchaseRequestItem.update({
+          where: { id: bi.id },
+          data: {
+            supplier: bi.supplier?.trim() || null,
+            domestic: bi.domestic?.trim() || null,
+            orderMethod: bi.orderMethod?.trim() || null,
+            orderNo: bi.orderNo?.trim() || null,
+            plannedShipDate: bi.plannedShipDate ? new Date(bi.plannedShipDate) : null,
+            actualShipDate: bi.actualShipDate ? new Date(bi.actualShipDate) : null,
+            shippingMethod: bi.shippingMethod?.trim() || null,
+            trackingNo: bi.trackingNo?.trim() || null,
+            boxCount: bi.boxCount != null ? Number(bi.boxCount) : null,
+            boxUnitQty: bi.boxUnitQty != null ? Number(bi.boxUnitQty) : null,
+            remittanceDate: bi.remittanceDate ? new Date(bi.remittanceDate) : null,
+            paymentDate: bi.paymentDate ? new Date(bi.paymentDate) : null,
+            buyerCurrency: bi.buyerCurrency || null,
+            buyerSupplyAmount: bi.buyerSupplyAmount != null ? Number(bi.buyerSupplyAmount) : null,
+            buyerTaxAmount: bi.buyerTaxAmount != null ? Number(bi.buyerTaxAmount) : null,
+            additionalCost: bi.additionalCost != null ? Number(bi.additionalCost) : null,
+            portArrivalDate: bi.portArrivalDate ? new Date(bi.portArrivalDate) : null,
+            loadingDate: bi.loadingDate ? new Date(bi.loadingDate) : null,
+            estimatedArrivalDate: bi.estimatedArrivalDate ? new Date(bi.estimatedArrivalDate) : null,
+            actualReceiptDate: bi.actualReceiptDate ? new Date(bi.actualReceiptDate) : null,
+            blNo: bi.blNo?.trim() || null,
+            buyerMemo: bi.buyerMemo?.trim() || null,
+            exchangeRate: bi.exchangeRate != null ? Number(bi.exchangeRate) : null,
+            krwAmount: bi.krwAmount != null ? Number(bi.krwAmount) : null,
+            unitPrice: bi.unitPrice != null ? Number(bi.unitPrice) : null,
+            paymentMethod: bi.paymentMethod?.trim() || null,
+            payBankName: bi.payBankName?.trim() || null,
+            payAccountNumber: bi.payAccountNumber?.trim() || null,
+            payAccountHolder: bi.payAccountHolder?.trim() || null,
+          },
+        })
       }
+    }
 
-      return tx.purchaseRequest.update({
-        where: { id },
-        data,
-        include: {
-          items: { orderBy: { lineNo: 'asc' } },
-          requester: { select: { name: true, email: true } },
-          files: { orderBy: { uploadedAt: 'asc' } },
-        },
-      })
+    // Neon HTTP: update+include는 내부 트랜잭션 발생 → 별도 findUnique로 분리
+    await prisma.purchaseRequest.update({ where: { id }, data })
+    const updated = await prisma.purchaseRequest.findUnique({
+      where: { id },
+      include: {
+        items: { orderBy: { lineNo: 'asc' } },
+        requester: { select: { name: true, email: true } },
+        files: { orderBy: { uploadedAt: 'asc' } },
+      },
     })
 
     return NextResponse.json({ success: true, data: updated })

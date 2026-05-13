@@ -19,8 +19,8 @@ const TX_COLOR: Record<string, string> = {
 }
 const DEPT_OPTIONS = [
   { value: '', label: '전체' },
-  { value: 'LAB', label: '연구소' },
   { value: 'PRODUCTION', label: '생산구매팀' },
+  { value: 'LAB', label: '연구소' },
 ]
 
 type MonthData = { key: string; label: string; in: number; out: number; adjust: number }
@@ -170,17 +170,18 @@ export default function ReportsPage() {
           </Button>
         </div>
 
-        {/* 필터 바 */}
-        <div className="px-4 py-2.5 border-b bg-white shrink-0 flex items-center gap-2 no-print">
-          <div className="flex gap-1">
-            {DEPT_OPTIONS.map(o => (
-              <button key={o.value} onClick={() => setDept(o.value)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                  dept === o.value ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}>{o.label}</button>
-            ))}
-          </div>
-          <span className="ml-auto text-xs text-gray-400">{today} 기준</span>
+        {/* 부서 탭 */}
+        <div className="bg-white border-b shrink-0 flex no-print">
+          {DEPT_OPTIONS.map(o => (
+            <button key={o.value} onClick={() => setDept(o.value)}
+              className={`px-5 py-2.5 text-xs font-medium border-b-2 transition-all whitespace-nowrap ${
+                dept === o.value
+                  ? 'border-blue-600 text-blue-700 bg-blue-50/50'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >{o.label}</button>
+          ))}
+          <span className="ml-auto flex items-center pr-4 text-xs text-gray-400">{today} 기준</span>
         </div>
 
         {/* 본문 */}

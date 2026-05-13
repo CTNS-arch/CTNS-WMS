@@ -40,3 +40,6 @@ auth-debug.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# uploaded files (runtime, not source)
+/public/uploads/

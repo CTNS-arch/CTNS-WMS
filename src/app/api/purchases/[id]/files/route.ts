@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { put } from '@vercel/blob'
 import { randomUUID } from 'crypto'
+import { writeFile, mkdir } from 'fs/promises'
+import path from 'path'
 
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -27,17 +28,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ success: false, message: '파일이 없습니다.' }, { status: 400 })
     }
 
+    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'purchases', id)
+    await mkdir(uploadDir, { recursive: true })
+
     const saved = []
     for (const file of files) {
       const safeName = file.name.replace(/[^\w가-힣._-]/g, '_')
-      const pathname = `uploads/purchases/${Date.now()}-${randomUUID().slice(0, 8)}-${safeName}`
-      const blob = await put(pathname, file, { access: 'public' })
+      const unique = `${Date.now()}-${randomUUID().slice(0, 8)}-${safeName}`
+      const filePath = path.join(uploadDir, unique)
+
+      const buffer = Buffer.from(await file.arrayBuffer())
+      await writeFile(filePath, buffer)
+
+      const fileUrl = `/uploads/purchases/${id}/${unique}`
 
       const record = await prisma.purchaseFile.create({
         data: {
           purchaseRequestId: id,
           fileName: file.name,
-          fileUrl: blob.url,
+          fileUrl,
           fileType: fileType || '기타',
           fileSize: file.size,
         },

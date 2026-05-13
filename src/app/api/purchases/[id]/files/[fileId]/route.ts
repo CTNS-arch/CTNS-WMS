@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { del } from '@vercel/blob'
+import { unlink } from 'fs/promises'
+import path from 'path'
 
 export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id: string; fileId: string }> }) {
   try {
@@ -8,7 +9,10 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
     const file = await prisma.purchaseFile.findUnique({ where: { id: fileId } })
     if (!file) return NextResponse.json({ success: false, message: '파일을 찾을 수 없습니다.' }, { status: 404 })
 
-    if (file.fileUrl.startsWith('https://')) await del(file.fileUrl)
+    if (file.fileUrl.startsWith('/uploads/')) {
+      const filePath = path.join(process.cwd(), 'public', file.fileUrl)
+      await unlink(filePath).catch(() => {})
+    }
     await prisma.purchaseFile.delete({ where: { id: fileId } })
 
     return NextResponse.json({ success: true })

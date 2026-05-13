@@ -15,6 +15,7 @@ const TX_TYPE_LABEL: Record<string, string> = {
 }
 
 type Dept = 'LAB' | 'PRODUCTION'
+type DeptTab = 'ALL' | 'LAB' | 'PRODUCTION'
 
 interface StockRow {
   itemId: string
@@ -28,6 +29,19 @@ interface StockRow {
   quantity: number
   avgUnitCost: number | null
   memo: string | null
+}
+
+interface AllStockRow {
+  itemId: string
+  itemCode: string
+  itemName: string
+  unit: string
+  category: string
+  subCategory: string | null
+  labQty: number
+  labCost: number | null
+  prodQty: number
+  prodCost: number | null
 }
 
 interface HistoryTx {
@@ -61,12 +75,13 @@ function InfoTooltip({ text }: { text: string }) {
 }
 
 export default function StockPage() {
-  const [dept, setDept] = useState<Dept>('LAB')
-  const [rows, setRows] = useState<StockRow[]>([])
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
+  const [deptTab, setDeptTab] = useState<DeptTab>('ALL')
+  const [rows, setRows]       = useState<StockRow[]>([])
+  const [allRows, setAllRows] = useState<AllStockRow[]>([])
+  const [total, setTotal]     = useState(0)
+  const [page, setPage]       = useState(1)
   const [loading, setLoading] = useState(false)
-  const [search, setSearch] = useState('')
+  const [search, setSearch]   = useState('')
   const [searchInput, setSearchInput] = useState('')
 
   const [txDialog, setTxDialog] = useState<{ open: boolean; row: StockRow | null; type: 'IN' | 'OUT' | 'ADJUST' }>({
@@ -75,29 +90,36 @@ export default function StockPage() {
   const [transferDialog, setTransferDialog] = useState<{ open: boolean; row: StockRow | null }>({
     open: false, row: null,
   })
-  const [txForm, setTxForm] = useState({ quantity: '', memo: '', unitCost: '' })
+  const [txForm, setTxForm]             = useState({ quantity: '', memo: '', unitCost: '' })
   const [transferForm, setTransferForm] = useState({ quantity: '', memo: '' })
-  const [submitting, setSubmitting] = useState(false)
+  const [submitting, setSubmitting]     = useState(false)
 
-  // 히스토리
+  const [inSourceDialog, setInSourceDialog] = useState<{ open: boolean; row: StockRow | null }>({ open: false, row: null })
+
+  const [purchaseInDialog, setPurchaseInDialog] = useState<{
+    open: boolean; row: StockRow | null
+    purchases: any[]; loading: boolean; search: string
+    selected: any | null; receiveQty: string
+  }>({ open: false, row: null, purchases: [], loading: false, search: '', selected: null, receiveQty: '' })
+
   const [historyDialog, setHistoryDialog] = useState<{ open: boolean; row: StockRow | null }>({ open: false, row: null })
-  const [historyRows, setHistoryRows] = useState<HistoryTx[]>([])
+  const [historyRows, setHistoryRows]     = useState<HistoryTx[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
 
-  // 비고 편집
-  const [memoDialog, setMemoDialog] = useState<{ open: boolean; row: StockRow | null }>({ open: false, row: null })
-  const [memoInput, setMemoInput] = useState('')
+  const [memoDialog, setMemoDialog]   = useState<{ open: boolean; row: StockRow | null }>({ open: false, row: null })
+  const [memoInput, setMemoInput]     = useState('')
   const [memoSubmitting, setMemoSubmitting] = useState(false)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const totalPages = Math.max(1, Math.ceil(total / LIMIT))
+  const totalPages  = Math.max(1, Math.ceil(total / LIMIT))
 
+  // ── 단일 부서 조회 ────────────────────────────────────────
   const fetchRows = useCallback(async (p: number, d: Dept, q: string) => {
     setLoading(true)
     try {
       const params = new URLSearchParams({ department: d, page: String(p), limit: String(LIMIT) })
       if (q) params.set('search', q)
-      const res = await fetch(`/api/stock?${params}`)
+      const res  = await fetch(`/api/stock?${params}`)
       const json = await res.json()
       if (json.success) {
         setRows(json.data.items)
@@ -113,9 +135,50 @@ export default function StockPage() {
     }
   }, [])
 
-  useEffect(() => { fetchRows(page, dept, search) }, [fetchRows, page, dept, search])
+  // ── 전체(양 부서 동시) 조회 ────────────────────────────────
+  const fetchAllRows = useCallback(async (p: number, q: string) => {
+    setLoading(true)
+    try {
+      const qs = q ? `&search=${encodeURIComponent(q)}` : ''
+      const [labRes, prodRes] = await Promise.all([
+        fetch(`/api/stock?department=LAB&page=${p}&limit=${LIMIT}${qs}`),
+        fetch(`/api/stock?department=PRODUCTION&page=${p}&limit=${LIMIT}${qs}`),
+      ])
+      const [labJson, prodJson] = await Promise.all([labRes.json(), prodRes.json()])
+      if (labJson.success && prodJson.success) {
+        const prodMap = new Map<string, any>(prodJson.data.items.map((it: any) => [it.itemId, it]))
+        setAllRows(labJson.data.items.map((it: any) => ({
+          itemId:     it.itemId,
+          itemCode:   it.itemCode,
+          itemName:   it.itemName,
+          unit:       it.unit,
+          category:   it.category,
+          subCategory: it.subCategory,
+          labQty:  it.quantity,
+          labCost: it.avgUnitCost,
+          prodQty:  prodMap.get(it.itemId)?.quantity  ?? 0,
+          prodCost: prodMap.get(it.itemId)?.avgUnitCost ?? null,
+        })))
+        setTotal(labJson.data.total)
+        setPage(labJson.data.page)
+      } else {
+        toast.error('재고 조회 실패')
+      }
+    } catch {
+      toast.error('서버 오류가 발생했습니다.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-  // 입고 다이얼로그 열 때 원가관리에서 최근 KRW 단가 자동 조회
+  const refresh = useCallback(() => {
+    if (deptTab === 'ALL') fetchAllRows(page, search)
+    else fetchRows(page, deptTab, search)
+  }, [deptTab, page, search, fetchAllRows, fetchRows])
+
+  useEffect(() => { refresh() }, [refresh])
+
+  // 입고 다이얼로그 열 때 원가 자동 조회
   useEffect(() => {
     if (!txDialog.open || txDialog.type !== 'IN' || !txDialog.row) return
     const itemId = txDialog.row.itemId
@@ -153,7 +216,7 @@ export default function StockPage() {
       .finally(() => setHistoryLoading(false))
   }, [historyDialog.open, historyDialog.row?.itemId])
 
-  const handleDeptChange = (d: Dept) => { setDept(d); setPage(1) }
+  const handleDeptChange = (d: DeptTab) => { setDeptTab(d); setPage(1) }
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -164,6 +227,69 @@ export default function StockPage() {
   const openTx = (row: StockRow, type: 'IN' | 'OUT' | 'ADJUST') => {
     setTxForm({ quantity: '', memo: '', unitCost: '' })
     setTxDialog({ open: true, row, type })
+  }
+
+  const openInSource = (row: StockRow) => setInSourceDialog({ open: true, row })
+
+  const handleSelectDirectIn = () => {
+    const row = inSourceDialog.row!
+    setInSourceDialog({ open: false, row: null })
+    openTx(row, 'IN')
+  }
+
+  const handleSelectPurchaseIn = async () => {
+    const row = inSourceDialog.row!
+    setInSourceDialog({ open: false, row: null })
+    setPurchaseInDialog({ open: true, row, purchases: [], loading: true, search: '', selected: null, receiveQty: '' })
+    try {
+      const res  = await fetch('/api/purchases?status=ORDERED&limit=200')
+      const json = await res.json()
+      if (json.success) {
+        const filtered = (json.data.requests as any[]).filter(req =>
+          req.items.some((it: any) => it.itemId === row.itemId)
+        )
+        setPurchaseInDialog(prev => ({ ...prev, purchases: filtered, loading: false }))
+      } else {
+        setPurchaseInDialog(prev => ({ ...prev, loading: false }))
+      }
+    } catch {
+      setPurchaseInDialog(prev => ({ ...prev, loading: false }))
+    }
+  }
+
+  const handlePurchaseInSubmit = async () => {
+    const { row, selected, receiveQty } = purchaseInDialog
+    if (!row || !selected || !receiveQty || Number(receiveQty) <= 0) return
+    const matchItem = selected.items.find((it: any) => it.itemId === row.itemId)
+    setSubmitting(true)
+    try {
+      const stockRes = await fetch('/api/stock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itemId: row.itemId, department: row.department, type: 'IN',
+          quantity: Number(receiveQty),
+          memo: `구매요청 ${selected.documentNo ?? selected.id} 입고`,
+          unitCost: matchItem?.unitPrice ?? null, currency: 'KRW',
+        }),
+      })
+      const stockJson = await stockRes.json()
+      if (!stockJson.success) throw new Error(stockJson.message)
+
+      await fetch(`/api/purchases/${selected.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'RECEIVED' }),
+      })
+
+      toast.success(`입고 완료 (+${Number(receiveQty).toLocaleString()} ${row.unit})`)
+      setPurchaseInDialog({ open: false, row: null, purchases: [], loading: false, search: '', selected: null, receiveQty: '' })
+      refresh()
+    } catch (e: any) {
+      toast.error(e.message || '처리 실패')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const openTransfer = (row: StockRow) => {
@@ -193,17 +319,13 @@ export default function StockPage() {
         body.unitCost = Number(txForm.unitCost)
         body.currency = 'KRW'
       }
-      const res = await fetch('/api/stock', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
+      const res  = await fetch('/api/stock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       const json = await res.json()
       if (json.success) {
         const label = type === 'IN' ? '입고' : type === 'OUT' ? '출고' : '재고조정'
         toast.success(`${label} 완료되었습니다.`)
         setTxDialog({ open: false, row: null, type: 'IN' })
-        fetchRows(page, dept, search)
+        refresh()
       } else {
         toast.error(json.message ?? '처리 실패')
       }
@@ -222,7 +344,7 @@ export default function StockPage() {
     setSubmitting(true)
     try {
       const toDept: Dept = row.department === 'LAB' ? 'PRODUCTION' : 'LAB'
-      const res = await fetch('/api/stock/transfer', {
+      const res  = await fetch('/api/stock/transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ itemId: row.itemId, fromDept: row.department, toDept, quantity: qty, memo: transferForm.memo || null }),
@@ -231,7 +353,7 @@ export default function StockPage() {
       if (json.success) {
         toast.success('이관 완료되었습니다.')
         setTransferDialog({ open: false, row: null })
-        fetchRows(page, dept, search)
+        refresh()
       } else {
         toast.error(json.message ?? '이관 실패')
       }
@@ -247,7 +369,7 @@ export default function StockPage() {
     if (!row) return
     setMemoSubmitting(true)
     try {
-      const res = await fetch(`/api/stock/${row.itemId}`, {
+      const res  = await fetch(`/api/stock/${row.itemId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ department: row.department, memo: memoInput || null }),
@@ -256,7 +378,7 @@ export default function StockPage() {
       if (json.success) {
         toast.success('비고가 수정되었습니다.')
         setMemoDialog({ open: false, row: null })
-        fetchRows(page, dept, search)
+        refresh()
       } else {
         toast.error(json.message ?? '수정 실패')
       }
@@ -280,6 +402,9 @@ export default function StockPage() {
     return d === 'LAB' ? '연구소' : d === 'PRODUCTION' ? '생산구매팀' : d
   }
 
+  const fmtCost = (v: number | null) =>
+    v != null ? <span className="text-blue-700 font-medium">₩{Math.round(v).toLocaleString()}</span> : <span className="text-gray-300">-</span>
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* 타이틀 */}
@@ -287,21 +412,25 @@ export default function StockPage() {
         <h1 className="text-sm font-semibold text-gray-800">재고 관리</h1>
       </div>
 
-      {/* 탭 + 검색 */}
-      <div className="px-4 py-2.5 border-b bg-white flex items-center gap-3 flex-wrap min-h-[52px] shrink-0">
-        <div className="flex gap-1">
-          {(['LAB', 'PRODUCTION'] as Dept[]).map(d => (
-            <button
-              key={d}
-              onClick={() => handleDeptChange(d)}
-              className={`px-3 py-1 text-xs rounded-full font-medium transition-colors ${
-                dept === d ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {DEPT_LABEL[d]}
-            </button>
-          ))}
-        </div>
+      {/* 부서 탭 */}
+      <div className="bg-white border-b shrink-0 flex">
+        {(['ALL', 'PRODUCTION', 'LAB'] as DeptTab[]).map(d => (
+          <button
+            key={d}
+            onClick={() => handleDeptChange(d)}
+            className={`px-5 py-2.5 text-xs font-medium border-b-2 transition-all whitespace-nowrap ${
+              deptTab === d
+                ? 'border-blue-600 text-blue-700 bg-blue-50/50'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            {d === 'ALL' ? '전체' : DEPT_LABEL[d]}
+          </button>
+        ))}
+      </div>
+
+      {/* 검색 */}
+      <div className="px-4 py-2.5 border-b bg-white flex items-center gap-3 flex-wrap shrink-0">
         <form onSubmit={handleSearch} className="flex items-center gap-1">
           <Input
             value={searchInput}
@@ -314,112 +443,223 @@ export default function StockPage() {
         <span className="ml-auto text-xs text-gray-400">총 {total.toLocaleString()}개 품목</span>
       </div>
 
-      {/* 테이블 */}
+      {/* 테이블 영역 */}
       <div className="flex-1 overflow-auto min-h-0">
-        <table className="text-xs" style={{ tableLayout: 'fixed', width: '100%', minWidth: '1280px' }}>
-          <colgroup>
-            <col style={{ width: 220 }} />   {/* 품번 */}
-            <col style={{ width: 220 }} />   {/* 품명 */}
-            <col style={{ width: 72 }} />    {/* 대분류 */}
-            <col style={{ width: 72 }} />    {/* 중분류 */}
-            <col style={{ width: 52 }} />    {/* 단위 */}
-            <col style={{ width: 96 }} />    {/* 재고수량 */}
-            <col style={{ width: 120 }} />   {/* 원가 */}
-            <col />                          {/* 비고 (반응형) */}
-            <col style={{ width: 268 }} />   {/* 관리 */}
-          </colgroup>
-          <thead className="bg-gray-50 sticky top-0 z-20">
-            <tr>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b sticky left-0 bg-gray-50 z-20">품번</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b sticky left-[220px] bg-gray-50 z-20 border-r border-gray-200">품명</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">대분류</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">중분류</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">단위</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">재고수량</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">
-                <span className="inline-flex items-center">
-                  원가
-                  <InfoTooltip text="FIFO 선입선출 기준 가중평균 단가 (KRW)" />
-                </span>
-              </th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">비고</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">관리</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={9} className="px-3 py-10 text-center text-gray-400">불러오는 중...</td></tr>
-            ) : rows.length === 0 ? (
-              <tr><td colSpan={9} className="px-3 py-10 text-center text-gray-400">품목이 없습니다.</td></tr>
-            ) : rows.map(row => (
-              <tr key={row.itemId} className="border-b hover:bg-gray-50">
-                <td className="px-3 py-2 font-mono text-gray-700 overflow-hidden sticky left-0 bg-white z-[1]">
-                  <span className="block truncate" title={row.itemCode}>{row.itemCode}</span>
-                </td>
-                <td className="px-3 py-2 text-gray-800 overflow-hidden sticky left-[220px] bg-white z-[1] border-r border-gray-200">
-                  <span className="block truncate" title={row.itemName}>{row.itemName}</span>
-                </td>
-                <td className="px-3 py-2 text-gray-600 overflow-hidden">
-                  <span className="block truncate" title={CATEGORY_LABEL[row.category] ?? row.category}>
-                    {CATEGORY_LABEL[row.category] ?? row.category}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-gray-500 overflow-hidden">
-                  <span className="block truncate" title={row.subCategory ?? '-'}>{row.subCategory ?? '-'}</span>
-                </td>
-                <td className="px-3 py-2 text-gray-600 overflow-hidden">
-                  <span className="block truncate">{row.unit}</span>
-                </td>
-                <td className="px-3 py-2">
-                  <span className={`font-bold ${row.quantity === 0 ? 'text-gray-300' : 'text-gray-900'}`}>
-                    {row.quantity.toLocaleString()}
-                  </span>
-                </td>
-                <td className="px-3 py-2">
-                  {row.avgUnitCost != null ? (
-                    <span className="text-blue-700 font-medium">
-                      ₩{Math.round(row.avgUnitCost).toLocaleString()}
-                    </span>
-                  ) : (
-                    <span className="text-gray-300">-</span>
-                  )}
-                </td>
-                <td className="px-3 py-2 overflow-hidden">
-                  <div className="flex items-center gap-1 min-w-0">
-                    <span className="block truncate text-gray-500 flex-1" title={row.memo ?? ''}>
-                      {row.memo ?? ''}
-                    </span>
-                    <button
-                      onClick={() => openMemo(row)}
-                      className="shrink-0 text-gray-300 hover:text-gray-500 transition-colors"
-                      title="비고 편집"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
-                  </div>
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex gap-1">
-                    <Button variant="outline" size="sm" className="h-7 text-xs border-green-400 text-green-600 hover:bg-green-50 px-2"
-                      onClick={() => openTx(row, 'IN')}>입고</Button>
-                    <Button variant="outline" size="sm" className="h-7 text-xs border-red-300 text-red-500 hover:bg-red-50 px-2"
-                      disabled={row.quantity === 0}
-                      onClick={() => openTx(row, 'OUT')}>출고</Button>
-                    <Button variant="outline" size="sm" className="h-7 text-xs px-2"
-                      onClick={() => openTx(row, 'ADJUST')}>조정</Button>
-                    <Button variant="outline" size="sm" className="h-7 text-xs border-blue-300 text-blue-500 hover:bg-blue-50 px-2"
-                      disabled={row.quantity === 0}
-                      onClick={() => openTransfer(row)}>이관</Button>
-                    <Button variant="outline" size="sm" className="h-7 text-xs border-gray-300 text-gray-600 hover:bg-gray-50 px-2"
-                      onClick={() => openHistory(row)}>히스토리</Button>
-                  </div>
-                </td>
+
+        {/* ── 전체 탭 ─────────────────────────────────────── */}
+        {deptTab === 'ALL' ? (
+          <table className="text-xs" style={{ tableLayout: 'fixed', width: '100%', minWidth: '960px' }}>
+            <colgroup>
+              <col style={{ width: 200 }} />
+              <col style={{ width: 200 }} />
+              <col style={{ width: 72 }} />
+              <col style={{ width: 72 }} />
+              <col style={{ width: 48 }} />
+              {/* 연구소 */}
+              <col style={{ width: 88 }} />
+              <col style={{ width: 120 }} />
+              {/* 생산구매팀 */}
+              <col style={{ width: 88 }} />
+              <col style={{ width: 120 }} />
+              {/* 합계 */}
+              <col style={{ width: 80 }} />
+              <col style={{ width: 120 }} />
+            </colgroup>
+            <thead className="bg-gray-50 sticky top-0 z-20">
+              {/* 그룹 헤더 */}
+              <tr>
+                <th colSpan={5} className="border-b border-r border-gray-200" />
+                <th colSpan={2} className="px-3 py-1.5 text-center text-[11px] font-bold text-teal-600 border-b border-r border-gray-200 bg-teal-50">
+                  연구소
+                </th>
+                <th colSpan={2} className="px-3 py-1.5 text-center text-[11px] font-bold text-blue-600 border-b border-r border-gray-200 bg-blue-50">
+                  생산구매팀
+                </th>
+                <th colSpan={2} className="border-b border-gray-200 bg-gray-50" />
               </tr>
-            ))}
-          </tbody>
-        </table>
+              {/* 컬럼 헤더 */}
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b sticky left-0 bg-gray-50 z-20">품번</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b sticky left-[200px] bg-gray-50 z-20 border-r border-gray-200">품명</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">대분류</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">중분류</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">단위</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-teal-600 border-b bg-teal-50/40">수량</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-teal-500 border-b border-r border-gray-200 bg-teal-50/40">
+                  <span className="inline-flex items-center justify-end">원가<InfoTooltip text="FIFO 가중평균 단가 (KRW)" /></span>
+                </th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-blue-600 border-b bg-blue-50/40">수량</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-blue-500 border-b border-r border-gray-200 bg-blue-50/40">
+                  <span className="inline-flex items-center justify-end">원가<InfoTooltip text="FIFO 가중평균 단가 (KRW)" /></span>
+                </th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 border-b">합계</th>
+                <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 border-b">
+                  <span className="inline-flex items-center justify-end">합계 원가<InfoTooltip text="수량 가중평균 단가 (KRW)" /></span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={11} className="px-3 py-10 text-center text-gray-400">불러오는 중...</td></tr>
+              ) : allRows.length === 0 ? (
+                <tr><td colSpan={11} className="px-3 py-10 text-center text-gray-400">품목이 없습니다.</td></tr>
+              ) : allRows.map(row => {
+                const total = row.labQty + row.prodQty
+                const labVal  = row.labCost  != null ? row.labQty  * row.labCost  : null
+                const prodVal = row.prodCost != null ? row.prodQty * row.prodCost : null
+                const validQty = (row.labCost  != null ? row.labQty  : 0)
+                               + (row.prodCost != null ? row.prodQty : 0)
+                const avgCost = validQty > 0
+                  ? ((labVal ?? 0) + (prodVal ?? 0)) / validQty
+                  : null
+                return (
+                  <tr key={row.itemId} className="border-b hover:bg-gray-50">
+                    <td className="px-3 py-2 font-mono text-gray-700 overflow-hidden sticky left-0 bg-white z-[1]">
+                      <span className="block truncate" title={row.itemCode}>{row.itemCode}</span>
+                    </td>
+                    <td className="px-3 py-2 text-gray-800 overflow-hidden sticky left-[200px] bg-white z-[1] border-r border-gray-200">
+                      <span className="block truncate" title={row.itemName}>{row.itemName}</span>
+                    </td>
+                    <td className="px-3 py-2 text-gray-600 overflow-hidden">
+                      <span className="block truncate">{CATEGORY_LABEL[row.category] ?? row.category}</span>
+                    </td>
+                    <td className="px-3 py-2 text-gray-500 overflow-hidden">
+                      <span className="block truncate">{row.subCategory ?? '-'}</span>
+                    </td>
+                    <td className="px-3 py-2 text-gray-600">{row.unit}</td>
+                    {/* 연구소 */}
+                    <td className="px-3 py-2 text-right bg-teal-50/20">
+                      <span className={`font-bold ${row.labQty === 0 ? 'text-gray-300' : 'text-teal-700'}`}>
+                        {row.labQty.toLocaleString()}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right bg-teal-50/20 border-r border-gray-100">
+                      {fmtCost(row.labCost)}
+                    </td>
+                    {/* 생산구매팀 */}
+                    <td className="px-3 py-2 text-right bg-blue-50/20">
+                      <span className={`font-bold ${row.prodQty === 0 ? 'text-gray-300' : 'text-blue-700'}`}>
+                        {row.prodQty.toLocaleString()}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right bg-blue-50/20 border-r border-gray-100">
+                      {fmtCost(row.prodCost)}
+                    </td>
+                    {/* 합계 수량 */}
+                    <td className="px-3 py-2 text-right">
+                      <span className={`font-bold ${total === 0 ? 'text-gray-300' : 'text-gray-800'}`}>
+                        {total.toLocaleString()}
+                      </span>
+                    </td>
+                    {/* 합계 원가 */}
+                    <td className="px-3 py-2 text-right">{fmtCost(avgCost)}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+
+        ) : (
+        // ── 연구소 / 생산구매팀 탭 ─────────────────────────
+          <table className="text-xs" style={{ tableLayout: 'fixed', width: '100%', minWidth: '1280px' }}>
+            <colgroup>
+              <col style={{ width: 220 }} />
+              <col style={{ width: 220 }} />
+              <col style={{ width: 72 }} />
+              <col style={{ width: 72 }} />
+              <col style={{ width: 52 }} />
+              <col style={{ width: 96 }} />
+              <col style={{ width: 120 }} />
+              <col />
+              <col style={{ width: 268 }} />
+            </colgroup>
+            <thead className="bg-gray-50 sticky top-0 z-20">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b sticky left-0 bg-gray-50 z-20">품번</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b sticky left-[220px] bg-gray-50 z-20 border-r border-gray-200">품명</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">대분류</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">중분류</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">단위</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">재고수량</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">
+                  <span className="inline-flex items-center">
+                    원가
+                    <InfoTooltip text="FIFO 선입선출 기준 가중평균 단가 (KRW)" />
+                  </span>
+                </th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">비고</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 border-b">관리</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={9} className="px-3 py-10 text-center text-gray-400">불러오는 중...</td></tr>
+              ) : rows.length === 0 ? (
+                <tr><td colSpan={9} className="px-3 py-10 text-center text-gray-400">품목이 없습니다.</td></tr>
+              ) : rows.map(row => (
+                <tr key={row.itemId} className="border-b hover:bg-gray-50">
+                  <td className="px-3 py-2 font-mono text-gray-700 overflow-hidden sticky left-0 bg-white z-[1]">
+                    <span className="block truncate" title={row.itemCode}>{row.itemCode}</span>
+                  </td>
+                  <td className="px-3 py-2 text-gray-800 overflow-hidden sticky left-[220px] bg-white z-[1] border-r border-gray-200">
+                    <span className="block truncate" title={row.itemName}>{row.itemName}</span>
+                  </td>
+                  <td className="px-3 py-2 text-gray-600 overflow-hidden">
+                    <span className="block truncate" title={CATEGORY_LABEL[row.category] ?? row.category}>
+                      {CATEGORY_LABEL[row.category] ?? row.category}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-gray-500 overflow-hidden">
+                    <span className="block truncate" title={row.subCategory ?? '-'}>{row.subCategory ?? '-'}</span>
+                  </td>
+                  <td className="px-3 py-2 text-gray-600 overflow-hidden">
+                    <span className="block truncate">{row.unit}</span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className={`font-bold ${row.quantity === 0 ? 'text-gray-300' : 'text-gray-900'}`}>
+                      {row.quantity.toLocaleString()}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    {fmtCost(row.avgUnitCost)}
+                  </td>
+                  <td className="px-3 py-2 overflow-hidden">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className="block truncate text-gray-500 flex-1" title={row.memo ?? ''}>
+                        {row.memo ?? ''}
+                      </span>
+                      <button
+                        onClick={() => openMemo(row)}
+                        className="shrink-0 text-gray-300 hover:text-gray-500 transition-colors"
+                        title="비고 편집"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex gap-1">
+                      <Button variant="outline" size="sm" className="h-7 text-xs border-green-400 text-green-600 hover:bg-green-50 px-2"
+                        onClick={() => openInSource(row)}>입고</Button>
+                      <Button variant="outline" size="sm" className="h-7 text-xs border-red-300 text-red-500 hover:bg-red-50 px-2"
+                        disabled={row.quantity === 0}
+                        onClick={() => openTx(row, 'OUT')}>출고</Button>
+                      <Button variant="outline" size="sm" className="h-7 text-xs px-2"
+                        onClick={() => openTx(row, 'ADJUST')}>조정</Button>
+                      <Button variant="outline" size="sm" className="h-7 text-xs border-blue-300 text-blue-500 hover:bg-blue-50 px-2"
+                        disabled={row.quantity === 0}
+                        onClick={() => openTransfer(row)}>이관</Button>
+                      <Button variant="outline" size="sm" className="h-7 text-xs border-gray-300 text-gray-600 hover:bg-gray-50 px-2"
+                        onClick={() => openHistory(row)}>히스토리</Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {/* 페이지네이션 */}
@@ -433,6 +673,130 @@ export default function StockPage() {
           <Button variant="outline" size="sm" className="h-7 text-xs" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>다음</Button>
         </div>
       </div>
+
+      {/* 입고 소스 선택 다이얼로그 */}
+      <Dialog open={inSourceDialog.open} onOpenChange={open => setInSourceDialog(prev => ({ ...prev, open }))}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-sm">입고 유형 선택</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-gray-500 -mt-2 truncate">{inSourceDialog.row?.itemName}</p>
+          <div className="flex flex-col gap-2 py-1">
+            <button
+              onClick={handleSelectPurchaseIn}
+              className="flex flex-col gap-0.5 px-4 py-3 rounded-xl border-2 border-gray-200 hover:border-green-400 hover:bg-green-50 text-left transition-all"
+            >
+              <span className="text-xs font-semibold text-gray-800">구매요청 연결 입고</span>
+              <span className="text-[11px] text-gray-400">발주완료된 구매요청에서 선택하여 재고에 반영</span>
+            </button>
+            <button
+              onClick={handleSelectDirectIn}
+              className="flex flex-col gap-0.5 px-4 py-3 rounded-xl border-2 border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-left transition-all"
+            >
+              <span className="text-xs font-semibold text-gray-800">직접 입고</span>
+              <span className="text-[11px] text-gray-400">구매요청 없이 수량 직접 입력</span>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 구매요청 연결 입고 다이얼로그 */}
+      {(() => {
+        const q = purchaseInDialog.search.toLowerCase()
+        const filteredPurchases = purchaseInDialog.purchases.filter(req =>
+          !q ||
+          req.documentNo?.toLowerCase().includes(q) ||
+          req.requesterName?.toLowerCase().includes(q) ||
+          req.items.some((it: any) => it.spec?.toLowerCase().includes(q))
+        )
+        return (
+          <Dialog open={purchaseInDialog.open} onOpenChange={open => { if (!open) setPurchaseInDialog(prev => ({ ...prev, open: false, selected: null })) }}>
+            <DialogContent className="sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle className="text-sm">구매요청 연결 입고</DialogTitle>
+              </DialogHeader>
+              <p className="text-xs text-gray-500 -mt-2 truncate">{purchaseInDialog.row?.itemName}</p>
+              <div className="flex flex-col gap-3">
+                <Input
+                  value={purchaseInDialog.search}
+                  onChange={e => setPurchaseInDialog(prev => ({ ...prev, search: e.target.value }))}
+                  placeholder="구매요청코드 또는 요청자 검색"
+                  className="h-8 text-xs"
+                />
+                {purchaseInDialog.loading ? (
+                  <p className="text-xs text-gray-400 text-center py-6">불러오는 중...</p>
+                ) : filteredPurchases.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-6">발주완료 구매요청이 없습니다.</p>
+                ) : (
+                  <div className="max-h-52 overflow-y-auto flex flex-col gap-1 pr-0.5">
+                    {filteredPurchases.map((req: any) => {
+                      const matchItems = req.items.filter((it: any) => it.itemId === purchaseInDialog.row?.itemId)
+                      const isSelected = purchaseInDialog.selected?.id === req.id
+                      return (
+                        <button
+                          key={req.id}
+                          onClick={() => {
+                            const matchItem = matchItems[0]
+                            setPurchaseInDialog(prev => ({
+                              ...prev,
+                              selected: req,
+                              receiveQty: matchItem ? String(matchItem.quantity) : '',
+                            }))
+                          }}
+                          className={`flex items-start gap-3 px-3 py-2.5 rounded-lg border text-left transition-all ${
+                            isSelected ? 'border-green-400 bg-green-50' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-xs font-semibold text-gray-700">{req.documentNo}</span>
+                              {req.requesterName && <span className="text-[11px] text-gray-400">{req.requesterName}</span>}
+                            </div>
+                            {matchItems.map((it: any) => (
+                              <div key={it.id} className="text-[11px] text-gray-500 mt-0.5">
+                                {it.spec ?? it.bomNo ?? '—'} · 요청 {it.quantity.toLocaleString()} {it.unit}
+                              </div>
+                            ))}
+                          </div>
+                          {isSelected && (
+                            <svg className="w-4 h-4 text-green-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+                {purchaseInDialog.selected && (
+                  <div className="border-t pt-3 flex items-center gap-2">
+                    <label className="text-xs text-gray-500 shrink-0">입고 수량</label>
+                    <Input
+                      type="number" min="0"
+                      value={purchaseInDialog.receiveQty}
+                      onChange={e => setPurchaseInDialog(prev => ({ ...prev, receiveQty: e.target.value }))}
+                      className="h-8 text-sm w-28 text-right"
+                    />
+                    <span className="text-xs text-gray-500 shrink-0">{purchaseInDialog.row?.unit}</span>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" size="sm" className="text-xs" disabled={submitting}
+                  onClick={() => setPurchaseInDialog(prev => ({ ...prev, open: false, selected: null }))}>취소</Button>
+                <Button
+                  size="sm"
+                  className="text-xs bg-green-600 hover:bg-green-700 text-white"
+                  disabled={submitting || !purchaseInDialog.selected || !purchaseInDialog.receiveQty || Number(purchaseInDialog.receiveQty) <= 0}
+                  onClick={handlePurchaseInSubmit}
+                >
+                  {submitting ? '처리 중...' : '입고 확정'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )
+      })()}
 
       {/* 입고/출고/조정 다이얼로그 */}
       <Dialog open={txDialog.open} onOpenChange={open => setTxDialog(prev => ({ ...prev, open }))}>

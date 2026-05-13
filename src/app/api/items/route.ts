@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ItemCategory, ItemStatus, Prisma } from '@prisma/client'
+import { isSameItem } from '@/lib/item-duplicate-check'
 
 export async function GET(req: NextRequest) {
   try {
@@ -135,6 +136,12 @@ export async function POST(req: NextRequest) {
         { success: false, message: '필수 항목 누락: 품번, 품명, 단위, 대분류' },
         { status: 400 }
       )
+    }
+
+    // ── 스펙 중복 검사 (revisionNumber·itemCode 제외한 모든 필드) ──
+    const dupeCheck = await prisma.item.findMany({ where: { itemName, category } })
+    if (dupeCheck.some(c => isSameItem(c as any, body))) {
+      return NextResponse.json({ success: false, message: '동일한 품목이 있습니다.' }, { status: 409 })
     }
 
     // 동일 베이스 코드를 가진 기존 품목 + 히스토리 조회 (삭제된 코드도 재사용 방지)
