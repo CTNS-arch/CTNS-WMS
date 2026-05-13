@@ -48,9 +48,17 @@ const STATUS_ROW: Record<string, string> = {
   RECEIVED: 'bg-emerald-50/20',
   REJECTED: 'bg-red-50/10',
 }
-const FILTER_PILLS: { value: string; label: string }[] = [
+const FILTER_PILLS_MISC: { value: string; label: string }[] = [
   { value: '', label: '전체' },
-  { value: 'PENDING', label: '검토중' },
+  { value: 'PENDING', label: '요청' },
+  { value: 'ORDERED', label: '주문완료' },
+  { value: 'RECEIVED', label: '입고완료' },
+  { value: 'REJECTED', label: '반려' },
+]
+const FILTER_PILLS_DEPT: { value: string; label: string }[] = [
+  { value: '', label: '전체' },
+  { value: 'PENDING', label: '요청' },
+  { value: 'APPROVED', label: '검토중' },
   { value: 'ORDERED', label: '주문완료' },
   { value: 'RECEIVED', label: '입고완료' },
   { value: 'REJECTED', label: '반려' },
@@ -586,7 +594,7 @@ export default function PurchasesPage() {
       <div className="bg-white border-b shrink-0 flex">
         {DEPT_TABS.map(tab => (
           <button key={tab.value}
-            onClick={() => { setDeptTab(tab.value); setPage(1) }}
+            onClick={() => { setDeptTab(tab.value); setPage(1); setFilterStatus('') }}
             className={`px-5 py-2.5 text-xs font-medium border-b-2 transition-all whitespace-nowrap ${
               deptTab === tab.value
                 ? 'border-blue-600 text-blue-700 bg-blue-50/50'
@@ -601,7 +609,7 @@ export default function PurchasesPage() {
       {/* ── 필터 바 ──────────────────────────────────────── */}
       <div className="px-4 pt-2.5 pb-2 border-b bg-white flex flex-col gap-2 shrink-0">
         <div className="flex gap-1.5">
-          {FILTER_PILLS.map(pill => {
+          {(deptTab === '연구비' ? FILTER_PILLS_MISC : FILTER_PILLS_DEPT).map(pill => {
             const cnt = pill.value ? (statusCounts[pill.value] ?? 0) : Object.values(statusCounts).reduce((s, n) => s + n, 0)
             const active = filterStatus === pill.value
             return (

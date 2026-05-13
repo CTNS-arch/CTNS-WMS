@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.purchaseRequest.count({ where }),
-      prisma.purchaseRequest.groupBy({ by: ['status'], _count: { _all: true } }),
+      prisma.purchaseRequest.groupBy({ by: ['status'], where, _count: { _all: true } }),
     ])
 
     const statusCounts: Record<string, number> = {}
