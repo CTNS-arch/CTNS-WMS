@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
 // ── 타입 ────────────────────────────────────────────────────
+type CostRow = { _key: string; type: '공급금액' | '부대비용'; supplyAmount: string; taxAmount: string; memo: string }
+
 interface PurchaseFile {
   id: string; fileName: string; fileUrl: string
   fileType: string | null; fileSize: number | null; uploadedAt: string
@@ -136,6 +138,7 @@ function Sec({ label, color }: { label: string; color: string }) {
 export default function BuyerDialog({ open, request, onClose, onSaved }: Props) {
   const [items,           setItems]           = useState<BuyerItem[]>([])
   const [files,           setFiles]           = useState<PurchaseFile[]>([])
+  const [costMap,         setCostMap]         = useState<Record<string, CostRow[]>>({})
   const [activeTab,       setActiveTab]       = useState<Tab>('order')
   const [saving,          setSaving]          = useState(false)
   const [dragging,        setDragging]        = useState(false)
@@ -188,6 +191,27 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
     setFiles(request.files ?? [])
     setActiveTab('order')
     setNextStatus('')
+    const initMap: Record<string, CostRow[]> = {}
+    for (const it of request.items ?? []) {
+      const rows: CostRow[] = []
+      if (it.buyerSupplyAmount != null || it.supplyAmount != null) {
+        rows.push({
+          _key: `s-${it.id}`,
+          type: '공급금액',
+          supplyAmount: it.buyerSupplyAmount != null ? String(it.buyerSupplyAmount) : (it.supplyAmount != null ? String(it.supplyAmount) : ''),
+          taxAmount: it.buyerTaxAmount != null ? String(it.buyerTaxAmount) : (it.taxAmount != null ? String(it.taxAmount) : ''),
+          memo: '',
+        })
+      }
+      if (it.additionalCost != null && Number(it.additionalCost) > 0) {
+        rows.push({ _key: `a-${it.id}`, type: '부대비용', supplyAmount: String(it.additionalCost), taxAmount: '', memo: '' })
+      }
+      if (rows.length === 0) {
+        rows.push({ _key: `e-${it.id}`, type: '공급금액', supplyAmount: '', taxAmount: '', memo: '' })
+      }
+      initMap[it.id] = rows
+    }
+    setCostMap(initMap)
   }, [open, request, initItems])
 
   // ── 필드 업데이트 ──────────────────────────────────────────
@@ -434,75 +458,172 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
   if (!open || !request) return null
   const transitions = NEXT_STATUS[request.status] ?? []
 
-  // ── 총액 표시 ─────────────────────────────────────────────
-  const Total = ({ it }: { it: BuyerItem }) => {
-    const t = (Number(it.buyerSupplyAmount) || 0)
-            + (Number(it.buyerTaxAmount)    || 0)
-            + (Number(it.additionalCost)    || 0)
+  // ── 환율/금액 공통 블록 (발주·정산 공유) ─────────────────
+  const AmountBlock = ({ it }: { it: BuyerItem }) => {
+    const rows = costMap[it.id] ?? []
+    const supplyTotal = rows.filter(r => r.type === '공급금액').reduce((s, r) => s + (parseFloat(r.supplyAmount) || 0), 0)
+    const addTotal    = rows.filter(r => r.type === '부대비용').reduce((s, r) => s + (parseFloat(r.supplyAmount) || 0), 0)
+    const taxTotal    = rows.reduce((s, r) => s + (parseFloat(r.taxAmount) || 0), 0)
+
+    function applyAgg(newRows: CostRow[]) {
+      const sTotal = newRows.filter(r => r.type === '공급금액').reduce((s, r) => s + (parseFloat(r.supplyAmount) || 0), 0)
+      const aTotal = newRows.filter(r => r.type === '부대비용').reduce((s, r) => s + (parseFloat(r.supplyAmount) || 0), 0)
+      const tTotal = newRows.reduce((s, r) => s + (parseFloat(r.taxAmount) || 0), 0)
+      setItems(prev => prev.map(item => {
+        if (item.id !== it.id) return item
+        const rate = parseFloat(item.exchangeRate) || 1
+        const krw  = item.buyerCurrency === 'KRW' ? sTotal : sTotal * rate
+        return {
+          ...item,
+          buyerSupplyAmount: sTotal > 0 ? String(sTotal) : '',
+          additionalCost:    aTotal > 0 ? String(aTotal) : '',
+          buyerTaxAmount:    tTotal > 0 ? String(tTotal) : '',
+          krwAmount:  (krw + aTotal) > 0 ? String(Math.round(krw)) : '',
+          unitPrice:  (krw + aTotal) > 0 && item.quantity > 0 ? String(Math.round((krw + aTotal) / item.quantity)) : '',
+        }
+      }))
+    }
+
+    function addRow() {
+      const newRows = [...rows, { _key: String(Date.now()), type: '공급금액' as const, supplyAmount: '', taxAmount: '', memo: '' }]
+      setCostMap(prev => ({ ...prev, [it.id]: newRows }))
+    }
+
+    function updRow(key: string, field: keyof CostRow, val: string) {
+      const newRows = rows.map(r => r._key === key ? { ...r, [field]: val } : r)
+      setCostMap(prev => ({ ...prev, [it.id]: newRows }))
+      applyAgg(newRows)
+    }
+
+    function delRow(key: string) {
+      const newRows = rows.filter(r => r._key !== key)
+      setCostMap(prev => ({ ...prev, [it.id]: newRows }))
+      applyAgg(newRows)
+    }
+
     return (
-      <div className={calcCls}>
-        {t > 0 ? t.toLocaleString('ko-KR') + ' ' + (it.buyerCurrency || 'KRW') : '—'}
+      <div className="space-y-3">
+        {/* 결제 통화 + 환율 (표 위) */}
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="결제 통화">
+            <Sel value={it.buyerCurrency} onChange={e => { upd(it.id, 'buyerCurrency', e.target.value); fetchRate(it.id, e.target.value) }}>
+              {CURRENCY_OPT.map(o => <option key={o}>{o}</option>)}
+            </Sel>
+          </Field>
+          <Field label={it.buyerCurrency !== 'KRW' ? `환율 (1 ${it.buyerCurrency} → KRW)` : '환율'} cols={2}>
+            <div className="flex gap-1">
+              <input type="number" value={it.exchangeRate}
+                onChange={e => upd(it.id, 'exchangeRate', e.target.value)}
+                placeholder={it.buyerCurrency === 'KRW' ? '—' : '자동조회'}
+                disabled={it.buyerCurrency === 'KRW'}
+                className={inp + ' text-right flex-1 disabled:bg-gray-50 disabled:text-gray-300'} />
+              {it.buyerCurrency !== 'KRW' && (
+                <button onClick={() => fetchRate(it.id, it.buyerCurrency)}
+                  disabled={fetchingRate === it.id}
+                  className="px-2 h-8 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-xs text-gray-500 shrink-0 disabled:opacity-50">
+                  {fetchingRate === it.id ? '…' : '조회'}
+                </button>
+              )}
+            </div>
+          </Field>
+        </div>
+
+        {/* 금액 테이블 */}
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 w-28">항목</th>
+                <th className="px-3 py-2 text-right text-[10px] font-semibold text-gray-500 w-32">공급금액</th>
+                <th className="px-3 py-2 text-right text-[10px] font-semibold text-gray-500 w-28">세액</th>
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500">비고</th>
+                <th className="px-2 py-2 w-7" />
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(row => (
+                <tr key={row._key} className="border-b border-gray-100 last:border-0">
+                  <td className="px-2 py-1.5">
+                    <select value={row.type} onChange={e => updRow(row._key, 'type', e.target.value)}
+                      className="h-7 w-full rounded-md border border-gray-200 text-xs px-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
+                      <option>공급금액</option>
+                      <option>부대비용</option>
+                    </select>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <input type="number" value={row.supplyAmount}
+                      onChange={e => updRow(row._key, 'supplyAmount', e.target.value)}
+                      className="h-7 w-full rounded-md border border-gray-200 text-xs px-2 text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      placeholder="0" />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <input type="number" value={row.taxAmount}
+                      onChange={e => updRow(row._key, 'taxAmount', e.target.value)}
+                      className="h-7 w-full rounded-md border border-gray-200 text-xs px-2 text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      placeholder="0" />
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <input value={row.memo}
+                      onChange={e => updRow(row._key, 'memo', e.target.value)}
+                      className="h-7 w-full rounded-md border border-gray-200 text-xs px-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      placeholder="비고 입력" />
+                  </td>
+                  <td className="px-1 py-1.5 text-center">
+                    <button onClick={() => delRow(row._key)}
+                      className="w-5 h-5 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 text-sm flex items-center justify-center mx-auto transition-colors">
+                      ×
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-gray-50/80 border-t-2 border-gray-200">
+              <tr className="border-b border-gray-100">
+                <td className="px-3 py-1.5 text-[10px] font-bold text-gray-500">공급금액 합계</td>
+                <td className="px-3 py-1.5 text-right text-xs font-bold tabular-nums text-gray-800">
+                  {supplyTotal > 0 ? supplyTotal.toLocaleString('ko-KR') : '—'}
+                </td>
+                <td /><td colSpan={2} />
+              </tr>
+              <tr className="border-b border-gray-100">
+                <td className="px-3 py-1.5 text-[10px] font-bold text-gray-500">부대비용 합계</td>
+                <td className="px-3 py-1.5 text-right text-xs font-bold tabular-nums text-gray-800">
+                  {addTotal > 0 ? addTotal.toLocaleString('ko-KR') : '—'}
+                </td>
+                <td /><td colSpan={2} />
+              </tr>
+              <tr>
+                <td className="px-3 py-1.5 text-[10px] font-bold text-gray-500">세액 합계</td>
+                <td />
+                <td className="px-3 py-1.5 text-right text-xs font-bold tabular-nums text-gray-800">
+                  {taxTotal > 0 ? taxTotal.toLocaleString('ko-KR') : '—'}
+                </td>
+                <td colSpan={2} />
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        {/* 행 추가 */}
+        <button onClick={addRow}
+          className="w-full h-8 rounded-lg border border-dashed border-gray-300 text-xs text-gray-400 hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/50 transition-colors">
+          + 행 추가
+        </button>
+
+        {/* 원화 환산 */}
+        {(it.krwAmount || it.unitPrice) && (
+          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-amber-100">
+            <Field label="원화 환산금액">
+              <div className={calcCls}>{it.krwAmount ? Number(it.krwAmount).toLocaleString('ko-KR') + ' KRW' : '—'}</div>
+            </Field>
+            <Field label="품목별 단가">
+              <div className={calcCls}>{it.unitPrice ? Number(it.unitPrice).toLocaleString('ko-KR') + ' KRW' : '—'}</div>
+            </Field>
+          </div>
+        )}
       </div>
     )
   }
-
-  // ── 환율/금액 공통 블록 (발주·정산 공유) ─────────────────
-  const AmountBlock = ({ it }: { it: BuyerItem }) => (
-    <div className="space-y-2.5">
-      <div className="grid grid-cols-3 gap-3">
-        <Field label="결제 통화">
-          <Sel value={it.buyerCurrency} onChange={e => { upd(it.id, 'buyerCurrency', e.target.value); fetchRate(it.id, e.target.value) }}>
-            {CURRENCY_OPT.map(o => <option key={o}>{o}</option>)}
-          </Sel>
-        </Field>
-        <Field label="환율 (KRW)" cols={2}>
-          <div className="flex gap-1">
-            <input
-              type="number"
-              value={it.exchangeRate}
-              onChange={e => upd(it.id, 'exchangeRate', e.target.value)}
-              placeholder={it.buyerCurrency === 'KRW' ? '—' : '자동조회'}
-              disabled={it.buyerCurrency === 'KRW'}
-              className={inp + ' text-right flex-1 disabled:bg-gray-50 disabled:text-gray-300'}
-            />
-            {it.buyerCurrency !== 'KRW' && (
-              <button
-                onClick={() => fetchRate(it.id, it.buyerCurrency)}
-                disabled={fetchingRate === it.id}
-                className="px-2 h-8 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-xs text-gray-500 shrink-0 disabled:opacity-50"
-              >
-                {fetchingRate === it.id ? '…' : '조회'}
-              </button>
-            )}
-          </div>
-        </Field>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <Field label="부대비용 (KRW)">
-          <input type="number" value={it.additionalCost} onChange={e => upd(it.id, 'additionalCost', e.target.value)} className={inp + ' text-right'} placeholder="0" />
-        </Field>
-        <Field label="공급금액">
-          <input type="number" value={it.buyerSupplyAmount} onChange={e => upd(it.id, 'buyerSupplyAmount', e.target.value)} className={inp + ' text-right'} placeholder="0" />
-        </Field>
-        <Field label="세액">
-          <input type="number" value={it.buyerTaxAmount} onChange={e => upd(it.id, 'buyerTaxAmount', e.target.value)} className={inp + ' text-right'} placeholder="0" />
-        </Field>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <Field label="총액" cols={2}><Total it={it} /></Field>
-      </div>
-      {(it.krwAmount || it.unitPrice) && (
-        <div className="grid grid-cols-2 gap-3 pt-1 border-t border-amber-100">
-          <Field label="원화 환산금액">
-            <div className={calcCls}>{it.krwAmount ? Number(it.krwAmount).toLocaleString('ko-KR') + ' KRW' : '—'}</div>
-          </Field>
-          <Field label="품목별 단가">
-            <div className={calcCls}>{it.unitPrice ? Number(it.unitPrice).toLocaleString('ko-KR') + ' KRW' : '—'}</div>
-          </Field>
-        </div>
-      )}
-    </div>
-  )
 
   // ── 품목 카드 ─────────────────────────────────────────────
   const ItemCard = ({ it }: { it: BuyerItem }) => (

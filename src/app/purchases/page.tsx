@@ -109,9 +109,15 @@ function makeApprovalLine(drafterName: string, dept: string, defaults?: Approval
   const d = defaults ?? loadApprovalDefaultsByDept(dept)
   return [
     { order: 1, role: '기안자', name: drafterName },
-    { order: 2, role: '검토자', name: d.reviewerName, userId: d.reviewerId || undefined },
-    { order: 3, role: '승인자', name: d.approverName, userId: d.approverId || undefined },
+    { order: 2, role: '진행자', name: d.approverName, userId: d.approverId || undefined },
   ]
+}
+
+function getApprover(req: any): string {
+  try {
+    const line: Approver[] = JSON.parse(req.approvalLine ?? '[]')
+    return line.find(l => l.role === '진행자' || l.role === '승인자')?.name || ''
+  } catch { return '' }
 }
 
 const LIMIT = 20
@@ -232,6 +238,7 @@ export default function PurchasesPage() {
   const [tooltipInfo,     setTooltipInfo]     = useState<{ x: number; y: number; text: string } | null>(null)
   const [itemDetailOpen,  setItemDetailOpen]  = useState(false)
   const [itemDetailItem,  setItemDetailItem]  = useState<any | null>(null)
+  const [itemDetailLoading, setItemDetailLoading] = useState(false)
 
   const [users,          setUsers]          = useState<UserItem[]>([])
   const [settingsOpen,   setSettingsOpen]   = useState(false)
@@ -290,6 +297,15 @@ export default function PurchasesPage() {
       const json = await res.json()
       if (json.success) setNextSerial(json.data.nextSerial)
     } catch {}
+  }
+
+  async function openItemDetail(itemId: string) {
+    setItemDetailLoading(true)
+    try {
+      const res = await fetch(`/api/items/${itemId}`)
+      const json = await res.json()
+      if (json.success) { setItemDetailItem(json.data); setItemDetailOpen(true) }
+    } catch {} finally { setItemDetailLoading(false) }
   }
 
   function openCreate() {
@@ -611,14 +627,14 @@ export default function PurchasesPage() {
 
       {/* ── 필터 바 ──────────────────────────────────────── */}
       <div className="px-4 pt-2.5 pb-2 border-b bg-white flex flex-col gap-2 shrink-0">
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
           {(deptTab === '연구비' ? FILTER_PILLS_MISC : FILTER_PILLS_DEPT).map(pill => {
             const cnt = pill.value ? (statusCounts[pill.value] ?? 0) : Object.values(statusCounts).reduce((s, n) => s + n, 0)
             const active = filterStatus === pill.value
             return (
               <button key={pill.value}
                 onClick={() => { setFilterStatus(pill.value); setPage(1) }}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all whitespace-nowrap shrink-0 ${
                   active
                     ? 'bg-gray-800 text-white shadow-sm'
                     : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
@@ -786,7 +802,7 @@ export default function PurchasesPage() {
           </table>
         ) : (
           /* 일반 테이블 (생산구매팀 / 연구소) */
-          <table className="text-xs w-full border-collapse" style={{ minWidth: 1360 }}>
+          <table className="text-xs w-full border-collapse" style={{ minWidth: 1450 }}>
             <colgroup>
               <col style={{ width: 3 }} />
               <col style={{ width: 82 }} />
@@ -801,12 +817,13 @@ export default function PurchasesPage() {
               <col style={{ width: 100 }} />
               <col style={{ width: 90 }} />
               <col style={{ width: 130 }} />
+              <col style={{ width: 90 }} />
               <col style={{ width: 175 }} />
             </colgroup>
             <thead className="bg-white sticky top-0 z-10">
               <tr className="border-b border-gray-200">
                 <th className="w-1 p-0" />
-                {['상태', '구분', '구매요청코드', '요청자', '배송지', '품목코드', '품목명', '수량', '총액', '공급처', '입고희망일', '구매사유', '관리'].map(h => (
+                {['상태', '구분', '구매요청코드', '요청자', '배송지', '품목코드', '품목명', '수량', '총액', '공급처', '입고희망일', '구매사유', '진행자', '관리'].map(h => (
                   <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 whitespace-nowrap">
                     {h}
                   </th>
@@ -815,10 +832,10 @@ export default function PurchasesPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={14} className="px-3 py-16 text-center text-gray-400 text-xs">불러오는 중...</td></tr>
+                <tr><td colSpan={15} className="px-3 py-16 text-center text-gray-400 text-xs">불러오는 중...</td></tr>
               ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="px-3 py-16 text-center">
+                  <td colSpan={15} className="px-3 py-16 text-center">
                     <div className="text-gray-300 text-2xl mb-2">📋</div>
                     <div className="text-gray-400 text-xs">구매 요청 내역이 없습니다.</div>
                   </td>
@@ -877,7 +894,15 @@ export default function PurchasesPage() {
                           : <span className="text-gray-300 text-xs">—</span>}
                       </td>
                       <td className="px-3 py-2 text-gray-700 text-xs max-w-[140px] truncate">
-                        {item?.spec || <span className="text-gray-300">—</span>}
+                        {item?.spec
+                          ? item.itemId
+                            ? <button
+                                onClick={() => openItemDetail(item.itemId)}
+                                disabled={itemDetailLoading}
+                                className="text-blue-600 underline hover:text-blue-800 truncate text-left disabled:opacity-60"
+                              >{item.spec}</button>
+                            : item.spec
+                          : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap text-right text-xs tabular-nums text-gray-700">
                         {item ? `${Number(item.quantity).toLocaleString()} ${item.unit || ''}` : <span className="text-gray-300">—</span>}
@@ -899,9 +924,14 @@ export default function PurchasesPage() {
                         {item?.purchaseReason || <span className="text-gray-300">—</span>}
                       </td>
                       {isFirst && (
+                        <td rowSpan={groupSize} className="px-3 py-2 whitespace-nowrap text-xs text-gray-600 align-middle">
+                          {getApprover(req) || <span className="text-gray-300">—</span>}
+                        </td>
+                      )}
+                      {isFirst && (
                         <td rowSpan={groupSize} className="px-3 py-2 align-middle">
                           <div className="flex items-center gap-1">
-                            {(isAdmin || isOwn(req)) && (
+                            {isOwn(req) && (
                               req.status === 'PENDING' ? (
                                 <button
                                   onClick={() => openEdit(req, false)}
@@ -1615,24 +1645,7 @@ export default function PurchasesPage() {
 
             <div className="px-5 py-5 space-y-4">
               <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">기본 검토자</label>
-                <select
-                  value={settingsDraft[settingsDeptTab].reviewerId}
-                  onChange={e => {
-                    const u = users.find(u => u.id === e.target.value)
-                    setSettingsDraft(d => ({
-                      ...d,
-                      [settingsDeptTab]: { ...d[settingsDeptTab], reviewerId: e.target.value, reviewerName: u?.name ?? '' },
-                    }))
-                  }}
-                  className="h-9 rounded-lg border border-gray-200 px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
-                >
-                  <option value="">선택 안 함</option>
-                  {users.map(u => <option key={u.id} value={u.id}>{u.name ?? u.email}</option>)}
-                </select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">기본 승인자</label>
+                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">기본 진행자</label>
                 <select
                   value={settingsDraft[settingsDeptTab].approverId}
                   onChange={e => {
