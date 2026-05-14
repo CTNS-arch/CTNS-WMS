@@ -108,7 +108,7 @@ function saveApprovalDefaultsByDept(dept: string, d: ApprovalDefaults) {
 function makeApprovalLine(drafterName: string, dept: string, defaults?: ApprovalDefaults): Approver[] {
   const d = defaults ?? loadApprovalDefaultsByDept(dept)
   return [
-    { order: 1, role: '기안자', name: drafterName },
+    { order: 1, role: '요청자', name: drafterName },
     { order: 2, role: '진행자', name: d.approverName, userId: d.approverId || undefined },
   ]
 }
@@ -184,7 +184,7 @@ function hasBuyerData(req: any): boolean {
 function getDrafter(req: any): string {
   try {
     const line: Approver[] = JSON.parse(req.approvalLine ?? '[]')
-    return line.find(l => l.role === '기안자')?.name || req.requesterName || ''
+    return line.find(l => l.role === '기안자' || l.role === '요청자')?.name || req.requesterName || ''
   } catch {
     return req.requesterName || ''
   }
@@ -198,7 +198,12 @@ export default function PurchasesPage() {
   const sessionName = session?.user?.name ?? ''
   const isProdStock = session?.user?.roles?.includes('PROD_STOCK') ?? false
   const isLabStock  = session?.user?.roles?.includes('LAB_STOCK')  ?? false
-  const isOwn = (req: any) => req.requester?.email === session?.user?.email
+  const isOwn = (req: any) => {
+    if (req.requester?.email && session?.user?.email) {
+      return req.requester.email === session.user.email
+    }
+    return !!session?.user?.name && getDrafter(req) === session.user.name
+  }
 
   const [requests,      setRequests]      = useState<any[]>([])
   const [total,         setTotal]         = useState(0)
@@ -712,7 +717,7 @@ export default function PurchasesPage() {
                   <tr key={req.id} className={rowCls}>
                     <td className={`w-1 p-0 ${STATUS_STRIPE[req.status] ?? 'bg-gray-200'}`} />
                     <td className="px-3 py-2 align-middle">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${STATUS_COLOR[req.status] ?? ''}`}>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${STATUS_COLOR[req.status] ?? ''}`}>
                         {STATUS_LABEL[req.status] ?? req.status}
                       </span>
                     </td>
@@ -863,7 +868,7 @@ export default function PurchasesPage() {
                       )}
                       {isFirst && (
                         <td rowSpan={groupSize} className="px-3 py-2 align-middle">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${STATUS_COLOR[req.status] ?? ''}`}>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${STATUS_COLOR[req.status] ?? ''}`}>
                             {STATUS_LABEL[req.status] ?? req.status}
                           </span>
                         </td>
@@ -1020,7 +1025,8 @@ export default function PurchasesPage() {
                 className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 text-lg font-light">×</button>
             </div>
 
-            <div className={`flex-1 overflow-auto flex flex-col gap-0 min-h-0 ${formReadOnly ? 'pointer-events-none select-none opacity-70' : ''}`}>
+            <div className="flex-1 overflow-auto min-h-0">
+            <div className={`flex flex-col gap-0 ${formReadOnly ? 'pointer-events-none select-none opacity-70' : ''}`}>
 
               {/* 기본 정보 섹션 */}
               <div className="px-6 py-4 border-b bg-gray-50/50 shrink-0">
@@ -1397,6 +1403,7 @@ export default function PurchasesPage() {
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white"
                 />
               </div>
+            </div>
             </div>
 
             {/* 푸터 */}

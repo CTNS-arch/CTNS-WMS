@@ -36,9 +36,8 @@ function loadDefaults() {
 function makeApprovalLine(drafterName: string): Approver[] {
   const d = loadDefaults()
   return [
-    { order: 1, role: '기안자', name: drafterName },
-    { order: 2, role: '검토자', name: d.reviewerName, userId: d.reviewerId || undefined },
-    { order: 3, role: '승인자', name: d.approverName, userId: d.approverId || undefined },
+    { order: 1, role: '요청자', name: drafterName },
+    { order: 2, role: '진행자', name: d.approverName, userId: d.approverId || undefined },
   ]
 }
 
