@@ -246,9 +246,6 @@ export default function PurchasesPage() {
   const [miscReceiveViewOpen, setMiscReceiveViewOpen] = useState(false)
   const [miscReceiveViewReq,  setMiscReceiveViewReq]  = useState<any | null>(null)
 
-  const [buyerDropId,  setBuyerDropId]  = useState<string | null>(null)
-  const [buyerDropPos, setBuyerDropPos] = useState<{ top: number; left: number } | null>(null)
-
   const [nextSerial,      setNextSerial]      = useState<number | null>(null)
   const [tooltipInfo,     setTooltipInfo]     = useState<{ x: number; y: number; text: string } | null>(null)
   const [itemDetailOpen,  setItemDetailOpen]  = useState(false)
@@ -366,19 +363,6 @@ export default function PurchasesPage() {
   }
 
   function openBuyer(req: any) { setBuyerRequest(req); setBuyerOpen(true) }
-
-  async function quickUpdateStatus(id: string, status: string) {
-    try {
-      const res  = await fetch(`/api/purchases/${id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      })
-      const json = await res.json()
-      if (!json.success) throw new Error(json.message)
-      setRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r))
-      toast.success(`상태가 '${STATUS_LABEL[status]}'(으)로 변경되었습니다.`)
-    } catch (e: any) { toast.error(e.message || '상태 변경 실패') }
-  }
 
   async function openItemDetail(itemId: string) {
     try {
@@ -978,11 +962,7 @@ export default function PurchasesPage() {
                             )}
                             {isAdmin && (
                               <button
-                                onClick={e => {
-                                  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                                  setBuyerDropId(req.id)
-                                  setBuyerDropPos({ top: r.bottom + 4, left: r.left })
-                                }}
+                                onClick={() => openBuyer(req)}
                                 className="h-7 px-2.5 rounded text-xs font-medium border border-purple-200 text-purple-600 bg-purple-50 hover:bg-purple-100 transition-colors whitespace-nowrap"
                               >
                                 구매 처리
@@ -1539,41 +1519,6 @@ export default function PurchasesPage() {
             </button>
           )}
         </div>
-      )}
-
-      {/* ── 구매처리 상태 드롭다운 ──────────────────────── */}
-      {buyerDropId && buyerDropPos && createPortal(
-        <div>
-          <div className="fixed inset-0 z-[9998]" onClick={() => setBuyerDropId(null)} />
-          <div
-            style={{ position: 'fixed', top: buyerDropPos.top, left: buyerDropPos.left, zIndex: 9999 }}
-            className="bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden min-w-[160px]"
-          >
-            {(() => {
-              const req = requests.find(r => r.id === buyerDropId)
-              const transitions = req ? (NEXT_STATUS[req.status] ?? []) : []
-              return (
-                <>
-                  {transitions.map(s => (
-                    <button key={s} type="button"
-                      onClick={async () => { await quickUpdateStatus(buyerDropId, s); setBuyerDropId(null) }}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-1.5 border-b last:border-0 border-gray-100 text-gray-700"
-                    >
-                      <span className="text-gray-400">→</span> {STATUS_LABEL[s]}
-                    </button>
-                  ))}
-                  <button type="button"
-                    onClick={() => { const req = requests.find(r => r.id === buyerDropId); if (req) openBuyer(req); setBuyerDropId(null) }}
-                    className="w-full text-left px-3 py-2.5 text-xs font-medium text-purple-600 hover:bg-purple-50 border-t border-gray-100"
-                  >
-                    구매 처리 상세 →
-                  </button>
-                </>
-              )
-            })()}
-          </div>
-        </div>,
-        document.body
       )}
 
       {/* ── 구매 처리 다이얼로그 ─────────────────────────── */}

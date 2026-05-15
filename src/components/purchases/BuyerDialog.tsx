@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
+import { SUB_OPTIONS, THIRD_OPTIONS } from '@/lib/classification'
 
 // ── 타입 ────────────────────────────────────────────────────
 type CostRow = { _key: string; type: '공급금액' | '부대비용'; supplyAmount: string; taxAmount: string; memo: string }
@@ -76,6 +77,28 @@ const CURRENCY_OPT = ['KRW', 'USD', 'CNY']
 const PAYMENT_OPT  = ['계좌이체', '카드', '현금', '어음']
 
 function toDate(d: string | null | undefined) { return d?.slice(0, 10) ?? '' }
+
+type SuppContactRow = { _key: string; name: string; title: string; phone: string; email: string }
+type SuppFormData = {
+  companyName: string; status: 'ACTIVE' | 'INACTIVE'; region: 'DOMESTIC' | 'OVERSEAS'
+  businessRegNo: string; url: string; bankName: string; accountNumber: string; accountHolder: string
+  subCategory: string; note: string
+  contacts: SuppContactRow[]
+}
+const EMPTY_SUPP_FORM: SuppFormData = {
+  companyName: '', status: 'ACTIVE', region: 'DOMESTIC',
+  businessRegNo: '', url: '', bankName: '', accountNumber: '', accountHolder: '',
+  subCategory: '', note: '', contacts: [],
+}
+const SUPP_CAT_GROUPS = [
+  { label: '반제품', options: SUB_OPTIONS.ASSEMBLY?.filter((o: any) => ['BM', 'PC'].includes(o.value)) ?? [] },
+  { label: '자재 (중분류)', options: SUB_OPTIONS.COMPONENT?.filter((o: any) => ['CL', 'EL', 'ME'].includes(o.value)) ?? [] },
+  { label: '도전재 (CD)', options: THIRD_OPTIONS.CD ?? [] },
+  { label: '포장자재 (PK)', options: THIRD_OPTIONS.PK ?? [] },
+  { label: '체결부품 (FS)', options: THIRD_OPTIONS.FS ?? [] },
+  { label: '부자재/소모품 (SM)', options: THIRD_OPTIONS.SM ?? [] },
+  { label: '기타 (OT)', options: THIRD_OPTIONS.OT ?? [] },
+]
 
 // ── UI 헬퍼 ─────────────────────────────────────────────────
 function Field({ label, children, cols = 1 }: {
@@ -175,7 +198,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
   const [suppOpts,        setSuppOpts]        = useState<Record<string, any[]>>({})
   const [suppOpen,        setSuppOpen]        = useState<Record<string, boolean>>({})
   const [showSuppCreate,  setShowSuppCreate]  = useState<string | null>(null)
-  const [suppForm,        setSuppForm]        = useState({ companyName: '', region: '', businessRegNo: '', bankName: '', accountNumber: '', accountHolder: '', note: '' })
+  const [suppForm,        setSuppForm]        = useState<SuppFormData>(EMPTY_SUPP_FORM)
   const [savingSupp,      setSavingSupp]      = useState(false)
   const fileRef    = useRef<HTMLInputElement>(null)
   const suppTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -312,21 +335,19 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
   const searchSuppliers = (itemId: string, query: string) => {
     setSuppQuery(prev => ({ ...prev, [itemId]: query }))
     if (suppTimerRef.current) clearTimeout(suppTimerRef.current)
-    if (!query.trim()) {
-      setSuppOpts(prev => ({ ...prev, [itemId]: [] }))
-      setSuppOpen(prev => ({ ...prev, [itemId]: false }))
-      return
-    }
     suppTimerRef.current = setTimeout(async () => {
       try {
-        const res  = await fetch(`/api/suppliers?search=${encodeURIComponent(query)}&limit=6`)
+        const url = query.trim()
+          ? `/api/suppliers?search=${encodeURIComponent(query)}&limit=8`
+          : `/api/suppliers?limit=8`
+        const res  = await fetch(url)
         const json = await res.json()
         if (json.success) {
           setSuppOpts(prev => ({ ...prev, [itemId]: json.data.suppliers ?? [] }))
           setSuppOpen(prev => ({ ...prev, [itemId]: true }))
         }
       } catch {}
-    }, 300)
+    }, 150)
   }
 
   // ── 공급처 생성 ───────────────────────────────────────────
@@ -334,16 +355,22 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
     if (!suppForm.companyName.trim()) { toast.error('업체명을 입력해주세요.'); return }
     setSavingSupp(true)
     try {
+      const { contacts: rawContacts, ...rest } = suppForm
       const res  = await fetch('/api/suppliers', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(suppForm),
+        body: JSON.stringify({
+          ...rest,
+          contacts: rawContacts.filter(c => c.name.trim()).map(({ _key, ...c }) => ({
+            name: c.name.trim(), title: c.title || null, phone: c.phone || null, email: c.email || null,
+          })),
+        }),
       })
       const json = await res.json()
       if (!json.success) throw new Error(json.message)
       upd(itemId, 'supplierName', json.data.companyName)
       setSuppQuery(prev => { const n = { ...prev }; delete n[itemId]; return n })
       setShowSuppCreate(null)
-      setSuppForm({ companyName: '', region: '', businessRegNo: '', bankName: '', accountNumber: '', accountHolder: '', note: '' })
+      setSuppForm(EMPTY_SUPP_FORM)
       toast.success('공급처가 등록되었습니다.')
     } catch (e: any) { toast.error(e.message || '공급처 등록 실패') }
     finally { setSavingSupp(false) }
@@ -649,7 +676,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
                       className="h-7 w-full rounded-lg border border-[#e6e6e6] text-xs px-2 focus:outline-none focus:ring-1 focus:ring-purple-400"
                       placeholder="비고 입력" />
                   </td>
-                  <td className="px-1 py-1.5 text-center">
+                  <td className="px-1 py-1.5 text-center align-middle">
                     <button onClick={() => delRow(row._key)}
                       className="w-6 h-6 rounded bg-white border border-white text-[#d1d1d1] hover:text-red-400 hover:border-red-100 text-sm flex items-center justify-center mx-auto transition-colors">
                       ×
@@ -674,6 +701,18 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
                   </span>
                 </td>
               </tr>
+              {cur !== 'KRW' && it.exchangeRate && parseFloat(it.exchangeRate) > 0 && grandTotal > 0 && (
+                <tr className="bg-orange-50/50 border-t border-orange-100">
+                  <td colSpan={3} className="px-3 py-1.5 text-[10px] text-orange-600 font-medium">
+                    한화 환산 <span className="text-orange-400 font-normal">(1 {cur} = {Number(it.exchangeRate).toLocaleString()} KRW)</span>
+                  </td>
+                  <td colSpan={2} className="px-3 py-1.5">
+                    <span className="text-xs font-bold text-orange-700 tabular-nums">
+                      ₩ {Math.round(grandTotal * parseFloat(it.exchangeRate)).toLocaleString('ko-KR')}
+                    </span>
+                  </td>
+                </tr>
+              )}
             </tfoot>
           </table>
         </div>
@@ -717,9 +756,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
                     onChange={e => searchSuppliers(it.id, e.target.value)}
                     onFocus={() => {
                       const q = suppQuery[it.id] !== undefined ? suppQuery[it.id] : it.supplierName
-                      if (q.trim() && (suppOpts[it.id]?.length ?? 0) > 0) {
-                        setSuppOpen(prev => ({ ...prev, [it.id]: true }))
-                      }
+                      searchSuppliers(it.id, q)
                     }}
                     onBlur={() => {
                       setTimeout(() => {
@@ -751,7 +788,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
                       <button type="button"
                         onMouseDown={() => {
                           setSuppOpen(prev => ({ ...prev, [it.id]: false }))
-                          setSuppForm(prev => ({ ...prev, companyName: suppQuery[it.id] ?? '' }))
+                          setSuppForm({ ...EMPTY_SUPP_FORM, companyName: suppQuery[it.id] ?? it.supplierName })
                           setShowSuppCreate(it.id)
                         }}
                         className="w-full text-left px-3 py-2 text-xs text-[#9445e5] font-medium hover:bg-purple-50 border-t border-gray-100">
@@ -774,7 +811,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
           </div>
           <div>
             <Sec label="금액" color="text-amber-500" />
-            <AmountBlock it={it} />
+            {AmountBlock({ it })}
           </div>
           {it.id === items[items.length - 1]?.id && (
             <div>
@@ -973,7 +1010,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
           {/* 금액 (공유 블록) */}
           <div>
             <Sec label="금액" color="text-amber-500" />
-            <AmountBlock it={it} />
+            {AmountBlock({ it })}
           </div>
 
           {/* 계좌 정보 (계좌이체 시) */}
@@ -1093,7 +1130,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
           <div className="p-4 space-y-3">
             {items.length === 0 ? (
               <div className="text-center py-12 text-gray-400 text-sm">품목이 없습니다.</div>
-            ) : items.map(it => <ItemCard key={it.id} it={it} />)}
+            ) : items.map(it => <React.Fragment key={it.id}>{ItemCard({ it })}</React.Fragment>)}
 
           </div>
         </div>
@@ -1102,26 +1139,17 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
         <div className="px-6 py-3.5 border-t border-[#e6e6e6] bg-[#fafafa] shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              {transitions.length > 0 ? (
-                <>
-                  <span className="text-[10px] text-[#9ea1a3] mr-1">상태 변경</span>
-                  {transitions.map(s => (
-                    <button
-                      key={s}
-                      onClick={() => setNextStatus(prev => prev === s ? '' : s)}
-                      className={`h-9 px-4 rounded-lg text-xs font-medium transition-all ${
-                        nextStatus === s
-                          ? NEXT_STATUS_STYLE[s]
-                          : 'border border-[#9ea1a3] text-[#6b7078] bg-white hover:bg-gray-50'
-                      }`}
-                    >
-                      → {STATUS_LABEL[s]}
-                    </button>
-                  ))}
-                </>
-              ) : (
-                <span className="text-xs text-[#9ea1a3]">더 이상 상태를 변경할 수 없습니다</span>
-              )}
+              <span className="text-[10px] text-[#9ea1a3] shrink-0">상태</span>
+              <select
+                value={nextStatus}
+                onChange={e => setNextStatus(e.target.value)}
+                className="h-8 px-2.5 rounded-lg border border-[#e6e6e6] text-xs text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-purple-400"
+              >
+                <option value="">{STATUS_LABEL[request.status] ?? request.status} (현재)</option>
+                {transitions.map(s => (
+                  <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                ))}
+              </select>
             </div>
             <div className="flex gap-2">
               <button
@@ -1147,59 +1175,181 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
       {/* ── 공급처 등록 모달 ─────────────────────────────────── */}
       {showSuppCreate && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={() => setShowSuppCreate(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-[420px] p-6" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
+          <div className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+            style={{ width: 560, maxHeight: '88vh' }}
+            onClick={e => e.stopPropagation()}>
+
+            {/* 헤더 */}
+            <div className="px-6 py-4 border-b flex items-center justify-between shrink-0">
               <h3 className="text-sm font-bold text-gray-900">새 공급처 등록</h3>
               <button onClick={() => setShowSuppCreate(null)} className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 text-gray-400 hover:bg-gray-200 text-sm">×</button>
             </div>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">업체명 <span className="text-red-400 normal-case">*</span></label>
-                <input value={suppForm.companyName} onChange={e => setSuppForm(prev => ({ ...prev, companyName: e.target.value }))}
-                  className={inp} placeholder="업체명 입력" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">지역</label>
-                  <input value={suppForm.region} onChange={e => setSuppForm(prev => ({ ...prev, region: e.target.value }))}
-                    className={inp} placeholder="지역" />
+
+            {/* 스크롤 본문 */}
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+
+              {/* 소분류 */}
+              <div className="space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 shrink-0">분류</span>
+                  <div className="flex-1 h-px bg-gray-200" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">사업자번호</label>
-                  <input value={suppForm.businessRegNo} onChange={e => setSuppForm(prev => ({ ...prev, businessRegNo: e.target.value }))}
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">소분류</label>
+                  <select value={suppForm.subCategory}
+                    onChange={e => setSuppForm(prev => ({ ...prev, subCategory: e.target.value }))}
+                    className={inp + ' appearance-none'}>
+                    <option value="">소분류 선택</option>
+                    {SUPP_CAT_GROUPS.map(group => (
+                      <optgroup key={group.label} label={group.label}>
+                        {group.options.map((o: any) => (
+                          <option key={o.value} value={o.value}>{o.label} ({o.value})</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* 기본 정보 */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 shrink-0">기본 정보</span>
+                  <div className="flex-1 h-px bg-gray-200" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">상태</label>
+                    <select value={suppForm.status}
+                      onChange={e => setSuppForm(prev => ({ ...prev, status: e.target.value as 'ACTIVE' | 'INACTIVE' }))}
+                      className={inp + ' appearance-none'}>
+                      <option value="ACTIVE">사용</option>
+                      <option value="INACTIVE">미사용</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">구분</label>
+                    <select value={suppForm.region}
+                      onChange={e => setSuppForm(prev => ({ ...prev, region: e.target.value as 'DOMESTIC' | 'OVERSEAS' }))}
+                      className={inp + ' appearance-none'}>
+                      <option value="DOMESTIC">국내</option>
+                      <option value="OVERSEAS">해외</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">사업자등록번호</label>
+                  <input value={suppForm.businessRegNo}
+                    onChange={e => setSuppForm(prev => ({ ...prev, businessRegNo: e.target.value }))}
                     className={inp} placeholder="000-00-00000" />
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">은행</label>
-                  <input value={suppForm.bankName} onChange={e => setSuppForm(prev => ({ ...prev, bankName: e.target.value }))}
-                    className={inp} placeholder="은행명" />
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                    회사명 <span className="text-red-400 normal-case font-normal">*</span>
+                  </label>
+                  <input value={suppForm.companyName}
+                    onChange={e => setSuppForm(prev => ({ ...prev, companyName: e.target.value }))}
+                    className={inp} placeholder="회사명 입력" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">예금주</label>
-                  <input value={suppForm.accountHolder} onChange={e => setSuppForm(prev => ({ ...prev, accountHolder: e.target.value }))}
-                    className={inp} placeholder="예금주" />
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">URL</label>
+                  <input value={suppForm.url}
+                    onChange={e => setSuppForm(prev => ({ ...prev, url: e.target.value }))}
+                    className={inp} placeholder="https://example.com" />
                 </div>
               </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">계좌번호</label>
-                <input value={suppForm.accountNumber} onChange={e => setSuppForm(prev => ({ ...prev, accountNumber: e.target.value }))}
-                  className={inp} placeholder="계좌번호" />
+
+              {/* 금융 정보 */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 shrink-0">금융 정보</span>
+                  <div className="flex-1 h-px bg-gray-200" />
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">은행</label>
+                    <input value={suppForm.bankName}
+                      onChange={e => setSuppForm(prev => ({ ...prev, bankName: e.target.value }))}
+                      className={inp} placeholder="신한은행" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">계좌번호</label>
+                    <input value={suppForm.accountNumber}
+                      onChange={e => setSuppForm(prev => ({ ...prev, accountNumber: e.target.value }))}
+                      className={inp} placeholder="000-000-000000" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">예금주</label>
+                    <input value={suppForm.accountHolder}
+                      onChange={e => setSuppForm(prev => ({ ...prev, accountHolder: e.target.value }))}
+                      className={inp} placeholder="홍길동" />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">메모</label>
-                <input value={suppForm.note} onChange={e => setSuppForm(prev => ({ ...prev, note: e.target.value }))}
-                  className={inp} placeholder="메모" />
+
+              {/* 담당자 */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 shrink-0">
+                    담당자{suppForm.contacts.length > 0 ? ` (${suppForm.contacts.length}명)` : ''}
+                  </span>
+                  <div className="flex-1 h-px bg-gray-200" />
+                  <button type="button"
+                    onClick={() => setSuppForm(prev => ({
+                      ...prev,
+                      contacts: [...prev.contacts, { _key: String(Date.now()), name: '', title: '', phone: '', email: '' }],
+                    }))}
+                    className="text-[10px] font-semibold text-[#9445e5] hover:text-purple-700 shrink-0">
+                    + 추가
+                  </button>
+                </div>
+                {suppForm.contacts.length === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-2">담당자를 추가하세요.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {suppForm.contacts.map((c, idx) => (
+                      <div key={c._key} className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] gap-2 items-center bg-gray-50 rounded-lg px-3 py-2">
+                        <input value={c.name}
+                          onChange={e => setSuppForm(prev => ({ ...prev, contacts: prev.contacts.map((r, i) => i === idx ? { ...r, name: e.target.value } : r) }))}
+                          placeholder="이름 *" className="h-7 text-xs rounded-lg border border-gray-200 px-2 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                        <input value={c.title}
+                          onChange={e => setSuppForm(prev => ({ ...prev, contacts: prev.contacts.map((r, i) => i === idx ? { ...r, title: e.target.value } : r) }))}
+                          placeholder="직책" className="h-7 text-xs rounded-lg border border-gray-200 px-2 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                        <input value={c.phone}
+                          onChange={e => setSuppForm(prev => ({ ...prev, contacts: prev.contacts.map((r, i) => i === idx ? { ...r, phone: e.target.value } : r) }))}
+                          placeholder="연락처" className="h-7 text-xs rounded-lg border border-gray-200 px-2 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                        <input value={c.email}
+                          onChange={e => setSuppForm(prev => ({ ...prev, contacts: prev.contacts.map((r, i) => i === idx ? { ...r, email: e.target.value } : r) }))}
+                          placeholder="이메일" className="h-7 text-xs rounded-lg border border-gray-200 px-2 focus:outline-none focus:ring-1 focus:ring-purple-400" />
+                        <button onClick={() => setSuppForm(prev => ({ ...prev, contacts: prev.contacts.filter((_, i) => i !== idx) }))}
+                          className="text-gray-400 hover:text-red-500 text-lg leading-none">×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 비고 */}
+              <div className="space-y-2.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 shrink-0">비고</span>
+                  <div className="flex-1 h-px bg-gray-200" />
+                </div>
+                <textarea value={suppForm.note}
+                  onChange={e => setSuppForm(prev => ({ ...prev, note: e.target.value }))}
+                  placeholder="비고" rows={3}
+                  className="w-full text-xs rounded-lg border border-gray-200 px-2.5 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-purple-400" />
               </div>
             </div>
-            <div className="flex gap-2 mt-5">
+
+            {/* 푸터 */}
+            <div className="px-6 py-4 border-t bg-gray-50/70 flex justify-end gap-2 shrink-0">
               <button onClick={() => setShowSuppCreate(null)}
-                className="flex-1 h-9 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 font-medium transition-colors">
+                className="h-9 px-5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 font-medium transition-colors">
                 취소
               </button>
               <button onClick={() => createSupplier(showSuppCreate)} disabled={savingSupp}
-                className="flex-1 h-9 rounded-lg bg-[#9445e5] hover:bg-purple-700 text-white text-xs font-semibold transition-colors disabled:opacity-50">
+                className="h-9 px-6 rounded-lg bg-[#9445e5] hover:bg-purple-700 text-white text-xs font-semibold transition-colors disabled:opacity-50">
                 {savingSupp ? '등록 중...' : '등록'}
               </button>
             </div>
