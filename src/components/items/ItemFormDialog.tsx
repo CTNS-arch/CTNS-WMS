@@ -201,12 +201,13 @@ function ClassificationTree({
   onSub: (v: string) => void
   onThird: (field: string, v: string) => void
   onSelectCLItem?: (item: {
+    id: string; unit: string
     chemistryType: string | null; cellModel: string | null
     dischargeCutoffVoltage?: number | null; nominalVoltage?: number | null
     chargeCutoffVoltage?: number | null; nominalCapacity?: number | null
     maxChargeCurrent?: number | null; maxDischargeCurrent?: number | null
   }) => void
-  onSelectBMSItem?: (item: { subCategory: string }) => void
+  onSelectBMSItem?: (item: { id: string; unit: string; subCategory: string }) => void
   onAddOpt: (key: string) => (label: string, code?: string) => void
   onSet: (key: string, val: any) => void
   readOnly?: boolean
@@ -446,6 +447,8 @@ function ClassificationTree({
                               setClResults([])
                               setClShowDropdown(false)
                               onSelectCLItem({
+                                id: item.id,
+                                unit: item.unit ?? 'EA',
                                 chemistryType: item.chemistryType ?? null,
                                 cellModel: item.cellModel ?? null,
                                 dischargeCutoffVoltage: item.dischargeCutoffVoltage ?? null,
@@ -524,7 +527,7 @@ function ClassificationTree({
                                   setBmSearch('')
                                   setBmResults([])
                                   setBmShowDropdown(false)
-                                  onSelectBMSItem({ subCategory: item.subCategory })
+                                  onSelectBMSItem({ id: item.id, unit: item.unit ?? 'EA', subCategory: item.subCategory })
                                 }}
                               >
                                 <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${item.subCategory === 'BM' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
@@ -728,6 +731,8 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
     chargeCutoffVoltage: number | null; nominalCapacity: number | null
     maxChargeCurrent: number | null; maxDischargeCurrent: number | null
   } | null>(null)
+  const [selectedCLItem, setSelectedCLItem] = useState<{ id: string; unit: string } | null>(null)
+  const [selectedBMSItem, setSelectedBMSItem] = useState<{ id: string; unit: string } | null>(null)
 
   const handleDrawingFiles = useCallback(async (files: FileList | File[]) => {
     const arr = Array.from(files)
@@ -832,6 +837,8 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
     reload()
     nameManuallyEdited.current = false
     setSelectedCLSpecs(null)
+    setSelectedCLItem(null)
+    setSelectedBMSItem(null)
     setForm(item
       ? { ...EMPTY, ...Object.fromEntries(Object.keys(EMPTY).map(k => [k, item[k] ?? EMPTY[k]])),
           vendors: item.vendors ?? [],
@@ -972,6 +979,29 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
     const json = await res.json()
     setSaving(false)
     if (json.success) {
+      // 신규 배터리팩 생성 시 선택된 셀·회로 품목을 BOM에 자동 등록
+      if (!isEdit && isBP) {
+        const newId = json.data.id
+        const addBom = async (childId: string, quantity: number, unit: string) => {
+          try {
+            await fetch(`/api/items/${newId}/bom`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ childId, quantity, unit }),
+            })
+          } catch {}
+        }
+        if (selectedCLItem) {
+          const s = Number(payload.seriesCount) || 0
+          const p = Number(payload.parallelCount) || 0
+          const l = Number(payload.layerCount) || 1
+          const cellQty = s && p ? s * p * l : 1
+          await addBom(selectedCLItem.id, cellQty, selectedCLItem.unit)
+        }
+        if (selectedBMSItem) {
+          await addBom(selectedBMSItem.id, 1, selectedBMSItem.unit)
+        }
+      }
       toast.success(isEdit ? '수정되었습니다.' : '등록되었습니다.')
       onSaved()
     } else {
@@ -1041,9 +1071,11 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
                   maxChargeCurrent:       clItem.maxChargeCurrent       ?? null,
                   maxDischargeCurrent:    clItem.maxDischargeCurrent    ?? null,
                 })
+                setSelectedCLItem({ id: clItem.id, unit: clItem.unit })
               } : undefined}
               onSelectBMSItem={!item?.id ? (bmsItem) => {
                 set('circuit', bmsItem.subCategory)
+                setSelectedBMSItem({ id: bmsItem.id, unit: bmsItem.unit })
               } : undefined}
             />
           </div>
