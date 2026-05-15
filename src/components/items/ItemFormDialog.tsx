@@ -200,7 +200,12 @@ function ClassificationTree({
   onCategory: (v: string) => void
   onSub: (v: string) => void
   onThird: (field: string, v: string) => void
-  onSelectCLItem?: (item: { chemistryType: string | null; cellModel: string | null }) => void
+  onSelectCLItem?: (item: {
+    chemistryType: string | null; cellModel: string | null
+    dischargeCutoffVoltage?: number | null; nominalVoltage?: number | null
+    chargeCutoffVoltage?: number | null; nominalCapacity?: number | null
+    maxChargeCurrent?: number | null; maxDischargeCurrent?: number | null
+  }) => void
   onAddOpt: (key: string) => (label: string, code?: string) => void
   onSet: (key: string, val: any) => void
   readOnly?: boolean
@@ -374,7 +379,16 @@ function ClassificationTree({
                               setClSearch('')
                               setClResults([])
                               setClShowDropdown(false)
-                              onSelectCLItem({ chemistryType: item.chemistryType ?? null, cellModel: item.cellModel ?? null })
+                              onSelectCLItem({
+                                chemistryType: item.chemistryType ?? null,
+                                cellModel: item.cellModel ?? null,
+                                dischargeCutoffVoltage: item.dischargeCutoffVoltage ?? null,
+                                nominalVoltage: item.nominalVoltage ?? null,
+                                chargeCutoffVoltage: item.chargeCutoffVoltage ?? null,
+                                nominalCapacity: item.nominalCapacity ?? null,
+                                maxChargeCurrent: item.maxChargeCurrent ?? null,
+                                maxDischargeCurrent: item.maxDischargeCurrent ?? null,
+                              })
                             }}
                           >
                             <span className="font-mono text-gray-500 shrink-0">{item.itemCode}</span>
@@ -587,6 +601,12 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
   const drawingsInputRef = useRef<HTMLInputElement>(null)
   const specSheetsInputRef = useRef<HTMLInputElement>(null)
   const imagesInputRef = useRef<HTMLInputElement>(null)
+  const nameManuallyEdited = useRef(false)
+  const [selectedCLSpecs, setSelectedCLSpecs] = useState<{
+    dischargeCutoffVoltage: number | null; nominalVoltage: number | null
+    chargeCutoffVoltage: number | null; nominalCapacity: number | null
+    maxChargeCurrent: number | null; maxDischargeCurrent: number | null
+  } | null>(null)
 
   const handleDrawingFiles = useCallback(async (files: FileList | File[]) => {
     const arr = Array.from(files)
@@ -689,6 +709,8 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
   useEffect(() => {
     if (!open) return
     reload()
+    nameManuallyEdited.current = false
+    setSelectedCLSpecs(null)
     setForm(item
       ? { ...EMPTY, ...Object.fromEntries(Object.keys(EMPTY).map(k => [k, item[k] ?? EMPTY[k]])),
           vendors: item.vendors ?? [],
@@ -756,6 +778,37 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
       } catch {}
     }, 350)
   }, [form.itemCode, codeType])
+
+  // BP 품목명 자동 설정: {S}S {P}P 배터리팩
+  useEffect(() => {
+    if (!isBP || item?.id) return
+    if (nameManuallyEdited.current) return
+    if (!form.seriesCount || !form.parallelCount) return
+    set('itemName', `${form.seriesCount}S ${form.parallelCount}P 배터리팩`)
+  }, [form.seriesCount, form.parallelCount, isBP])
+
+  // 셀 선택 + S/P 변경 시 전기 사양 자동 계산
+  useEffect(() => {
+    if (!isBP || !selectedCLSpecs) return
+    const s = parseFloat(String(form.seriesCount)) || 0
+    const p = parseFloat(String(form.parallelCount)) || 0
+    const calc = (factor: number, val: number | null): string => {
+      if (!factor || val == null) return ''
+      return String(Math.round(factor * val * 10000) / 10000)
+    }
+    const nomV = (s && selectedCLSpecs.nominalVoltage != null) ? s * selectedCLSpecs.nominalVoltage : null
+    const nomC = (p && selectedCLSpecs.nominalCapacity != null) ? p * selectedCLSpecs.nominalCapacity : null
+    setForm((f: any) => ({
+      ...f,
+      dischargeCutoffVoltage: calc(s, selectedCLSpecs.dischargeCutoffVoltage) || f.dischargeCutoffVoltage,
+      nominalVoltage:         calc(s, selectedCLSpecs.nominalVoltage)         || f.nominalVoltage,
+      chargeCutoffVoltage:    calc(s, selectedCLSpecs.chargeCutoffVoltage)    || f.chargeCutoffVoltage,
+      nominalCapacity:        calc(p, selectedCLSpecs.nominalCapacity)        || f.nominalCapacity,
+      energy: (nomV != null && nomC != null) ? String(Math.round(nomV * nomC * 10000) / 10000) : f.energy,
+      maxChargeCurrent:    calc(p, selectedCLSpecs.maxChargeCurrent)    || f.maxChargeCurrent,
+      maxDischargeCurrent: calc(p, selectedCLSpecs.maxDischargeCurrent) || f.maxDischargeCurrent,
+    }))
+  }, [form.seriesCount, form.parallelCount, selectedCLSpecs])
 
   const thirdValue = (() => {
     const t = form.subCategory ? THIRD_LEVEL[form.subCategory] : null
@@ -850,12 +903,20 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
               onAddOpt={addOpt}
               onSet={set}
               readOnly={!!item?.id}
-              onSelectCLItem={!item?.id ? ({ chemistryType, cellModel }) => {
+              onSelectCLItem={!item?.id ? (clItem) => {
                 setForm((f: any) => ({
                   ...f,
-                  ...(chemistryType ? { chemistryType } : {}),
-                  ...(cellModel ? { cellModel } : {}),
+                  ...(clItem.chemistryType ? { chemistryType: clItem.chemistryType } : {}),
+                  ...(clItem.cellModel ? { cellModel: clItem.cellModel } : {}),
                 }))
+                setSelectedCLSpecs({
+                  dischargeCutoffVoltage: clItem.dischargeCutoffVoltage ?? null,
+                  nominalVoltage:         clItem.nominalVoltage         ?? null,
+                  chargeCutoffVoltage:    clItem.chargeCutoffVoltage    ?? null,
+                  nominalCapacity:        clItem.nominalCapacity        ?? null,
+                  maxChargeCurrent:       clItem.maxChargeCurrent       ?? null,
+                  maxDischargeCurrent:    clItem.maxDischargeCurrent    ?? null,
+                })
               } : undefined}
             />
           </div>
@@ -878,7 +939,10 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
               />
             </Field>
             <Field label="품명" required>
-              <Input value={form.itemName} onChange={e => set('itemName', e.target.value)} placeholder="예) 배터리팩 48V100Ah" />
+              <Input value={form.itemName} onChange={e => {
+                if (isBP && !item?.id) nameManuallyEdited.current = true
+                set('itemName', e.target.value)
+              }} placeholder="예) 배터리팩 48V100Ah" />
             </Field>
             <Field label="단위">
               <TagSelect value={form.unit} onChange={v => set('unit', v)} options={opts.unit ?? []} onAdd={addOpt('unit')} placeholder="단위 선택" />

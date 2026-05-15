@@ -31,6 +31,7 @@ model User {
   stockTransactions StockTransaction[]
   purchaseRequests  PurchaseRequest[]
   itemRequests      ItemCreateRequest[]
+  stockAudits       StockAudit[]
 }
 
 model Account {
@@ -265,6 +266,8 @@ model PurchaseRequest {
   miscPaymentType  String?   // 구매처리 구분 (카드/연구비 계좌이체/자계좌 이체)
   miscExpenseRef   String?   // 비즈플레이 지출결의서 번호
   miscTaxInvoice   String?   // 세금계산서 발행 여부 (Y/N)
+  miscActualAmount Float?    // 실결제액
+  miscMemo         String?   // 비고 (구매처리)
 
   requester User?                  @relation(fields: [requesterId], references: [id])
   items     PurchaseRequestItem[]
@@ -372,6 +375,34 @@ model StockCostLayer {
   createdAt  DateTime   @default(now())
 
   item Item @relation(fields: [itemId], references: [id])
+}
+
+// ── 재고 실사 ──────────────────────────────────────────────
+
+model StockAudit {
+  id         String           @id @default(cuid())
+  department Department
+  note       String?
+  auditedBy  String?
+  auditedAt  DateTime         @default(now())
+
+  items StockAuditItem[]
+  user  User?            @relation(fields: [auditedBy], references: [id])
+}
+
+model StockAuditItem {
+  id          String  @id @default(cuid())
+  auditId     String
+  itemId      String?
+  itemCode    String
+  itemName    String
+  unit        String
+  category    String?
+  subCategory String?
+  systemQty   Float
+  actualQty   Float?
+
+  audit StockAudit @relation(fields: [auditId], references: [id], onDelete: Cascade)
 }
 
 // ── 구매 카드 ──────────────────────────────────────────────

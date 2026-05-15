@@ -364,14 +364,6 @@ export default function PurchasesPage() {
 
   function openBuyer(req: any) { setBuyerRequest(req); setBuyerOpen(true) }
 
-  async function openItemDetail(itemId: string) {
-    try {
-      const res  = await fetch(`/api/items/${itemId}`)
-      const json = await res.json()
-      if (json.success) { setItemDetailItem(json.data); setItemDetailOpen(true) }
-    } catch {}
-  }
-
   // ── 폼 업데이트 ─────────────────────────────────────────
   const updItem = (key: string, field: keyof ItemRow, val: string) =>
     setForm(f => ({ ...f, items: f.items.map(r => r._key === key ? { ...r, [field]: val } : r) }))

@@ -1105,9 +1105,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
                 {request.documentNo && <span className="font-mono font-semibold text-gray-700">{request.documentNo}</span>}
                 {request.requesterName && <span>{request.requesterName}</span>}
                 <span>{new Date(request.requestDate ?? request.createdAt).toLocaleDateString('ko-KR')}</span>
-                <span className="text-gray-300">|</span>
-                <span>품목 {items.length}개</span>
-                {files.length > 0 && <span className="text-purple-600">파일 {files.length}개</span>}
+                {files.length > 0 && <><span className="text-gray-300">|</span><span className="text-purple-600">파일 {files.length}개</span></>}
               </div>
             </div>
             <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-2xl bg-[#f5f5f5] text-[#9ea1a3] hover:text-gray-700 hover:bg-gray-200 text-lg shrink-0">×</button>

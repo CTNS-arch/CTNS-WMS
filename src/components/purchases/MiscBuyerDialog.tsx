@@ -22,11 +22,13 @@ export default function MiscBuyerDialog({ open, request, onClose, onSaved }: Pro
   const [cardDropOpen, setCardDropOpen] = useState(false)
   const [dropRect,     setDropRect]     = useState<{ top: number; left: number; width: number } | null>(null)
   const [creatingCard, setCreatingCard] = useState(false)
-  const [expenseRef,   setExpenseRef]   = useState('')
-  const [taxInvoice,   setTaxInvoice]   = useState('')
-  const [supplier,     setSupplier]     = useState<any | null>(null)
+  const [expenseRef,     setExpenseRef]     = useState('')
+  const [taxInvoice,     setTaxInvoice]     = useState('')
+  const [supplier,       setSupplier]       = useState<any | null>(null)
   const [selectedStatus, setSelectedStatus] = useState('ORDERED')
-  const [saving,       setSaving]       = useState(false)
+  const [actualAmount,   setActualAmount]   = useState('')
+  const [miscMemo,       setMiscMemo]       = useState('')
+  const [saving,         setSaving]         = useState(false)
 
   const cardInputRef = useRef<HTMLInputElement>(null)
 
@@ -42,6 +44,8 @@ export default function MiscBuyerDialog({ open, request, onClose, onSaved }: Pro
     setExpenseRef(request?.miscExpenseRef ?? '')
     setTaxInvoice(request?.miscTaxInvoice ?? '')
     setSelectedStatus(request?.status ?? 'ORDERED')
+    setActualAmount(request?.miscActualAmount != null ? String(request.miscActualAmount) : '')
+    setMiscMemo(request?.miscMemo ?? '')
     setSupplier(null)
     if (request?.miscSupplier) fetchSupplier(request.miscSupplier)
   }, [open, request])
@@ -107,6 +111,8 @@ export default function MiscBuyerDialog({ open, request, onClose, onSaved }: Pro
           cardUsed: showCard ? (cardUsed || null) : null,
           miscExpenseRef:  showAccount ? (expenseRef || null) : null,
           miscTaxInvoice:  showAccount ? (taxInvoice || null) : null,
+          miscActualAmount: actualAmount ? Number(actualAmount) : null,
+          miscMemo: miscMemo || null,
         }),
       })
       const json = await res.json()
@@ -250,6 +256,30 @@ export default function MiscBuyerDialog({ open, request, onClose, onSaved }: Pro
             </>
           )}
 
+          {/* 실결제액 */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">실결제액 (원)</label>
+            <Input
+              type="number"
+              value={actualAmount}
+              onChange={e => setActualAmount(e.target.value)}
+              placeholder="실결제액 입력"
+              className="h-8 text-xs"
+            />
+          </div>
+
+          {/* 비고 */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">비고</label>
+            <textarea
+              value={miscMemo}
+              onChange={e => setMiscMemo(e.target.value)}
+              placeholder="비고 입력"
+              rows={2}
+              className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none"
+            />
+          </div>
+
         </div>
 
         {/* 푸터 */}
@@ -258,7 +288,7 @@ export default function MiscBuyerDialog({ open, request, onClose, onSaved }: Pro
             onClick={onClose} disabled={saving}>취소</Button>
           <Button size="sm" className="h-8 text-xs px-6 bg-purple-600 hover:bg-purple-700"
             onClick={handleSave} disabled={saving}>
-            {saving ? '처리 중...' : `저장 · ${selectedStatus === 'ORDERED' ? '주문완료' : selectedStatus === 'RECEIVED' ? '입고완료' : selectedStatus === 'APPROVED' ? '검토중' : selectedStatus === 'REJECTED' ? '반려' : '요청'}`}
+            {saving ? '처리 중...' : '저장'}
           </Button>
         </div>
       </div>

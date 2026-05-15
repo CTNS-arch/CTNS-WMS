@@ -27,7 +27,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const {
       documentNo, title, requesterName, department, memo, status, items, buyerItems, approvalLine,
       miscWorkCode, miscSupplier, miscUrl, miscTotalAmount, miscDocumentRef, miscDeliveryLoc, miscOrderMethod,
-      cardUsed, miscPaymentType, miscExpenseRef, miscTaxInvoice,
+      cardUsed, miscPaymentType, miscExpenseRef, miscTaxInvoice, miscActualAmount, miscMemo,
     } = body
 
     const data: any = {}
@@ -47,8 +47,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (miscOrderMethod !== undefined)  data.miscOrderMethod  = miscOrderMethod?.trim()  || null
     if (cardUsed !== undefined)         data.cardUsed         = cardUsed?.trim()         || null
     if (miscPaymentType !== undefined)  data.miscPaymentType  = miscPaymentType?.trim()  || null
-    if (miscExpenseRef !== undefined)   data.miscExpenseRef   = miscExpenseRef?.trim()   || null
-    if (miscTaxInvoice !== undefined)   data.miscTaxInvoice   = miscTaxInvoice?.trim()   || null
+    if (miscExpenseRef !== undefined)    data.miscExpenseRef    = miscExpenseRef?.trim()    || null
+    if (miscTaxInvoice !== undefined)    data.miscTaxInvoice    = miscTaxInvoice?.trim()    || null
+    if (miscActualAmount !== undefined)  data.miscActualAmount  = miscActualAmount != null   ? Number(miscActualAmount) : null
+    if (miscMemo !== undefined)          data.miscMemo          = miscMemo?.trim()           || null
 
     // Neon HTTP 어댑터: $transaction 미지원 → 순차 실행
     // 요청자 모드: 품목 전체 교체

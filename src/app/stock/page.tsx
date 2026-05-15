@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import StockAuditDialog from '@/components/stock/StockAuditDialog'
 
 const CATEGORY_LABEL: Record<string, string> = {
   PRODUCT: '완제품', ASSEMBLY: '반제품', COMPONENT: '자재',
@@ -109,6 +110,9 @@ export default function StockPage() {
   const [memoDialog, setMemoDialog]   = useState<{ open: boolean; row: StockRow | null }>({ open: false, row: null })
   const [memoInput, setMemoInput]     = useState('')
   const [memoSubmitting, setMemoSubmitting] = useState(false)
+
+  const [auditOpen, setAuditOpen] = useState(false)
+  const [auditDept, setAuditDept] = useState<'LAB' | 'PRODUCTION'>('PRODUCTION')
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const totalPages  = Math.max(1, Math.ceil(total / LIMIT))
@@ -440,7 +444,17 @@ export default function StockPage() {
           />
           <Button type="submit" variant="outline" size="sm" className="h-8 text-xs px-3">검색</Button>
         </form>
-        <span className="ml-auto text-xs text-gray-400">총 {total.toLocaleString()}개 품목</span>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-gray-400">총 {total.toLocaleString()}개 품목</span>
+          {deptTab !== 'ALL' && (
+            <button
+              onClick={() => { setAuditDept(deptTab as 'LAB' | 'PRODUCTION'); setAuditOpen(true) }}
+              className="h-8 px-3 rounded-lg text-xs font-medium border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors whitespace-nowrap"
+            >
+              재고실사
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 테이블 영역 */}
@@ -989,6 +1003,13 @@ export default function StockPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 재고실사 다이얼로그 */}
+      <StockAuditDialog
+        open={auditOpen}
+        dept={auditDept}
+        onClose={() => setAuditOpen(false)}
+      />
     </div>
   )
 }

@@ -96,6 +96,11 @@ interface BulkRow {
   weight: string; thickness: string
   material: string; color: string
   bomParent?: { id: string; itemCode: string; itemName: string } | null
+  _cellSpecs?: {
+    dischargeCutoffVoltage: number | null; nominalVoltage: number | null
+    chargeCutoffVoltage: number | null; nominalCapacity: number | null
+    maxChargeCurrent: number | null; maxDischargeCurrent: number | null
+  } | null
   error?: string
 }
 
@@ -114,6 +119,32 @@ function emptyRow(): BulkRow {
     innerLength: '', innerWidth: '', innerHeight: '',
     weight: '', thickness: '', material: '', color: '',
     bomParent: null,
+    _cellSpecs: null,
+  }
+}
+
+function computeElecSpecs(
+  seriesCount: string,
+  parallelCount: string,
+  specs: BulkRow['_cellSpecs'],
+): Partial<BulkRow> {
+  if (!specs) return {}
+  const s = parseFloat(seriesCount) || 0
+  const p = parseFloat(parallelCount) || 0
+  const calc = (factor: number, val: number | null): string => {
+    if (!factor || val == null) return ''
+    return String(Math.round(factor * val * 10000) / 10000)
+  }
+  const nomV = (s && specs.nominalVoltage != null) ? s * specs.nominalVoltage : null
+  const nomC = (p && specs.nominalCapacity != null) ? p * specs.nominalCapacity : null
+  return {
+    dischargeCutoffVoltage: calc(s, specs.dischargeCutoffVoltage),
+    nominalVoltage:         calc(s, specs.nominalVoltage),
+    chargeCutoffVoltage:    calc(s, specs.chargeCutoffVoltage),
+    nominalCapacity:        calc(p, specs.nominalCapacity),
+    energy: (nomV != null && nomC != null) ? String(Math.round(nomV * nomC * 10000) / 10000) : '',
+    maxChargeCurrent:    calc(p, specs.maxChargeCurrent),
+    maxDischargeCurrent: calc(p, specs.maxDischargeCurrent),
   }
 }
 
@@ -308,6 +339,23 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
   const updCellMfr = (key: string, mfr: string) =>
     setRows(prev => prev.map(r => r._key === key ? { ...r, cellManufacturer: mfr, cellModel: '', error: undefined } : r))
 
+  const updBatteryCount = (key: string, field: 'seriesCount' | 'parallelCount', val: string) =>
+    setRows(prev => prev.map(r => {
+      if (r._key !== key) return r
+      const newS = field === 'seriesCount' ? val : r.seriesCount
+      const newP = field === 'parallelCount' ? val : r.parallelCount
+      const autoName = (newS && newP) ? `${newS}S ${newP}P 배터리팩` : ''
+      const nameIsAuto = !r.itemName || /^\d+S \d+P 배터리팩$/.test(r.itemName)
+      const elecSpecs = computeElecSpecs(newS, newP, r._cellSpecs ?? null)
+      return {
+        ...r,
+        [field]: val,
+        itemName: (nameIsAuto && autoName) ? autoName : r.itemName,
+        ...elecSpecs,
+        error: undefined,
+      }
+    }))
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, idx: number) => {
     if (e.key !== 'Enter') return
     e.preventDefault()
@@ -464,7 +512,19 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
 
       switch (bulkType) {
         case 'BATTERY':
-          Object.assign(payload, { chemistryType: row.chemistryType || null, cellModel: row.cellModel || null, seriesCount: ni(row.seriesCount), parallelCount: ni(row.parallelCount), circuit: row.circuit || null, specialOptions: row.specialOptions, certifications: row.certifications, drawings: row.drawings })
+          Object.assign(payload, {
+            chemistryType: row.chemistryType || null, cellModel: row.cellModel || null,
+            seriesCount: ni(row.seriesCount), parallelCount: ni(row.parallelCount),
+            circuit: row.circuit || null, specialOptions: row.specialOptions,
+            certifications: row.certifications, drawings: row.drawings,
+            dischargeCutoffVoltage: n(row.dischargeCutoffVoltage),
+            nominalVoltage:         n(row.nominalVoltage),
+            chargeCutoffVoltage:    n(row.chargeCutoffVoltage),
+            nominalCapacity:        n(row.nominalCapacity),
+            energy:                 n(row.energy),
+            maxChargeCurrent:       n(row.maxChargeCurrent),
+            maxDischargeCurrent:    n(row.maxDischargeCurrent),
+          })
           break
         case 'BMS':
           Object.assign(payload, { manufacturer: row.manufacturer || null, maxSeriesCount: ni(row.maxSeriesCount), continuousDischargeCurrent: n(row.continuousDischargeCurrent), specialOptions: row.specialOptions })
@@ -914,8 +974,22 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                                         className="w-full text-left px-2 py-1.5 text-xs hover:bg-gray-50 flex items-center gap-2"
                                         onClick={() => {
                                           setClSearches(prev => ({ ...prev, [row._key]: { query: '', results: [], open: false, selected: item } }))
-                                          if (item.chemistryType) upd(row._key, 'chemistryType', item.chemistryType)
-                                          if (item.cellModel) upd(row._key, 'cellModel', item.cellModel)
+                                          const cellSpecs = {
+                                            dischargeCutoffVoltage: item.dischargeCutoffVoltage ?? null,
+                                            nominalVoltage:         item.nominalVoltage         ?? null,
+                                            chargeCutoffVoltage:    item.chargeCutoffVoltage    ?? null,
+                                            nominalCapacity:        item.nominalCapacity        ?? null,
+                                            maxChargeCurrent:       item.maxChargeCurrent       ?? null,
+                                            maxDischargeCurrent:    item.maxDischargeCurrent    ?? null,
+                                          }
+                                          const elecSpecs = computeElecSpecs(row.seriesCount, row.parallelCount, cellSpecs)
+                                          setRows(prev => prev.map(r => r._key === row._key ? {
+                                            ...r,
+                                            chemistryType: item.chemistryType || r.chemistryType,
+                                            cellModel:     item.cellModel     || r.cellModel,
+                                            _cellSpecs: cellSpecs,
+                                            ...elecSpecs,
+                                          } : r))
                                         }}
                                       >
                                         <span className="font-mono text-gray-500 shrink-0 text-[10px]">{item.itemCode}</span>
@@ -929,8 +1003,16 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                           )
                         })()}
                         {/* ── BATTERY 전용 ── */}
-                        {bulkType === 'BATTERY' && num(60, 'seriesCount', 'S')}
-                        {bulkType === 'BATTERY' && num(60, 'parallelCount', 'P')}
+                        {bulkType === 'BATTERY' && (
+                          <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 60 }}>
+                            <input type="number" step="any" value={row.seriesCount} onChange={e => updBatteryCount(row._key, 'seriesCount', e.target.value)} placeholder="S" className={cellCls + ' text-right'} />
+                          </td>
+                        )}
+                        {bulkType === 'BATTERY' && (
+                          <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 60 }}>
+                            <input type="number" step="any" value={row.parallelCount} onChange={e => updBatteryCount(row._key, 'parallelCount', e.target.value)} placeholder="P" className={cellCls + ' text-right'} />
+                          </td>
+                        )}
                         {bulkType === 'BATTERY' && ts(90, row.circuit, v => upd(row._key, 'circuit', v), opts.circuit ?? [], 'circuit', '회로')}
 
                         {/* ── BMS 전용 ── */}
