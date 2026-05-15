@@ -2,6 +2,7 @@ import NextAuth from "next-auth"
 import MicrosoftEntraId from "next-auth/providers/microsoft-entra-id"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import { prisma } from "@/lib/prisma"
+import { listActiveOrgUsers } from "@/lib/ms-graph"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
@@ -22,6 +23,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     error: '/login',
   },
   callbacks: {
+    async signIn({ user }) {
+      if (!user.email) return false
+      try {
+        const msUsers = await listActiveOrgUsers()
+        const emailLower = user.email.toLowerCase()
+        const isActive = msUsers.some(
+          mu => (mu.mail ?? mu.userPrincipalName).toLowerCase() === emailLower
+        )
+        if (!isActive) return '/login?error=AccessDenied'
+      } catch (err) {
+        // Graph API 장애 시 Azure AD 인증 자체에 위임 (fail open)
+        console.error('[signIn] MS Graph 검증 실패, 로그인 허용:', err)
+      }
+      return true
+    },
     async jwt({ token, user }) {
       if (user?.id) token.id = user.id
       return token
