@@ -518,8 +518,8 @@ export default function ItemsPage() {
               </FilterSection>
             )}
 
-            {(isAll || isProd || isPO) && bmsItemOpts.length > 0 && (
-              <FilterSection label="회로도 품목">
+            {(isAll || isProd || isPO) && (
+              <FilterSection label="회로 품목">
                 <SearchableMultiSelect
                   value={filterBMSItems}
                   onChange={handleBMSItemsChange}

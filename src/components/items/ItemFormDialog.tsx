@@ -408,7 +408,7 @@ function ClassificationTree({
                 </LevelRow>
               )}
               {isBP && onSelectCLItem && (
-                <LevelRow label="셀 품목">
+                <LevelRow label="셀">
                   <div className="relative" ref={clContainerRef}>
                     {selectedCL ? (
                       <div className="flex items-center gap-2 px-2.5 py-1.5 bg-blue-50 border border-blue-200 rounded-md text-xs">
@@ -483,7 +483,7 @@ function ClassificationTree({
                   <LevelRow label="병렬(P)">
                     <Input type="number" value={parallelCount} onChange={e => onSet('parallelCount', e.target.value)} placeholder="예) 5" />
                   </LevelRow>
-                  <LevelRow label="회로도 품목">
+                  <LevelRow label="회로">
                     {onSelectBMSItem ? (
                       <div className="relative" ref={bmContainerRef}>
                         {selectedBM ? (
@@ -950,7 +950,9 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
     }
     setSaving(true)
     const payload = { ...form }
-    const numF = ['revisionNumber', 'seriesCount', 'parallelCount', 'layerCount', 'minSeriesCount', 'maxSeriesCount']
+    const numF = ['revisionNumber', 'seriesCount', 'parallelCount', 'minSeriesCount', 'maxSeriesCount']
+    // 배터리팩에서 단 수가 비어있으면 1로 취급
+    payload.layerCount = payload.layerCount !== '' ? Number(payload.layerCount) || 1 : (isBP ? 1 : null)
     const decF = ['length', 'width', 'height', 'diameter', 'weight',
       'innerLength', 'innerWidth', 'innerHeight', 'thickness',
       'dischargeCutoffVoltage', 'nominalVoltage',
