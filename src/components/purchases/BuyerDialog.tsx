@@ -260,6 +260,11 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
       }
       if (rows.length === 0) {
         rows.push({ _key: `e-${it.id}`, type: '공급금액', supplyAmount: '', taxAmount: '', memo: '' })
+      } else {
+        const last = rows[rows.length - 1]
+        if (last.supplyAmount || last.taxAmount || last.memo) {
+          rows.push({ _key: `e-${it.id}`, type: '공급금액', supplyAmount: '', taxAmount: '', memo: '' })
+        }
       }
       initMap[it.id] = rows
     }
@@ -558,7 +563,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
   // ── 환율/금액 공통 블록 (발주·정산 공유) ─────────────────
   const AmountBlock = ({ it }: { it: BuyerItem }) => {
     const rows = costMap[it.id] ?? []
-    const supplyTotal = rows.filter(r => r.type === '공급금액').reduce((s, r) => s + (parseFloat(r.supplyAmount) || 0), 0)
+    const supplyTotal = rows.reduce((s, r) => s + (parseFloat(r.supplyAmount) || 0), 0)
     const addTotal    = rows.filter(r => r.type === '부대비용').reduce((s, r) => s + (parseFloat(r.supplyAmount) || 0), 0)
     const taxTotal    = rows.reduce((s, r) => s + (parseFloat(r.taxAmount) || 0), 0)
 
@@ -604,7 +609,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
       applyAgg(newRows)
     }
 
-    const grandTotal = supplyTotal + addTotal + taxTotal
+    const grandTotal = supplyTotal + taxTotal
     const cur = it.buyerCurrency || 'KRW'
 
     return (
@@ -1146,9 +1151,11 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
                 className="h-8 px-2.5 rounded-lg border border-[#e6e6e6] text-xs text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-purple-400"
               >
                 <option value="">{STATUS_LABEL[request.status] ?? request.status} (현재)</option>
-                {transitions.map(s => (
-                  <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-                ))}
+                {(['PENDING', 'APPROVED', 'ORDERED', 'RECEIVED', 'REJECTED'] as const)
+                  .filter(s => s !== request.status)
+                  .map(s => (
+                    <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                  ))}
               </select>
             </div>
             <div className="flex gap-2">
