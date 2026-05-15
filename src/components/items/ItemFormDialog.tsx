@@ -186,7 +186,7 @@ function ClassificationTree({
   manufacturer, maxSeriesCount, continuousDischargeCurrent,
   cellModelGroups, onAddCellModelGroup, onAddCellModelEntry,
   onCategory, onSub, onThird, onAddOpt, onSet,
-  onSelectCLItem,
+  onSelectCLItem, onSelectBMSItem,
   readOnly,
 }: {
   category: string; subCategory: string; thirdValue: string
@@ -206,6 +206,7 @@ function ClassificationTree({
     chargeCutoffVoltage?: number | null; nominalCapacity?: number | null
     maxChargeCurrent?: number | null; maxDischargeCurrent?: number | null
   }) => void
+  onSelectBMSItem?: (item: { subCategory: string }) => void
   onAddOpt: (key: string) => (label: string, code?: string) => void
   onSet: (key: string, val: any) => void
   readOnly?: boolean
@@ -225,11 +226,32 @@ function ClassificationTree({
   const clDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const clContainerRef = useRef<HTMLDivElement>(null)
 
-  // 클릭 외부 시 드롭다운 닫기
+  // BP용 BMS/PCM 품목 검색 상태
+  const [bmSearch, setBmSearch] = useState('')
+  const [bmResults, setBmResults] = useState<any[]>([])
+  const [bmAllItems, setBmAllItems] = useState<any[]>([])
+  const [bmSearching, setBmSearching] = useState(false)
+  const [bmShowDropdown, setBmShowDropdown] = useState(false)
+  const [selectedBM, setSelectedBM] = useState<any | null>(null)
+  const bmDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const bmContainerRef = useRef<HTMLDivElement>(null)
+
+  // 클릭 외부 시 드롭다운 닫기 (CL)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (clContainerRef.current && !clContainerRef.current.contains(e.target as Node)) {
         setClShowDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // 클릭 외부 시 드롭다운 닫기 (BMS/PCM)
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (bmContainerRef.current && !bmContainerRef.current.contains(e.target as Node)) {
+        setBmShowDropdown(false)
       }
     }
     document.addEventListener('mousedown', handler)
@@ -251,6 +273,50 @@ function ClassificationTree({
     } catch {}
     setClSearching(false)
   }
+
+  // 포커스 시 전체 BMS/PCM 품목 로드
+  const loadAllBmItems = async () => {
+    setBmShowDropdown(true)
+    if (bmAllItems.length > 0) { setBmResults(bmSearch.trim() ? bmResults : bmAllItems); return }
+    setBmSearching(true)
+    try {
+      const res = await fetch('/api/items?category=ASSEMBLY&subCategory=BM,PC&limit=100&sortBy=itemCode&sortOrder=asc')
+      const json = await res.json()
+      if (json.success) {
+        setBmAllItems(json.data.items)
+        if (!bmSearch.trim()) setBmResults(json.data.items)
+      }
+    } catch {}
+    setBmSearching(false)
+  }
+
+  useEffect(() => {
+    if (!bmSearch.trim()) {
+      setBmResults(bmAllItems)
+      return
+    }
+    const filtered = bmAllItems.filter(item =>
+      item.itemCode.toLowerCase().includes(bmSearch.toLowerCase()) ||
+      item.itemName.toLowerCase().includes(bmSearch.toLowerCase())
+    )
+    setBmResults(filtered)
+    clearTimeout(bmDebounceRef.current)
+    bmDebounceRef.current = setTimeout(async () => {
+      setBmSearching(true)
+      try {
+        const res = await fetch(`/api/items?category=ASSEMBLY&subCategory=BM,PC&search=${encodeURIComponent(bmSearch)}&limit=20`)
+        const json = await res.json()
+        if (json.success) {
+          const merged = [...filtered]
+          for (const item of json.data.items) {
+            if (!merged.some((i: any) => i.id === item.id)) merged.push(item)
+          }
+          setBmResults(merged)
+        }
+      } catch {}
+      setBmSearching(false)
+    }, 300)
+  }, [bmSearch, bmAllItems])
 
   useEffect(() => {
     if (!clSearch.trim()) {
@@ -417,8 +483,63 @@ function ClassificationTree({
                   <LevelRow label="병렬(P)">
                     <Input type="number" value={parallelCount} onChange={e => onSet('parallelCount', e.target.value)} placeholder="예) 5" />
                   </LevelRow>
-                  <LevelRow label="회로">
-                    <TagSelect value={circuit} onChange={v => onSet('circuit', v)} options={opts.circuit ?? []} onAdd={onAddOpt('circuit')} placeholder="BMS / PCM" />
+                  <LevelRow label="회로도 품목">
+                    {onSelectBMSItem ? (
+                      <div className="relative" ref={bmContainerRef}>
+                        {selectedBM ? (
+                          <div className="flex items-center gap-2 px-2.5 py-1.5 bg-violet-50 border border-violet-200 rounded-md text-xs">
+                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${selectedBM.subCategory === 'BM' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                              {selectedBM.subCategory === 'BM' ? 'BMS' : 'PCM'}
+                            </span>
+                            <span className="font-mono text-violet-700 shrink-0">{selectedBM.itemCode}</span>
+                            <span className="text-violet-600 flex-1 truncate">{selectedBM.itemName}</span>
+                            <button
+                              type="button"
+                              onClick={() => { setSelectedBM(null); setBmSearch(''); setBmShowDropdown(false); onSet('circuit', '') }}
+                              className="text-violet-400 hover:text-violet-600 shrink-0"
+                            >×</button>
+                          </div>
+                        ) : (
+                          <Input
+                            value={bmSearch}
+                            onChange={e => setBmSearch(e.target.value)}
+                            onFocus={loadAllBmItems}
+                            placeholder="클릭하면 BMS/PCM 목록 표시 · 입력하여 검색"
+                            className="h-8 text-xs"
+                          />
+                        )}
+                        {!selectedBM && bmShowDropdown && (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-white border rounded-md shadow-lg z-30 max-h-48 overflow-y-auto">
+                            {bmSearching ? (
+                              <p className="text-xs text-gray-400 px-3 py-2">불러오는 중...</p>
+                            ) : bmResults.length === 0 ? (
+                              <p className="text-xs text-gray-400 px-3 py-2">BMS/PCM 품목이 없습니다.</p>
+                            ) : bmResults.map((item: any) => (
+                              <button
+                                key={item.id}
+                                type="button"
+                                className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2"
+                                onClick={() => {
+                                  setSelectedBM(item)
+                                  setBmSearch('')
+                                  setBmResults([])
+                                  setBmShowDropdown(false)
+                                  onSelectBMSItem({ subCategory: item.subCategory })
+                                }}
+                              >
+                                <span className={`text-xs px-1.5 py-0.5 rounded font-medium shrink-0 ${item.subCategory === 'BM' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                                  {item.subCategory === 'BM' ? 'BMS' : 'PCM'}
+                                </span>
+                                <span className="font-mono text-gray-500 shrink-0">{item.itemCode}</span>
+                                <span className="text-gray-800 truncate">{item.itemName}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <TagSelect value={circuit} onChange={v => onSet('circuit', v)} options={opts.circuit ?? []} onAdd={onAddOpt('circuit')} placeholder="BMS / PCM" />
+                    )}
                   </LevelRow>
                 </>
               )}
@@ -917,6 +1038,9 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
                   maxChargeCurrent:       clItem.maxChargeCurrent       ?? null,
                   maxDischargeCurrent:    clItem.maxDischargeCurrent    ?? null,
                 })
+              } : undefined}
+              onSelectBMSItem={!item?.id ? (bmsItem) => {
+                set('circuit', bmsItem.subCategory)
               } : undefined}
             />
           </div>

@@ -63,6 +63,17 @@ export async function GET(req: NextRequest) {
       where.vendors = { hasSome: vals }
     }
 
+    const certParam = searchParams.get('certification')
+    if (certParam) {
+      const vals = certParam.split(',').filter(Boolean)
+      where.certifications = { hasSome: vals } as any
+    }
+    const spOptParam = searchParams.get('specialOption')
+    if (spOptParam) {
+      const vals = spOptParam.split(',').filter(Boolean)
+      where.specialOptions = { hasSome: vals } as any
+    }
+
     const seriesCountParam = searchParams.get('seriesCount')
     const parallelCountParam = searchParams.get('parallelCount')
     const layerCountParam = searchParams.get('layerCount')

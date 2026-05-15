@@ -81,6 +81,10 @@ export default function ItemsPage() {
   const [filterDiameterMin, setFilterDiameterMin] = useState('')
   const [filterWeightMin, setFilterWeightMin] = useState('')
   const [filterFormFactor, setFilterFormFactor] = useState<string[]>([])
+  const [filterCertification, setFilterCertification] = useState<string[]>([])
+  const [filterSpecialOption, setFilterSpecialOption] = useState<string[]>([])
+  const [filterBMSItems, setFilterBMSItems] = useState<string[]>([])   // UI용 (item IDs)
+  const [filterCLItems, setFilterCLItems] = useState<string[]>([])     // UI용 (item IDs)
 
   // ── 정렬 ──
   const [sortBy, setSortBy] = useState('createdAt')
@@ -114,6 +118,10 @@ export default function ItemsPage() {
   const [packTypeOpts, setPackTypeOpts] = useState<SelectOption[]>([])
   const [materialOpts, setMaterialOpts] = useState<SelectOption[]>([])
   const [vendorOpts, setVendorOpts] = useState<SelectOption[]>([])
+  const [certificationOpts, setCertificationOpts] = useState<SelectOption[]>([])
+  const [specialOptionOpts, setSpecialOptionOpts] = useState<SelectOption[]>([])
+  const [bmsItemOpts, setBmsItemOpts] = useState<{ value: string; label: string; subCat: string }[]>([])
+  const [clItemOpts, setClItemOpts] = useState<{ value: string; label: string; cellModel: string }[]>([])
 
   useEffect(() => {
     setChemistryOpts(getOptions('chemistryType'))
@@ -122,6 +130,39 @@ export default function ItemsPage() {
     setPackTypeOpts(getOptions('packType'))
     setMaterialOpts(getOptions('material'))
     setVendorOpts(getOptions('vendor'))
+    setCertificationOpts(getOptions('certification'))
+    setSpecialOptionOpts(getOptions('specialOption'))
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/items?category=ASSEMBLY&subCategory=BM,PC&limit=200&sortBy=itemCode&sortOrder=asc')
+      .then(r => r.json())
+      .then(json => {
+        if (json.success) {
+          setBmsItemOpts(json.data.items.map((item: any) => ({
+            value: item.id,
+            label: `${item.itemName} (${item.subCategory === 'BM' ? 'BMS' : 'PCM'})`,
+            subCat: item.subCategory,
+          })))
+        }
+      }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/items?category=COMPONENT&subCategory=CL&limit=200&sortBy=itemCode&sortOrder=asc')
+      .then(r => r.json())
+      .then(json => {
+        if (json.success) {
+          setClItemOpts(json.data.items
+            .filter((item: any) => item.cellModel)
+            .map((item: any) => ({
+              value: item.id,
+              label: item.itemName,
+              cellModel: item.cellModel,
+            }))
+          )
+        }
+      }).catch(() => {})
   }, [])
 
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -175,6 +216,10 @@ export default function ItemsPage() {
     if (matParam) params.set('material', matParam)
     if (ffParam) params.set('formFactor', ffParam)
     if (vendorParam) params.set('vendor', vendorParam)
+    const certParam = toParam(filterCertification)
+    const spOptParam = toParam(filterSpecialOption)
+    if (certParam) params.set('certification', certParam)
+    if (spOptParam) params.set('specialOption', spOptParam)
     if (filterSeriesCount) params.set('seriesCount', filterSeriesCount)
     if (filterParallelCount) params.set('parallelCount', filterParallelCount)
     if (filterLayerCount) params.set('layerCount', filterLayerCount)
@@ -190,7 +235,8 @@ export default function ItemsPage() {
     setLoading(false)
   }, [page, search, filterCategory, filterSubCategory, filterStatus,
     filterChemistry, filterCellModel, filterCircuit, filterPackType, filterMaterial,
-    filterFormFactor, filterVendor, filterSeriesCount, filterParallelCount, filterLayerCount,
+    filterFormFactor, filterVendor, filterCertification, filterSpecialOption,
+    filterSeriesCount, filterParallelCount, filterLayerCount,
     filterLengthMin, filterWidthMin, filterHeightMin, filterDiameterMin, filterWeightMin,
     sortBy, sortOrder])
 
@@ -204,12 +250,32 @@ export default function ItemsPage() {
     debounceTimer.current = setTimeout(resetAndPage, 300)
   }
 
+  const handleBMSItemsChange = (selectedIds: string[]) => {
+    setFilterBMSItems(selectedIds)
+    const circuits = [...new Set(
+      selectedIds.map(id => bmsItemOpts.find(o => o.value === id)?.subCat).filter(Boolean)
+    )] as string[]
+    setFilterCircuit(circuits)
+    resetAndPage()
+  }
+
+  const handleCLItemsChange = (selectedIds: string[]) => {
+    setFilterCLItems(selectedIds)
+    const cellModels = [...new Set(
+      selectedIds.map(id => clItemOpts.find(o => o.value === id)?.cellModel).filter(Boolean)
+    )] as string[]
+    setFilterCellModel(cellModels)
+    resetAndPage()
+  }
+
   const resetFilters = () => {
     setSearch('')
     setFilterCategory(''); setFilterSubCategory([]); setFilterStatus([])
     setFilterChemistry([]); setFilterCellModel([]); setFilterCircuit([])
     setFilterPackType([]); setFilterMaterial([]); setFilterVendor([])
     setFilterFormFactor([])
+    setFilterCertification([]); setFilterSpecialOption([])
+    setFilterBMSItems([]); setFilterCLItems([])
     setFilterSeriesCount(''); setFilterParallelCount(''); setFilterLayerCount('')
     setFilterLengthMin(''); setFilterWidthMin(''); setFilterHeightMin(''); setFilterDiameterMin(''); setFilterWeightMin('')
     setPage(1); setSelected(new Set())
@@ -223,6 +289,8 @@ export default function ItemsPage() {
     if (next !== 'PRODUCT') {
       setFilterChemistry([]); setFilterCellModel([]); setFilterCircuit([])
       setFilterPackType([]); setFilterSeriesCount(''); setFilterParallelCount(''); setFilterLayerCount('')
+      setFilterBMSItems([]); setFilterCLItems([])
+      setFilterCertification([]); setFilterSpecialOption([])
     }
     setFilterFormFactor([])
     if (next === 'PRODUCT') {
@@ -340,6 +408,7 @@ export default function ItemsPage() {
     search || filterCategory || filterSubCategory.length || filterStatus.length ||
     filterChemistry.length || filterCellModel.length || filterCircuit.length ||
     filterPackType.length || filterMaterial.length || filterFormFactor.length || filterVendor.length ||
+    filterCertification.length || filterSpecialOption.length ||
     filterSeriesCount || filterParallelCount || filterLayerCount ||
     filterLengthMin || filterWidthMin || filterHeightMin || filterDiameterMin || filterWeightMin
   )
@@ -438,23 +507,24 @@ export default function ItemsPage() {
               </FilterSection>
             )}
 
-            {(isAll || isProd || isPO) && cellModelOpts.length > 0 && (
-              <FilterSection label="셀모델">
+            {(isAll || isProd || isPO) && clItemOpts.length > 0 && (
+              <FilterSection label="셀 품목">
                 <SearchableMultiSelect
-                  value={filterCellModel}
-                  onChange={v => { setFilterCellModel(v); resetAndPage() }}
-                  options={cellModelOpts}
-                  placeholder="셀모델 선택"
+                  value={filterCLItems}
+                  onChange={handleCLItemsChange}
+                  options={clItemOpts.map(o => ({ value: o.value, label: o.label }))}
+                  placeholder="셀 품목 선택"
                 />
               </FilterSection>
             )}
 
-            {(isAll || isProd || isPO) && circuitOpts.length > 0 && (
-              <FilterSection label="회로(BMU)">
-                <MultiPillGroup
-                  options={circuitOpts.map(o => ({ value: o.value, label: o.label }))}
-                  value={filterCircuit}
-                  onChange={v => { setFilterCircuit(v); resetAndPage() }}
+            {(isAll || isProd || isPO) && bmsItemOpts.length > 0 && (
+              <FilterSection label="회로도 품목">
+                <SearchableMultiSelect
+                  value={filterBMSItems}
+                  onChange={handleBMSItemsChange}
+                  options={bmsItemOpts.map(o => ({ value: o.value, label: o.label }))}
+                  placeholder="BMS/PCM 품목 선택"
                 />
               </FilterSection>
             )}
@@ -545,6 +615,30 @@ export default function ItemsPage() {
                   onChange={v => { setFilterMaterial(v); resetAndPage() }}
                   options={materialOpts}
                   placeholder="재질 선택"
+                />
+              </FilterSection>
+            )}
+
+            {/* 인증 */}
+            {certificationOpts.length > 0 && (isAll || isProd || isPO || isBmsPcm) && (
+              <FilterSection label="인증">
+                <SearchableMultiSelect
+                  value={filterCertification}
+                  onChange={v => { setFilterCertification(v); resetAndPage() }}
+                  options={certificationOpts}
+                  placeholder="인증 선택"
+                />
+              </FilterSection>
+            )}
+
+            {/* 특수옵션 */}
+            {specialOptionOpts.length > 0 && (isAll || isProd || isPO || isBmsPcm) && (
+              <FilterSection label="특수옵션">
+                <SearchableMultiSelect
+                  value={filterSpecialOption}
+                  onChange={v => { setFilterSpecialOption(v); resetAndPage() }}
+                  options={specialOptionOpts}
+                  placeholder="특수옵션 선택"
                 />
               </FilterSection>
             )}
