@@ -74,6 +74,18 @@ export async function GET(req: NextRequest) {
       where.specialOptions = { hasSome: vals } as any
     }
 
+    // BOM 자식 품목 기준 필터 (배터리팩에서 셀/회로 품목으로 필터링)
+    const bomChildParam = searchParams.get('bomChild')
+    if (bomChildParam) {
+      const childIds = bomChildParam.split(',').filter(Boolean)
+      const bomEntries = await prisma.bOM.findMany({
+        where: { childId: { in: childIds } },
+        select: { parentId: true },
+      })
+      const parentIds = [...new Set(bomEntries.map((b: any) => b.parentId))]
+      where.id = parentIds.length > 0 ? { in: parentIds } : { in: [] }
+    }
+
     const seriesCountParam = searchParams.get('seriesCount')
     const parallelCountParam = searchParams.get('parallelCount')
     const layerCountParam = searchParams.get('layerCount')

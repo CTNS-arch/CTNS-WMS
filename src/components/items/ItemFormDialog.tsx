@@ -908,28 +908,29 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
     set('itemName', `${form.seriesCount}S ${form.parallelCount}P 배터리팩`)
   }, [form.seriesCount, form.parallelCount, isBP])
 
-  // 셀 선택 + S/P 변경 시 전기 사양 자동 계산
+  // 셀 선택 + S/P/L 변경 시 전기 사양 자동 계산
   useEffect(() => {
     if (!isBP || !selectedCLSpecs) return
     const s = parseFloat(String(form.seriesCount)) || 0
     const p = parseFloat(String(form.parallelCount)) || 0
+    const l = parseFloat(String(form.layerCount)) || 1  // 단 수 NULL → 1
     const calc = (factor: number, val: number | null): string => {
       if (!factor || val == null) return ''
       return String(Math.round(factor * val * 10000) / 10000)
     }
     const nomV = (s && selectedCLSpecs.nominalVoltage != null) ? s * selectedCLSpecs.nominalVoltage : null
-    const nomC = (p && selectedCLSpecs.nominalCapacity != null) ? p * selectedCLSpecs.nominalCapacity : null
+    const nomC = (p && l && selectedCLSpecs.nominalCapacity != null) ? p * l * selectedCLSpecs.nominalCapacity : null
     setForm((f: any) => ({
       ...f,
-      dischargeCutoffVoltage: calc(s, selectedCLSpecs.dischargeCutoffVoltage) || f.dischargeCutoffVoltage,
-      nominalVoltage:         calc(s, selectedCLSpecs.nominalVoltage)         || f.nominalVoltage,
-      chargeCutoffVoltage:    calc(s, selectedCLSpecs.chargeCutoffVoltage)    || f.chargeCutoffVoltage,
-      nominalCapacity:        calc(p, selectedCLSpecs.nominalCapacity)        || f.nominalCapacity,
+      dischargeCutoffVoltage: calc(s,     selectedCLSpecs.dischargeCutoffVoltage) || f.dischargeCutoffVoltage,
+      nominalVoltage:         calc(s,     selectedCLSpecs.nominalVoltage)         || f.nominalVoltage,
+      chargeCutoffVoltage:    calc(s,     selectedCLSpecs.chargeCutoffVoltage)    || f.chargeCutoffVoltage,
+      nominalCapacity:        calc(p * l, selectedCLSpecs.nominalCapacity)        || f.nominalCapacity,
       energy: (nomV != null && nomC != null) ? String(Math.round(nomV * nomC * 10000) / 10000) : f.energy,
-      maxChargeCurrent:    calc(p, selectedCLSpecs.maxChargeCurrent)    || f.maxChargeCurrent,
-      maxDischargeCurrent: calc(p, selectedCLSpecs.maxDischargeCurrent) || f.maxDischargeCurrent,
+      maxChargeCurrent:    calc(p * l, selectedCLSpecs.maxChargeCurrent)    || f.maxChargeCurrent,
+      maxDischargeCurrent: calc(p * l, selectedCLSpecs.maxDischargeCurrent) || f.maxDischargeCurrent,
     }))
-  }, [form.seriesCount, form.parallelCount, selectedCLSpecs])
+  }, [form.seriesCount, form.parallelCount, form.layerCount, selectedCLSpecs])
 
   const thirdValue = (() => {
     const t = form.subCategory ? THIRD_LEVEL[form.subCategory] : null

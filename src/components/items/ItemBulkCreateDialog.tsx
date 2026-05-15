@@ -69,6 +69,7 @@ interface BulkRow {
   cellModel: string
   seriesCount: string
   parallelCount: string
+  layerCount: string
   circuit: string
   specialOptions: string[]
   certifications: string[]
@@ -109,7 +110,7 @@ function emptyRow(): BulkRow {
     _key: newKey(),
     subCategory: '', thirdLevel: '', itemName: '', unit: 'EA', memo: '',
     chemistryType: '', cellManufacturer: '', cellModel: '',
-    seriesCount: '', parallelCount: '', circuit: '',
+    seriesCount: '', parallelCount: '', layerCount: '', circuit: '',
     specialOptions: [], certifications: [], drawings: [], vendors: [],
     manufacturer: '', maxSeriesCount: '', continuousDischargeCurrent: '',
     dischargeCutoffVoltage: '', nominalVoltage: '', chargeCutoffVoltage: '',
@@ -127,24 +128,26 @@ function computeElecSpecs(
   seriesCount: string,
   parallelCount: string,
   specs: BulkRow['_cellSpecs'],
+  layerCount?: string,
 ): Partial<BulkRow> {
   if (!specs) return {}
   const s = parseFloat(seriesCount) || 0
   const p = parseFloat(parallelCount) || 0
+  const l = parseFloat(layerCount ?? '') || 1  // 단 수 NULL → 1
   const calc = (factor: number, val: number | null): string => {
     if (!factor || val == null) return ''
     return String(Math.round(factor * val * 10000) / 10000)
   }
   const nomV = (s && specs.nominalVoltage != null) ? s * specs.nominalVoltage : null
-  const nomC = (p && specs.nominalCapacity != null) ? p * specs.nominalCapacity : null
+  const nomC = (p && l && specs.nominalCapacity != null) ? p * l * specs.nominalCapacity : null
   return {
-    dischargeCutoffVoltage: calc(s, specs.dischargeCutoffVoltage),
-    nominalVoltage:         calc(s, specs.nominalVoltage),
-    chargeCutoffVoltage:    calc(s, specs.chargeCutoffVoltage),
-    nominalCapacity:        calc(p, specs.nominalCapacity),
+    dischargeCutoffVoltage: calc(s,     specs.dischargeCutoffVoltage),
+    nominalVoltage:         calc(s,     specs.nominalVoltage),
+    chargeCutoffVoltage:    calc(s,     specs.chargeCutoffVoltage),
+    nominalCapacity:        calc(p * l, specs.nominalCapacity),
     energy: (nomV != null && nomC != null) ? String(Math.round(nomV * nomC * 10000) / 10000) : '',
-    maxChargeCurrent:    calc(p, specs.maxChargeCurrent),
-    maxDischargeCurrent: calc(p, specs.maxDischargeCurrent),
+    maxChargeCurrent:    calc(p * l, specs.maxChargeCurrent),
+    maxDischargeCurrent: calc(p * l, specs.maxDischargeCurrent),
   }
 }
 
@@ -346,7 +349,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
       const newP = field === 'parallelCount' ? val : r.parallelCount
       const autoName = (newS && newP) ? `${newS}S ${newP}P 배터리팩` : ''
       const nameIsAuto = !r.itemName || /^\d+S \d+P 배터리팩$/.test(r.itemName)
-      const elecSpecs = computeElecSpecs(newS, newP, r._cellSpecs ?? null)
+      const elecSpecs = computeElecSpecs(newS, newP, r._cellSpecs ?? null, r.layerCount ?? '')
       return {
         ...r,
         [field]: val,
@@ -982,7 +985,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                                             maxChargeCurrent:       item.maxChargeCurrent       ?? null,
                                             maxDischargeCurrent:    item.maxDischargeCurrent    ?? null,
                                           }
-                                          const elecSpecs = computeElecSpecs(row.seriesCount, row.parallelCount, cellSpecs)
+                                          const elecSpecs = computeElecSpecs(row.seriesCount, row.parallelCount, cellSpecs, row.layerCount)
                                           setRows(prev => prev.map(r => r._key === row._key ? {
                                             ...r,
                                             chemistryType: item.chemistryType || r.chemistryType,

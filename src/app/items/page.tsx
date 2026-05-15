@@ -220,6 +220,8 @@ export default function ItemsPage() {
     const spOptParam = toParam(filterSpecialOption)
     if (certParam) params.set('certification', certParam)
     if (spOptParam) params.set('specialOption', spOptParam)
+    const bomChildIds = [...filterBMSItems, ...filterCLItems]
+    if (bomChildIds.length > 0) params.set('bomChild', bomChildIds.join(','))
     if (filterSeriesCount) params.set('seriesCount', filterSeriesCount)
     if (filterParallelCount) params.set('parallelCount', filterParallelCount)
     if (filterLayerCount) params.set('layerCount', filterLayerCount)
@@ -236,6 +238,7 @@ export default function ItemsPage() {
   }, [page, search, filterCategory, filterSubCategory, filterStatus,
     filterChemistry, filterCellModel, filterCircuit, filterPackType, filterMaterial,
     filterFormFactor, filterVendor, filterCertification, filterSpecialOption,
+    filterBMSItems, filterCLItems,
     filterSeriesCount, filterParallelCount, filterLayerCount,
     filterLengthMin, filterWidthMin, filterHeightMin, filterDiameterMin, filterWeightMin,
     sortBy, sortOrder])
@@ -252,19 +255,11 @@ export default function ItemsPage() {
 
   const handleBMSItemsChange = (selectedIds: string[]) => {
     setFilterBMSItems(selectedIds)
-    const circuits = [...new Set(
-      selectedIds.map(id => bmsItemOpts.find(o => o.value === id)?.subCat).filter(Boolean)
-    )] as string[]
-    setFilterCircuit(circuits)
     resetAndPage()
   }
 
   const handleCLItemsChange = (selectedIds: string[]) => {
     setFilterCLItems(selectedIds)
-    const cellModels = [...new Set(
-      selectedIds.map(id => clItemOpts.find(o => o.value === id)?.cellModel).filter(Boolean)
-    )] as string[]
-    setFilterCellModel(cellModels)
     resetAndPage()
   }
 
