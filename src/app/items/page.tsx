@@ -507,7 +507,7 @@ export default function ItemsPage() {
                 <SearchableMultiSelect
                   value={filterCLItems}
                   onChange={handleCLItemsChange}
-                  options={clItemOpts.map(o => ({ value: o.value, label: o.label }))}
+                  options={clItemOpts.map(o => ({ value: o.value, label: o.label, colorIndex: 0 }))}
                   placeholder="셀 품목 선택"
                 />
               </FilterSection>
@@ -518,7 +518,7 @@ export default function ItemsPage() {
                 <SearchableMultiSelect
                   value={filterBMSItems}
                   onChange={handleBMSItemsChange}
-                  options={bmsItemOpts.map(o => ({ value: o.value, label: o.label }))}
+                  options={bmsItemOpts.map(o => ({ value: o.value, label: o.label, colorIndex: 0 }))}
                   placeholder="BMS/PCM 품목 선택"
                 />
               </FilterSection>

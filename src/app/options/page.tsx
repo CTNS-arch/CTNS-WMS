@@ -121,6 +121,7 @@ export default function OptionsPage() {
   }
 
   const handleDelete = (value: string, label: string) => {
+    if (!window.confirm(`"${label}"을(를) 삭제하시겠습니까?`)) return
     deleteOption(selected, value); reload()
     toast.success(`"${label}" 삭제되었습니다.`)
   }
@@ -328,7 +329,7 @@ export default function OptionsPage() {
                                 + 모델
                               </button>
                               <button type="button"
-                                onClick={() => { deleteCellModelGroup(group.manufacturer); reload(); toast.success(`"${group.manufacturer}" 삭제되었습니다.`) }}
+                                onClick={() => { if (!window.confirm(`"${group.manufacturer}" 제조사 및 모든 모델을 삭제하시겠습니까?`)) return; deleteCellModelGroup(group.manufacturer); reload(); toast.success(`"${group.manufacturer}" 삭제되었습니다.`) }}
                                 className="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50">
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -374,7 +375,7 @@ export default function OptionsPage() {
                                   <span className="flex-1 text-sm text-gray-800">{model.label}</span>
                                   <span className="w-20 text-xs text-gray-400 font-mono">{model.code}</span>
                                   <button type="button"
-                                    onClick={() => { deleteCellModelEntry(group.manufacturer, model.value); reload(); toast.success(`"${model.label}" 삭제되었습니다.`) }}
+                                    onClick={() => { if (!window.confirm(`"${model.label}" 모델을 삭제하시겠습니까?`)) return; deleteCellModelEntry(group.manufacturer, model.value); reload(); toast.success(`"${model.label}" 삭제되었습니다.`) }}
                                     className="w-6 h-6 rounded flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all">
                                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

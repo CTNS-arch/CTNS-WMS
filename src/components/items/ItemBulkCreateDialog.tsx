@@ -49,7 +49,7 @@ function getSubOpts(type: BulkType, subMap: Record<string, SelectOption[]>): Sel
 }
 
 const DIALOG_W: Record<BulkType, number> = {
-  BATTERY: 1500, BMS: 1360, ASSEMBLY_OTHER: 1020, CELL: 1600, COMPONENT_OTHER: 1800,
+  BATTERY: 1500, BMS: 1360, ASSEMBLY_OTHER: 1020, CELL: 1760, COMPONENT_OTHER: 1800,
 }
 
 // ── 행 구조 ────────────────────────────────────────────────
@@ -74,6 +74,7 @@ interface BulkRow {
   specialOptions: string[]
   certifications: string[]
   drawings: string[]
+  specSheets: string[]
   vendors: string[]
   // BMS
   manufacturer: string
@@ -111,7 +112,7 @@ function emptyRow(): BulkRow {
     subCategory: '', thirdLevel: '', itemName: '', unit: 'EA', memo: '',
     chemistryType: '', cellManufacturer: '', cellModel: '',
     seriesCount: '', parallelCount: '', layerCount: '', circuit: '',
-    specialOptions: [], certifications: [], drawings: [], vendors: [],
+    specialOptions: [], certifications: [], drawings: [], specSheets: [], vendors: [],
     manufacturer: '', maxSeriesCount: '', continuousDischargeCurrent: '',
     dischargeCutoffVoltage: '', nominalVoltage: '', chargeCutoffVoltage: '',
     nominalCapacity: '', energy: '', maxChargeCurrent: '', maxDischargeCurrent: '',
@@ -207,12 +208,16 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
   const [opts,         setOpts]         = useState<OptStore>({})
   const [subMap,       setSubMap]       = useState<Record<string, SelectOption[]>>({})
   const [cellMfrGroups, setCellMfrGroups] = useState<CellModelGroup[]>([])
+  const [pendingCellModel, setPendingCellModel] = useState<{ rowKey: string; mfr: string; label: string; code: string } | null>(null)
   const [uploadingKey, setUploadingKey] = useState<string | null>(null)
+  const [uploadingSpecKey, setUploadingSpecKey] = useState<string | null>(null)
   const [dbNextRevMap, setDbNextRevMap] = useState<Record<string, number>>({})
   const [bomSearches, setBomSearches] = useState<Record<string, { query: string; results: any[]; open: boolean }>>({})
   const [clSearches, setClSearches] = useState<Record<string, { query: string; results: any[]; open: boolean; selected: any | null }>>({})
-  const drawingsInputRef  = useRef<HTMLInputElement>(null)
-  const uploadTargetKey   = useRef<string | null>(null)
+  const drawingsInputRef    = useRef<HTMLInputElement>(null)
+  const specSheetInputRef   = useRef<HTMLInputElement>(null)
+  const uploadTargetKey     = useRef<string | null>(null)
+  const specSheetTargetKey  = useRef<string | null>(null)
   const nameRefs = useRef<Record<string, HTMLInputElement | null>>({})
   const revFetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const bomDropdownRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -392,6 +397,30 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
     drawingsInputRef.current?.click()
   }
 
+  const triggerSpecSheetUpload = (rowKey: string) => {
+    specSheetTargetKey.current = rowKey
+    specSheetInputRef.current?.click()
+  }
+
+  const handleSpecSheetFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    const key = specSheetTargetKey.current
+    e.target.value = ''
+    if (!files?.length || !key) return
+    setUploadingSpecKey(key)
+    try {
+      const fd = new FormData()
+      Array.from(files).forEach(f => fd.append('files', f))
+      const res = await fetch('/api/upload', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (json.success) {
+        setRows(prev => prev.map(r => r._key === key ? { ...r, specSheets: [...r.specSheets, ...json.data.urls] } : r))
+        toast.success(`${json.data.urls.length}개 스펙시트 업로드됨`)
+      } else toast.error(json.message)
+    } catch { toast.error('업로드 실패') }
+    finally { setUploadingSpecKey(null); specSheetTargetKey.current = null }
+  }
+
   const handleDrawingFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     const key = uploadTargetKey.current
@@ -547,6 +576,8 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
             continuousDischargeCurrent: n(row.continuousDischargeCurrent),
             chargeCRate: n(row.chargeCRate),
             dischargeCRate: n(row.dischargeCRate),
+            weight: n(row.weight),
+            specSheets: row.specSheets,
           })
           break
         case 'COMPONENT_OTHER': {
@@ -638,7 +669,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div
-        className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+        className="relative bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
         style={{ width: dialogW, maxWidth: '97vw', height: 740 }}
         onClick={e => e.stopPropagation()}
       >
@@ -739,6 +770,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
             {/* 테이블 */}
             <div className="flex-1 overflow-auto min-h-0">
               <input type="file" ref={drawingsInputRef} multiple accept=".pdf,.dwg,.dxf,.png,.jpg,.jpeg,.svg,.xlsx,.xls,.step,.stp" className="hidden" onChange={handleDrawingFileChange} />
+              <input type="file" ref={specSheetInputRef} multiple accept=".pdf,.xlsx,.xls,.csv,.png,.jpg,.jpeg" className="hidden" onChange={handleSpecSheetFileChange} />
 
               <table className="text-xs border-collapse" style={{ tableLayout: 'fixed', minWidth: DIALOG_W[bulkType] + 176 }}>
                 <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
@@ -757,7 +789,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     {/* 소분류: COMPONENT_OTHER만 */}
                     {bulkType === 'COMPONENT_OTHER' && <th className={thL} style={{ width: subColW }}>소분류</th>}
 
-                    <th className={thL} style={{ width: bulkType === 'BATTERY' ? 220 : undefined }}>품명 <span className="text-red-400">*</span></th>
+                    {bulkType !== 'CELL' && <th className={thL} style={{ width: bulkType === 'BATTERY' ? 220 : undefined }}>품명 <span className="text-red-400">*</span></th>}
 
                     {/* BATTERY 전용 */}
                     {bulkType === 'BATTERY' && <th className={thSm} style={{ width: 220 }}>셀(CL) 선택</th>}
@@ -774,6 +806,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     {bulkType === 'CELL' && <th className={thSm} style={{ width: 110 }}>화학계</th>}
                     {bulkType === 'CELL' && <th className={thSm} style={{ width: 110 }}>제조사</th>}
                     {bulkType === 'CELL' && <th className={thSm} style={{ width: 120 }}>셀 모델</th>}
+                    {bulkType === 'CELL' && <th className={thL} style={{ width: 220 }}>품명 <span className="text-red-400">*</span></th>}
                     {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>방전종료전압(V)</th>}
                     {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>공칭전압(V)</th>}
                     {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>충전종료전압(V)</th>}
@@ -785,6 +818,8 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>연속방전(A)</th>}
                     {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>충전C-rate</th>}
                     {bulkType === 'CELL' && <th className={thSm} style={{ width: 68 }}>방전C-rate</th>}
+                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 72 }}>무게(g)</th>}
+                    {bulkType === 'CELL' && <th className={thSm} style={{ width: 80 }}>스펙시트</th>}
 
                     {/* COMPONENT_OTHER 전용 */}
                     {bulkType === 'COMPONENT_OTHER' && <th className={thSm} style={{ width: 64 }}>가로</th>}
@@ -927,19 +962,21 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                           </td>
                         )}
 
-                        {/* 품명 */}
-                        <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: bulkType === 'BATTERY' ? 220 : undefined }}>
-                          {row.error
-                            ? <span className="px-2 text-xs text-red-500 block py-1.5">{row.error}</span>
-                            : <input
-                                ref={el => { nameRefs.current[row._key] = el }}
-                                value={row.itemName}
-                                onChange={e => upd(row._key, 'itemName', e.target.value)}
-                                onKeyDown={e => handleKeyDown(e, idx)}
-                                placeholder="품목명 입력"
-                                className={cellCls}
-                              />}
-                        </td>
+                        {/* 품명 (CELL 제외) */}
+                        {bulkType !== 'CELL' && (
+                          <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: bulkType === 'BATTERY' ? 220 : undefined }}>
+                            {row.error
+                              ? <span className="px-2 text-xs text-red-500 block py-1.5">{row.error}</span>
+                              : <input
+                                  ref={el => { nameRefs.current[row._key] = el }}
+                                  value={row.itemName}
+                                  onChange={e => upd(row._key, 'itemName', e.target.value)}
+                                  onKeyDown={e => handleKeyDown(e, idx)}
+                                  placeholder="품목명 입력"
+                                  className={cellCls}
+                                />}
+                          </td>
+                        )}
 
                         {/* ── BATTERY 전용: CL 품목 선택 ── */}
                         {bulkType === 'BATTERY' && (() => {
@@ -1035,8 +1072,23 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                         {bulkType === 'CELL' && (
                           <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 120 }}>
                             <TagSelect value={row.cellModel} onChange={v => upd(row._key, 'cellModel', v)} options={modelOpts} disabled={!row.cellManufacturer}
-                              onAdd={lbl => { if (row.cellManufacturer) { addCellModelEntry(row.cellManufacturer, lbl, lbl); setCellMfrGroups([...getCellModelGroups()]) } }}
+                              onAdd={lbl => { if (row.cellManufacturer) setPendingCellModel({ rowKey: row._key, mfr: row.cellManufacturer, label: lbl, code: '' }) }}
                               placeholder="셀모델" portal size="sm" />
+                          </td>
+                        )}
+                        {/* 품명 (CELL — 셀모델 오른쪽) */}
+                        {bulkType === 'CELL' && (
+                          <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 220 }}>
+                            {row.error
+                              ? <span className="px-2 text-xs text-red-500 block py-1.5">{row.error}</span>
+                              : <input
+                                  ref={el => { nameRefs.current[row._key] = el }}
+                                  value={row.itemName}
+                                  onChange={e => upd(row._key, 'itemName', e.target.value)}
+                                  onKeyDown={e => handleKeyDown(e, idx)}
+                                  placeholder="SDI INR21700-40T"
+                                  className={cellCls}
+                                />}
                           </td>
                         )}
                         {bulkType === 'CELL' && num(68, 'dischargeCutoffVoltage', '0.00')}
@@ -1050,6 +1102,15 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                         {bulkType === 'CELL' && num(68, 'continuousDischargeCurrent', '0.00')}
                         {bulkType === 'CELL' && num(68, 'chargeCRate', '0.00')}
                         {bulkType === 'CELL' && num(68, 'dischargeCRate', '0.00')}
+                        {bulkType === 'CELL' && num(72, 'weight', '0.00')}
+                        {bulkType === 'CELL' && (
+                          <td className="px-0.5 py-0.5 border-r border-gray-100 text-center" style={{ width: 80 }}>
+                            <button onClick={() => triggerSpecSheetUpload(row._key)} disabled={uploadingSpecKey === row._key}
+                              className="text-xs font-medium text-blue-500 hover:text-blue-700 disabled:opacity-50 py-1">
+                              {uploadingSpecKey === row._key ? '...' : `📎 ${row.specSheets.length}`}
+                            </button>
+                          </td>
+                        )}
 
                         {/* ── COMPONENT_OTHER 전용 ── */}
                         {bulkType === 'COMPONENT_OTHER' && num(64, 'length', '0.00')}
@@ -1168,6 +1229,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                                   specialOptions: [...row.specialOptions],
                                   certifications: [...row.certifications],
                                   drawings: [...row.drawings],
+                                  specSheets: [...row.specSheets],
                                   vendors: [...row.vendors],
                                 })
                                 return next
@@ -1194,6 +1256,51 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
               </table>
             </div>
           </>
+        )}
+
+        {/* 셀모델 코드 입력 모달 */}
+        {pendingCellModel && (
+          <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/30 rounded-2xl">
+            <div className="bg-white rounded-xl shadow-xl p-5 w-72" onClick={e => e.stopPropagation()}>
+              <h3 className="text-sm font-semibold text-gray-800 mb-1">새 셀모델 추가</h3>
+              <p className="text-xs text-gray-500 mb-3">셀모델명: <span className="font-medium text-gray-700">{pendingCellModel.label}</span></p>
+              <label className="text-xs text-gray-500 block mb-1">코드 <span className="text-red-400">*</span></label>
+              <input
+                autoFocus
+                value={pendingCellModel.code}
+                onChange={e => setPendingCellModel(prev => prev ? { ...prev, code: e.target.value } : null)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && pendingCellModel.code.trim()) {
+                    const { rowKey, mfr, label, code } = pendingCellModel
+                    addCellModelEntry(mfr, label, code.trim())
+                    setCellMfrGroups([...getCellModelGroups()])
+                    upd(rowKey, 'cellModel', `${mfr} ${label}`)
+                    setPendingCellModel(null)
+                  } else if (e.key === 'Escape') {
+                    setPendingCellModel(null)
+                  }
+                }}
+                placeholder="예: INR21700-M50L"
+                className="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-sm mb-4 outline-none focus:border-blue-400"
+              />
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setPendingCellModel(null)}
+                  className="px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 rounded-lg">취소</button>
+                <button
+                  disabled={!pendingCellModel.code.trim()}
+                  onClick={() => {
+                    const { rowKey, mfr, label, code } = pendingCellModel
+                    addCellModelEntry(mfr, label, code.trim())
+                    setCellMfrGroups([...getCellModelGroups()])
+                    upd(rowKey, 'cellModel', `${mfr} ${label}`)
+                    setPendingCellModel(null)
+                  }}
+                  className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
+                  추가
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* 푸터 */}
