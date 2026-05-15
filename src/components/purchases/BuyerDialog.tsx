@@ -563,6 +563,12 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
       const newRows = rows.map(r => r._key === key ? { ...r, [field]: val } : r)
       setCostMap(prev => ({ ...prev, [it.id]: newRows }))
       applyAgg(newRows)
+      // 마지막 행에 데이터 입력 시 빈 행 자동 추가
+      const last = newRows[newRows.length - 1]
+      if (last._key === key && (last.supplyAmount || last.taxAmount || last.memo)) {
+        const withNew = [...newRows, { _key: String(Date.now()), type: '공급금액' as const, supplyAmount: '', taxAmount: '', memo: '' }]
+        setCostMap(prev => ({ ...prev, [it.id]: withNew }))
+      }
     }
 
     function delRow(key: string) {
@@ -651,15 +657,6 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
                   </td>
                 </tr>
               ))}
-              {/* 행 추가 — 왼쪽 정렬 */}
-              <tr className="border-t border-dashed border-[#e6e6e6]">
-                <td colSpan={5} className="px-3 py-1">
-                  <button onClick={addRow}
-                    className="text-[11px] text-[#9445e5] font-medium hover:text-purple-700 transition-colors">
-                    + 행 추가
-                  </button>
-                </td>
-              </tr>
             </tbody>
             <tfoot>
               <tr className="border-t border-[#e6e6e6] bg-[#fffaf0]">

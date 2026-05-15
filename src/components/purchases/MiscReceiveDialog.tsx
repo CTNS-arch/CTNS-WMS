@@ -38,6 +38,7 @@ export default function MiscReceiveDialog({ open, request, onClose, onSaved }: P
 
   async function handleConfirm() {
     if (!request) return
+    if (files.length === 0) { toast.error('첨부파일을 1개 이상 업로드해주세요.'); return }
     setSaving(true)
     try {
       // 파일 업로드
@@ -90,7 +91,9 @@ export default function MiscReceiveDialog({ open, request, onClose, onSaved }: P
 
           {/* 파일 첨부 */}
           <div className="space-y-2">
-            <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">파일 첨부</label>
+            <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+              파일 첨부 <span className="text-red-400 normal-case font-normal">*필수</span>
+            </label>
             <div
               onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
               onDragLeave={() => setIsDragging(false)}

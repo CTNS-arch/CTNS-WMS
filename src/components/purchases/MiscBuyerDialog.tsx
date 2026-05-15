@@ -25,6 +25,7 @@ export default function MiscBuyerDialog({ open, request, onClose, onSaved }: Pro
   const [expenseRef,   setExpenseRef]   = useState('')
   const [taxInvoice,   setTaxInvoice]   = useState('')
   const [supplier,     setSupplier]     = useState<any | null>(null)
+  const [selectedStatus, setSelectedStatus] = useState('ORDERED')
   const [saving,       setSaving]       = useState(false)
 
   const cardInputRef = useRef<HTMLInputElement>(null)
@@ -40,6 +41,7 @@ export default function MiscBuyerDialog({ open, request, onClose, onSaved }: Pro
     setCardInput(request?.cardUsed ?? '')
     setExpenseRef(request?.miscExpenseRef ?? '')
     setTaxInvoice(request?.miscTaxInvoice ?? '')
+    setSelectedStatus(request?.status ?? 'ORDERED')
     setSupplier(null)
     if (request?.miscSupplier) fetchSupplier(request.miscSupplier)
   }, [open, request])
@@ -100,7 +102,7 @@ export default function MiscBuyerDialog({ open, request, onClose, onSaved }: Pro
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          status: 'ORDERED',
+          status: selectedStatus,
           miscPaymentType: paymentType || null,
           cardUsed: showCard ? (cardUsed || null) : null,
           miscExpenseRef:  showAccount ? (expenseRef || null) : null,
@@ -144,6 +146,22 @@ export default function MiscBuyerDialog({ open, request, onClose, onSaved }: Pro
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+
+          {/* 상태 */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">상태</label>
+            <select
+              value={selectedStatus}
+              onChange={e => setSelectedStatus(e.target.value)}
+              className="h-8 w-full rounded-lg border border-gray-200 px-2 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
+            >
+              <option value="ORDERED">주문완료</option>
+              <option value="RECEIVED">입고완료</option>
+              <option value="APPROVED">검토중</option>
+              <option value="REJECTED">반려</option>
+              <option value="PENDING">요청</option>
+            </select>
+          </div>
 
           {/* 결제 구분 */}
           <div className="space-y-1.5">
@@ -240,7 +258,7 @@ export default function MiscBuyerDialog({ open, request, onClose, onSaved }: Pro
             onClick={onClose} disabled={saving}>취소</Button>
           <Button size="sm" className="h-8 text-xs px-6 bg-purple-600 hover:bg-purple-700"
             onClick={handleSave} disabled={saving}>
-            {saving ? '처리 중...' : '주문완료'}
+            {saving ? '처리 중...' : `저장 · ${selectedStatus === 'ORDERED' ? '주문완료' : selectedStatus === 'RECEIVED' ? '입고완료' : selectedStatus === 'APPROVED' ? '검토중' : selectedStatus === 'REJECTED' ? '반려' : '요청'}`}
           </Button>
         </div>
       </div>
