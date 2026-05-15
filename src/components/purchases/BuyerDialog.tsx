@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
 
 // ── 타입 ────────────────────────────────────────────────────
 type CostRow = { _key: string; type: '공급금액' | '부대비용'; supplyAmount: string; taxAmount: string; memo: string }
@@ -49,7 +48,7 @@ const STATUS_LABEL: Record<string, string> = {
   PENDING: '요청', APPROVED: '검토중', ORDERED: '주문완료', RECEIVED: '입고완료', REJECTED: '반려',
 }
 const STATUS_COLOR: Record<string, string> = {
-  PENDING:  'bg-yellow-100 text-yellow-700 border-yellow-200',
+  PENDING:  'bg-[#fffae0] text-[#f59e26] border-[#f59e26]',
   APPROVED: 'bg-indigo-100 text-indigo-700 border-indigo-200',
   ORDERED:  'bg-blue-100  text-blue-700  border-blue-200',
   RECEIVED: 'bg-green-100 text-green-700 border-green-200',
@@ -95,7 +94,6 @@ function Field({ label, children, cols = 1 }: {
 }
 
 const inp     = 'w-full h-8 px-2.5 text-xs rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition-colors'
-const calcCls = 'w-full h-8 px-2.5 text-xs rounded-lg border border-amber-200 bg-amber-50 text-amber-800 font-semibold text-right flex items-center justify-end'
 
 // 드롭다운 화살표 포함 select 래퍼
 function Sel({ value, onChange, children, disabled = false }: {
@@ -134,6 +132,30 @@ function Sec({ label, color }: { label: string; color: string }) {
   )
 }
 
+// 쉼표 포맷 숫자 입력 (모듈 레벨 — 훅 안정성 보장)
+function NumInput({ value, onChange, placeholder = '0', className = '' }: {
+  value: string; onChange: (val: string) => void; placeholder?: string; className?: string
+}) {
+  const [focused, setFocused] = useState(false)
+  const raw = value.replace(/,/g, '')
+  const display = focused ? raw : (raw ? Number(raw).toLocaleString('ko-KR') : '')
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={display}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onChange={e => {
+        const v = e.target.value.replace(/,/g, '')
+        if (v === '' || /^\d*\.?\d*$/.test(v)) onChange(v)
+      }}
+      placeholder={placeholder}
+      className={className}
+    />
+  )
+}
+
 // ── 메인 컴포넌트 ────────────────────────────────────────────
 export default function BuyerDialog({ open, request, onClose, onSaved }: Props) {
   const [items,           setItems]           = useState<BuyerItem[]>([])
@@ -149,7 +171,14 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
   const [loadingBankInfo, setLoadingBankInfo] = useState<string | null>(null)
   const [confirmItem,     setConfirmItem]     = useState<BuyerItem | null>(null)
   const [receiving,       setReceiving]       = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [suppQuery,       setSuppQuery]       = useState<Record<string, string>>({})
+  const [suppOpts,        setSuppOpts]        = useState<Record<string, any[]>>({})
+  const [suppOpen,        setSuppOpen]        = useState<Record<string, boolean>>({})
+  const [showSuppCreate,  setShowSuppCreate]  = useState<string | null>(null)
+  const [suppForm,        setSuppForm]        = useState({ companyName: '', region: '', businessRegNo: '', bankName: '', accountNumber: '', accountHolder: '', note: '' })
+  const [savingSupp,      setSavingSupp]      = useState(false)
+  const fileRef    = useRef<HTMLInputElement>(null)
+  const suppTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const initItems = useCallback((raw: any[]) =>
     setItems(raw.map(it => ({
@@ -277,6 +306,47 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
       }
     } catch { toast.error('공급처 정보 조회 실패') }
     finally { setLoadingBankInfo(null) }
+  }
+
+  // ── 공급처 검색 ───────────────────────────────────────────
+  const searchSuppliers = (itemId: string, query: string) => {
+    setSuppQuery(prev => ({ ...prev, [itemId]: query }))
+    if (suppTimerRef.current) clearTimeout(suppTimerRef.current)
+    if (!query.trim()) {
+      setSuppOpts(prev => ({ ...prev, [itemId]: [] }))
+      setSuppOpen(prev => ({ ...prev, [itemId]: false }))
+      return
+    }
+    suppTimerRef.current = setTimeout(async () => {
+      try {
+        const res  = await fetch(`/api/suppliers?search=${encodeURIComponent(query)}&limit=6`)
+        const json = await res.json()
+        if (json.success) {
+          setSuppOpts(prev => ({ ...prev, [itemId]: json.data.suppliers ?? [] }))
+          setSuppOpen(prev => ({ ...prev, [itemId]: true }))
+        }
+      } catch {}
+    }, 300)
+  }
+
+  // ── 공급처 생성 ───────────────────────────────────────────
+  const createSupplier = async (itemId: string) => {
+    if (!suppForm.companyName.trim()) { toast.error('업체명을 입력해주세요.'); return }
+    setSavingSupp(true)
+    try {
+      const res  = await fetch('/api/suppliers', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(suppForm),
+      })
+      const json = await res.json()
+      if (!json.success) throw new Error(json.message)
+      upd(itemId, 'supplierName', json.data.companyName)
+      setSuppQuery(prev => { const n = { ...prev }; delete n[itemId]; return n })
+      setShowSuppCreate(null)
+      setSuppForm({ companyName: '', region: '', businessRegNo: '', bankName: '', accountNumber: '', accountHolder: '', note: '' })
+      toast.success('공급처가 등록되었습니다.')
+    } catch (e: any) { toast.error(e.message || '공급처 등록 실패') }
+    finally { setSavingSupp(false) }
   }
 
   // ── 재고 입고 ──────────────────────────────────────────────
@@ -501,16 +571,19 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
       applyAgg(newRows)
     }
 
+    const grandTotal = supplyTotal + addTotal + taxTotal
+    const cur = it.buyerCurrency || 'KRW'
+
     return (
       <div className="space-y-3">
         {/* 결제 통화 + 환율 (표 위) */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <Field label="결제 통화">
             <Sel value={it.buyerCurrency} onChange={e => { upd(it.id, 'buyerCurrency', e.target.value); fetchRate(it.id, e.target.value) }}>
               {CURRENCY_OPT.map(o => <option key={o}>{o}</option>)}
             </Sel>
           </Field>
-          <Field label={it.buyerCurrency !== 'KRW' ? `환율 (1 ${it.buyerCurrency} → KRW)` : '환율'} cols={2}>
+          <Field label={it.buyerCurrency !== 'KRW' ? `환율 (1 ${it.buyerCurrency} → KRW)` : '환율(KRW)'}>
             <div className="flex gap-1">
               <input type="number" value={it.exchangeRate}
                 onChange={e => upd(it.id, 'exchangeRate', e.target.value)}
@@ -520,7 +593,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
               {it.buyerCurrency !== 'KRW' && (
                 <button onClick={() => fetchRate(it.id, it.buyerCurrency)}
                   disabled={fetchingRate === it.id}
-                  className="px-2 h-8 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-xs text-gray-500 shrink-0 disabled:opacity-50">
+                  className="px-2 h-8 rounded-lg border border-[#e6e6e6] bg-[#fafafa] hover:bg-gray-100 text-xs text-[#6b7078] shrink-0 disabled:opacity-50">
                   {fetchingRate === it.id ? '…' : '조회'}
                 </button>
               )}
@@ -532,11 +605,11 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
         <div className="border border-gray-200 rounded-lg overflow-hidden">
           <table className="w-full text-xs border-collapse">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 w-28">항목</th>
-                <th className="px-3 py-2 text-right text-[10px] font-semibold text-gray-500 w-32">공급금액</th>
-                <th className="px-3 py-2 text-right text-[10px] font-semibold text-gray-500 w-28">세액</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500">비고</th>
+              <tr className="bg-[#fafafa] border-b border-[#e6e6e6]">
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-[#6b7078] w-28">항목</th>
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-[#6b7078] w-36">공급가액</th>
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-[#6b7078] w-28">세액</th>
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-[#6b7078]">비고</th>
                 <th className="px-2 py-2 w-7" />
               </tr>
             </thead>
@@ -544,83 +617,69 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
               {rows.map(row => (
                 <tr key={row._key} className="border-b border-gray-100 last:border-0">
                   <td className="px-2 py-1.5">
-                    <select value={row.type} onChange={e => updRow(row._key, 'type', e.target.value)}
-                      className="h-7 w-full rounded-md border border-gray-200 text-xs px-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-400">
-                      <option>공급금액</option>
-                      <option>부대비용</option>
-                    </select>
+                    <div className="relative">
+                      <select value={row.type} onChange={e => updRow(row._key, 'type', e.target.value)}
+                        className="h-7 w-full rounded-lg border border-[#e6e6e6] text-xs pl-2 pr-6 bg-white focus:outline-none focus:ring-1 focus:ring-purple-400 appearance-none">
+                        <option value="공급금액">물품금액</option>
+                        <option value="부대비용">부대비용</option>
+                      </select>
+                      <svg className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[#9ea1a3]"
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
                   </td>
                   <td className="px-2 py-1.5">
-                    <input type="number" value={row.supplyAmount}
-                      onChange={e => updRow(row._key, 'supplyAmount', e.target.value)}
-                      className="h-7 w-full rounded-md border border-gray-200 text-xs px-2 text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
-                      placeholder="0" />
+                    <NumInput value={row.supplyAmount} onChange={v => updRow(row._key, 'supplyAmount', v)}
+                      className="h-7 w-full rounded-lg border border-[#e6e6e6] text-xs px-2 focus:outline-none focus:ring-1 focus:ring-purple-400 text-right" />
                   </td>
                   <td className="px-2 py-1.5">
-                    <input type="number" value={row.taxAmount}
-                      onChange={e => updRow(row._key, 'taxAmount', e.target.value)}
-                      className="h-7 w-full rounded-md border border-gray-200 text-xs px-2 text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
-                      placeholder="0" />
+                    <NumInput value={row.taxAmount} onChange={v => updRow(row._key, 'taxAmount', v)}
+                      className="h-7 w-full rounded-lg border border-[#e6e6e6] text-xs px-2 focus:outline-none focus:ring-1 focus:ring-purple-400 text-right" />
                   </td>
                   <td className="px-2 py-1.5">
                     <input value={row.memo}
                       onChange={e => updRow(row._key, 'memo', e.target.value)}
-                      className="h-7 w-full rounded-md border border-gray-200 text-xs px-2 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                      className="h-7 w-full rounded-lg border border-[#e6e6e6] text-xs px-2 focus:outline-none focus:ring-1 focus:ring-purple-400"
                       placeholder="비고 입력" />
                   </td>
                   <td className="px-1 py-1.5 text-center">
                     <button onClick={() => delRow(row._key)}
-                      className="w-5 h-5 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 text-sm flex items-center justify-center mx-auto transition-colors">
+                      className="w-6 h-6 rounded bg-white border border-white text-[#d1d1d1] hover:text-red-400 hover:border-red-100 text-sm flex items-center justify-center mx-auto transition-colors">
                       ×
                     </button>
                   </td>
                 </tr>
               ))}
+              {/* 행 추가 — 왼쪽 정렬 */}
+              <tr className="border-t border-dashed border-[#e6e6e6]">
+                <td colSpan={5} className="px-3 py-1">
+                  <button onClick={addRow}
+                    className="text-[11px] text-[#9445e5] font-medium hover:text-purple-700 transition-colors">
+                    + 행 추가
+                  </button>
+                </td>
+              </tr>
             </tbody>
-            <tfoot className="bg-gray-50/80 border-t-2 border-gray-200">
-              <tr className="border-b border-gray-100">
-                <td className="px-3 py-1.5 text-[10px] font-bold text-gray-500">공급금액 합계</td>
-                <td className="px-3 py-1.5 text-right text-xs font-bold tabular-nums text-gray-800">
+            <tfoot>
+              <tr className="border-t border-[#e6e6e6] bg-[#fffaf0]">
+                <td className="px-3 py-2 text-[10px] font-bold text-[#b45309]">합계</td>
+                <td className="px-3 py-2 text-xs font-bold text-[#92400e] tabular-nums">
                   {supplyTotal > 0 ? supplyTotal.toLocaleString('ko-KR') : '—'}
                 </td>
-                <td /><td colSpan={2} />
-              </tr>
-              <tr className="border-b border-gray-100">
-                <td className="px-3 py-1.5 text-[10px] font-bold text-gray-500">부대비용 합계</td>
-                <td className="px-3 py-1.5 text-right text-xs font-bold tabular-nums text-gray-800">
-                  {addTotal > 0 ? addTotal.toLocaleString('ko-KR') : '—'}
-                </td>
-                <td /><td colSpan={2} />
-              </tr>
-              <tr>
-                <td className="px-3 py-1.5 text-[10px] font-bold text-gray-500">세액 합계</td>
-                <td />
-                <td className="px-3 py-1.5 text-right text-xs font-bold tabular-nums text-gray-800">
+                <td className="px-3 py-2 text-xs font-bold text-[#92400e] tabular-nums">
                   {taxTotal > 0 ? taxTotal.toLocaleString('ko-KR') : '—'}
                 </td>
-                <td colSpan={2} />
+                <td className="px-3 py-2" colSpan={2}>
+                  <span className="text-[10px] font-bold text-[#b45309] mr-2">총 합계</span>
+                  <span className="text-xs font-bold text-[#92400e] tabular-nums">
+                    {grandTotal > 0 ? grandTotal.toLocaleString('ko-KR') + ' ' + cur : '—'}
+                  </span>
+                </td>
               </tr>
             </tfoot>
           </table>
         </div>
-
-        {/* 행 추가 */}
-        <button onClick={addRow}
-          className="w-full h-8 rounded-lg border border-dashed border-gray-300 text-xs text-gray-400 hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/50 transition-colors">
-          + 행 추가
-        </button>
-
-        {/* 원화 환산 */}
-        {(it.krwAmount || it.unitPrice) && (
-          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-amber-100">
-            <Field label="원화 환산금액">
-              <div className={calcCls}>{it.krwAmount ? Number(it.krwAmount).toLocaleString('ko-KR') + ' KRW' : '—'}</div>
-            </Field>
-            <Field label="품목별 단가">
-              <div className={calcCls}>{it.unitPrice ? Number(it.unitPrice).toLocaleString('ko-KR') + ' KRW' : '—'}</div>
-            </Field>
-          </div>
-        )}
       </div>
     )
   }
@@ -638,15 +697,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
           {it.spec && <span className="text-xs text-gray-400 truncate">{it.spec}</span>}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {it.domestic && (
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-              it.domestic === '국내' ? 'bg-teal-100 text-teal-700' : 'bg-sky-100 text-sky-700'
-            }`}>{it.domestic}</span>
-          )}
           <span className="text-xs text-gray-500 font-medium">{it.quantity.toLocaleString()} {it.unit}</span>
-          {it.supplyAmount != null && (
-            <span className="text-xs text-gray-400 font-mono">{it.currency ?? 'KRW'} {it.supplyAmount.toLocaleString()}</span>
-          )}
         </div>
       </div>
 
@@ -655,15 +706,63 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
         <div className="p-4 space-y-4">
           <div>
             <Sec label="주문" color="text-gray-500" />
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <Field label="구분">
                 <Sel value={it.domestic} onChange={e => upd(it.id, 'domestic', e.target.value)}>
                   <option value="">선택하세요</option>
                   {DOMESTIC_OPT.map(o => <option key={o}>{o}</option>)}
                 </Sel>
               </Field>
-              <Field label="공급처" cols={2}>
-                <input value={it.supplierName} onChange={e => upd(it.id, 'supplierName', e.target.value)} className={inp} placeholder="공급처 입력" />
+              <Field label="공급처">
+                <div className="relative">
+                  <input
+                    value={suppQuery[it.id] !== undefined ? suppQuery[it.id] : it.supplierName}
+                    onChange={e => searchSuppliers(it.id, e.target.value)}
+                    onFocus={() => {
+                      const q = suppQuery[it.id] !== undefined ? suppQuery[it.id] : it.supplierName
+                      if (q.trim() && (suppOpts[it.id]?.length ?? 0) > 0) {
+                        setSuppOpen(prev => ({ ...prev, [it.id]: true }))
+                      }
+                    }}
+                    onBlur={() => {
+                      setTimeout(() => {
+                        const q = suppQuery[it.id]
+                        if (q !== undefined) {
+                          upd(it.id, 'supplierName', q)
+                          setSuppQuery(prev => { const n = { ...prev }; delete n[it.id]; return n })
+                        }
+                        setSuppOpen(prev => ({ ...prev, [it.id]: false }))
+                      }, 150)
+                    }}
+                    className={inp}
+                    placeholder="공급처 검색"
+                  />
+                  {suppOpen[it.id] && (
+                    <div className="absolute z-20 top-full left-0 right-0 mt-0.5 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden max-h-48 overflow-y-auto">
+                      {(suppOpts[it.id] ?? []).map(s => (
+                        <button key={s.id} type="button"
+                          onMouseDown={() => {
+                            upd(it.id, 'supplierName', s.companyName)
+                            setSuppQuery(prev => { const n = { ...prev }; delete n[it.id]; return n })
+                            setSuppOpen(prev => ({ ...prev, [it.id]: false }))
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 border-b last:border-0 border-gray-100">
+                          <span className="font-medium">{s.companyName}</span>
+                          {s.region && <span className="ml-1.5 text-[10px] text-gray-400">{s.region}</span>}
+                        </button>
+                      ))}
+                      <button type="button"
+                        onMouseDown={() => {
+                          setSuppOpen(prev => ({ ...prev, [it.id]: false }))
+                          setSuppForm(prev => ({ ...prev, companyName: suppQuery[it.id] ?? '' }))
+                          setShowSuppCreate(it.id)
+                        }}
+                        className="w-full text-left px-3 py-2 text-xs text-[#9445e5] font-medium hover:bg-purple-50 border-t border-gray-100">
+                        + 새 공급처 등록
+                      </button>
+                    </div>
+                  )}
+                </div>
               </Field>
               <Field label="주문방식">
                 <Sel value={it.orderMethod} onChange={e => upd(it.id, 'orderMethod', e.target.value)}>
@@ -671,7 +770,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
                   {ORDER_OPT.map(o => <option key={o}>{o}</option>)}
                 </Sel>
               </Field>
-              <Field label="주문번호" cols={2}>
+              <Field label="주문번호">
                 <input value={it.orderNo} onChange={e => upd(it.id, 'orderNo', e.target.value)} className={inp} placeholder="주문번호 입력" />
               </Field>
             </div>
@@ -680,6 +779,88 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
             <Sec label="금액" color="text-amber-500" />
             <AmountBlock it={it} />
           </div>
+          {it.id === items[items.length - 1]?.id && (
+            <div>
+              <Sec label="첨부파일" color="text-[#f59e26]" />
+              <div className="space-y-2.5">
+                {/* 파일 유형 */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[10px] font-semibold text-[#9ea1a3] shrink-0">파일 유형</span>
+                  {FILE_TYPES.map(t => (
+                    <button
+                      key={t}
+                      onClick={() => setFileType(t)}
+                      className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
+                        fileType === t
+                          ? 'bg-[#9445e5] text-white border-[#9445e5]'
+                          : 'border-[#e6e6e6] text-[#6b7078] hover:border-[#9445e5] hover:text-[#9445e5]'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+                {/* 업로드 영역 */}
+                <div
+                  className={`border border-dashed rounded-lg py-5 text-center cursor-pointer transition-all ${
+                    dragging ? 'border-[#9445e5] bg-[#faf5ff]' : 'border-[#d1d1d1] bg-[#fafafa] hover:border-[#9445e5]'
+                  }`}
+                  onDragOver={e => { e.preventDefault(); setDragging(true) }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={e => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files) }}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <input ref={fileRef} type="file" multiple className="hidden"
+                    onChange={e => { if (e.target.files?.length) { uploadFiles(e.target.files); e.target.value = '' } }} />
+                  {uploading ? (
+                    <p className="text-xs text-[#9445e5] font-medium">업로드 중...</p>
+                  ) : (
+                    <p className="text-xs text-[#9ea1a3]">
+                      파일을 여기에 드래그하거나 <span className="text-[#9445e5] font-medium">클릭하여 업로드</span>
+                    </p>
+                  )}
+                </div>
+                {/* 파일 목록 */}
+                {files.length > 0 && (
+                  <div className="space-y-1.5">
+                    {files.map(f => (
+                      <div key={f.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 group">
+                        <div className="relative shrink-0">
+                          <select
+                            value={f.fileType ?? '기타'}
+                            onChange={e => changeFileType(f.id, e.target.value)}
+                            className="h-6 rounded border border-gray-200 bg-white pl-1.5 pr-5 text-[11px] font-medium focus:outline-none appearance-none"
+                          >
+                            {FILE_TYPES.map(t => <option key={t}>{t}</option>)}
+                          </select>
+                          <svg className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                        <a href={f.fileUrl} target="_blank" rel="noopener noreferrer"
+                          className="flex-1 text-xs text-blue-600 hover:underline truncate">{f.fileName}</a>
+                        {f.fileSize && (
+                          <span className="text-[11px] text-gray-400 shrink-0">
+                            {f.fileSize < 1024 * 1024
+                              ? `${Math.round(f.fileSize / 1024)} KB`
+                              : `${(f.fileSize / 1024 / 1024).toFixed(1)} MB`}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => deleteFile(f.id)}
+                          className="w-5 h-5 rounded-full flex items-center justify-center text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -710,17 +891,13 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
                     {SHIP_OPT.map(o => <option key={o}>{o}</option>)}
                   </Sel>
                 </Field>
-                <Field label="송장번호" cols={2}>
+                <Field label="송장번호">
                   <input value={it.trackingNo} onChange={e => upd(it.id, 'trackingNo', e.target.value)} className={inp} placeholder="송장번호 입력" />
                 </Field>
+                <Field label="BL No.">
+                  <input value={it.blNo} onChange={e => upd(it.id, 'blNo', e.target.value)} className={inp} placeholder="BL 번호 입력" />
+                </Field>
               </div>
-              {it.domestic === '해외' && (
-                <div className="grid grid-cols-3 gap-3">
-                  <Field label="BL No." cols={2}>
-                    <input value={it.blNo} onChange={e => upd(it.id, 'blNo', e.target.value)} className={inp} placeholder="BL 번호 입력" />
-                  </Field>
-                </div>
-              )}
               <div className="grid grid-cols-3 gap-3">
                 <Field label="박스 수량">
                   <input type="number" value={it.boxCount} onChange={e => upd(it.id, 'boxCount', e.target.value)} className={inp + ' text-right'} placeholder="0" />
@@ -894,12 +1071,12 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
                 {files.length > 0 && <span className="text-purple-600">파일 {files.length}개</span>}
               </div>
             </div>
-            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 text-lg shrink-0">×</button>
+            <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-2xl bg-[#f5f5f5] text-[#9ea1a3] hover:text-gray-700 hover:bg-gray-200 text-lg shrink-0">×</button>
           </div>
         </div>
 
         {/* 탭 바 */}
-        <div className="flex border-b shrink-0 bg-white px-6">
+        <div className="flex border-b border-[#e6e6e6] shrink-0 bg-white px-6">
           {TABS.map(tab => (
             <button
               key={tab.id}
@@ -921,112 +1098,24 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
               <div className="text-center py-12 text-gray-400 text-sm">품목이 없습니다.</div>
             ) : items.map(it => <ItemCard key={it.id} it={it} />)}
 
-            {/* 첨부 파일 섹션 (발주 정보 탭 하단) */}
-            {activeTab === 'order' && (
-              <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                <div className="px-4 py-2.5 bg-gradient-to-r from-gray-50 to-white border-b flex items-center gap-2">
-                  <span className="text-xs font-semibold text-gray-600">첨부 파일</span>
-                  {files.length > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-600 font-semibold">{files.length}</span>
-                  )}
-                </div>
-                <div className="p-4 space-y-3">
-                  {/* 파일 유형 */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider shrink-0">파일 유형</span>
-                    {FILE_TYPES.map(t => (
-                      <button
-                        key={t}
-                        onClick={() => setFileType(t)}
-                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-all ${
-                          fileType === t
-                            ? 'bg-purple-600 text-white border-purple-600'
-                            : 'border-gray-200 text-gray-500 hover:border-gray-300'
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                  {/* 업로드 영역 */}
-                  <div
-                    className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
-                      dragging ? 'border-purple-400 bg-purple-50' : 'border-gray-200 hover:border-purple-300 hover:bg-purple-50/30'
-                    }`}
-                    onDragOver={e => { e.preventDefault(); setDragging(true) }}
-                    onDragLeave={() => setDragging(false)}
-                    onDrop={e => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files) }}
-                    onClick={() => fileRef.current?.click()}
-                  >
-                    <input ref={fileRef} type="file" multiple className="hidden"
-                      onChange={e => { if (e.target.files?.length) { uploadFiles(e.target.files); e.target.value = '' } }} />
-                    {uploading ? (
-                      <p className="text-xs text-purple-600 font-medium">업로드 중...</p>
-                    ) : (
-                      <p className="text-xs text-gray-400">
-                        파일을 드래그하거나 <span className="text-purple-600 font-medium underline">클릭하여 업로드</span>
-                      </p>
-                    )}
-                  </div>
-                  {/* 파일 목록 */}
-                  {files.length > 0 && (
-                    <div className="space-y-1.5">
-                      {files.map(f => (
-                        <div key={f.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100 group">
-                          <div className="relative shrink-0">
-                            <select
-                              value={f.fileType ?? '기타'}
-                              onChange={e => changeFileType(f.id, e.target.value)}
-                              className="h-6 rounded border border-gray-200 bg-white pl-1.5 pr-5 text-[11px] font-medium focus:outline-none appearance-none"
-                            >
-                              {FILE_TYPES.map(t => <option key={t}>{t}</option>)}
-                            </select>
-                            <svg className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </div>
-                          <a href={f.fileUrl} target="_blank" rel="noopener noreferrer"
-                            className="flex-1 text-xs text-blue-600 hover:underline truncate">{f.fileName}</a>
-                          {f.fileSize && (
-                            <span className="text-[11px] text-gray-400 shrink-0">
-                              {f.fileSize < 1024 * 1024
-                                ? `${Math.round(f.fileSize / 1024)} KB`
-                                : `${(f.fileSize / 1024 / 1024).toFixed(1)} MB`}
-                            </span>
-                          )}
-                          <button
-                            onClick={() => deleteFile(f.id)}
-                            className="w-5 h-5 rounded-full flex items-center justify-center text-gray-300 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
         {/* 푸터 */}
-        <div className="px-6 py-4 border-t bg-white shrink-0">
+        <div className="px-6 py-3.5 border-t border-[#e6e6e6] bg-[#fafafa] shrink-0">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {transitions.length > 0 ? (
                 <>
-                  <span className="text-xs text-gray-400 mr-1">상태 변경</span>
+                  <span className="text-[10px] text-[#9ea1a3] mr-1">상태 변경</span>
                   {transitions.map(s => (
                     <button
                       key={s}
                       onClick={() => setNextStatus(prev => prev === s ? '' : s)}
-                      className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      className={`h-9 px-4 rounded-lg text-xs font-medium transition-all ${
                         nextStatus === s
-                          ? NEXT_STATUS_STYLE[s] + ' ring-2 ring-offset-1 ring-current/30'
-                          : 'border border-gray-200 text-gray-500 hover:border-gray-300 bg-white'
+                          ? NEXT_STATUS_STYLE[s]
+                          : 'border border-[#9ea1a3] text-[#6b7078] bg-white hover:bg-gray-50'
                       }`}
                     >
                       → {STATUS_LABEL[s]}
@@ -1034,23 +1123,92 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
                   ))}
                 </>
               ) : (
-                <span className="text-xs text-gray-400">더 이상 상태를 변경할 수 없습니다</span>
+                <span className="text-xs text-[#9ea1a3]">더 이상 상태를 변경할 수 없습니다</span>
               )}
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="h-8 text-xs px-4" onClick={onClose}>닫기</Button>
-              <Button
-                size="sm"
-                className={`h-8 text-xs px-5 ${nextStatus ? NEXT_STATUS_STYLE[nextStatus] : 'bg-gray-900 hover:bg-gray-700'}`}
+              <button
+                onClick={onClose}
+                className="h-9 px-5 rounded-lg border border-[#9ea1a3] text-xs font-medium text-[#6b7078] bg-white hover:bg-gray-50 transition-colors"
+              >
+                닫기
+              </button>
+              <button
                 onClick={handleSave}
                 disabled={saving}
+                className={`h-9 px-5 rounded-lg text-xs font-medium text-white transition-colors disabled:opacity-50 ${
+                  nextStatus ? NEXT_STATUS_STYLE[nextStatus] : 'bg-black hover:bg-gray-800'
+                }`}
               >
                 {saving ? '저장 중...' : nextStatus ? `저장 · ${STATUS_LABEL[nextStatus]}` : '저장'}
-              </Button>
+              </button>
             </div>
           </div>
         </div>
       </div>
+
+      {/* ── 공급처 등록 모달 ─────────────────────────────────── */}
+      {showSuppCreate && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={() => setShowSuppCreate(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-[420px] p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold text-gray-900">새 공급처 등록</h3>
+              <button onClick={() => setShowSuppCreate(null)} className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 text-gray-400 hover:bg-gray-200 text-sm">×</button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">업체명 <span className="text-red-400 normal-case">*</span></label>
+                <input value={suppForm.companyName} onChange={e => setSuppForm(prev => ({ ...prev, companyName: e.target.value }))}
+                  className={inp} placeholder="업체명 입력" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">지역</label>
+                  <input value={suppForm.region} onChange={e => setSuppForm(prev => ({ ...prev, region: e.target.value }))}
+                    className={inp} placeholder="지역" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">사업자번호</label>
+                  <input value={suppForm.businessRegNo} onChange={e => setSuppForm(prev => ({ ...prev, businessRegNo: e.target.value }))}
+                    className={inp} placeholder="000-00-00000" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">은행</label>
+                  <input value={suppForm.bankName} onChange={e => setSuppForm(prev => ({ ...prev, bankName: e.target.value }))}
+                    className={inp} placeholder="은행명" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">예금주</label>
+                  <input value={suppForm.accountHolder} onChange={e => setSuppForm(prev => ({ ...prev, accountHolder: e.target.value }))}
+                    className={inp} placeholder="예금주" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">계좌번호</label>
+                <input value={suppForm.accountNumber} onChange={e => setSuppForm(prev => ({ ...prev, accountNumber: e.target.value }))}
+                  className={inp} placeholder="계좌번호" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">메모</label>
+                <input value={suppForm.note} onChange={e => setSuppForm(prev => ({ ...prev, note: e.target.value }))}
+                  className={inp} placeholder="메모" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button onClick={() => setShowSuppCreate(null)}
+                className="flex-1 h-9 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50 font-medium transition-colors">
+                취소
+              </button>
+              <button onClick={() => createSupplier(showSuppCreate)} disabled={savingSupp}
+                className="flex-1 h-9 rounded-lg bg-[#9445e5] hover:bg-purple-700 text-white text-xs font-semibold transition-colors disabled:opacity-50">
+                {savingSupp ? '등록 중...' : '등록'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 입고 확정 확인 모달 ──────────────────────────────── */}
       {confirmItem && (
