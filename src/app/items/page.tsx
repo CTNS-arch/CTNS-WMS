@@ -20,7 +20,7 @@ import ItemRequestDialog from '@/components/items/ItemRequestDialog'
 import BomDialog from '@/components/items/BomDialog'
 import ItemBulkCreateDialog from '@/components/items/ItemBulkCreateDialog'
 import { CATEGORY_OPTIONS, SUB_OPTIONS, THIRD_LEVEL, THIRD_OPTIONS } from '@/lib/classification'
-import { getOptions, type SelectOption } from '@/lib/select-options'
+import { getOptions, ensureServerSync, type SelectOption } from '@/lib/select-options'
 
 const CATEGORY_LABEL: Record<string, string> = { PRODUCT: '완제품', ASSEMBLY: '반제품', COMPONENT: '자재' }
 const STATUS_LABEL: Record<string, string> = { ACTIVE: '사용', INACTIVE: '미사용', RESTRICTED: '사용금지', DISCONTINUED: '단종' }
@@ -124,14 +124,16 @@ export default function ItemsPage() {
   const [clItemOpts, setClItemOpts] = useState<{ value: string; label: string; cellModel: string }[]>([])
 
   useEffect(() => {
-    setChemistryOpts(getOptions('chemistryType'))
-    setCellModelOpts(getOptions('cellModel'))
-    setCircuitOpts(getOptions('circuit'))
-    setPackTypeOpts(getOptions('packType'))
-    setMaterialOpts(getOptions('material'))
-    setVendorOpts(getOptions('vendor'))
-    setCertificationOpts(getOptions('certification'))
-    setSpecialOptionOpts(getOptions('specialOption'))
+    ensureServerSync().then(() => {
+      setChemistryOpts(getOptions('chemistryType'))
+      setCellModelOpts(getOptions('cellModel'))
+      setCircuitOpts(getOptions('circuit'))
+      setPackTypeOpts(getOptions('packType'))
+      setMaterialOpts(getOptions('material'))
+      setVendorOpts(getOptions('vendor'))
+      setCertificationOpts(getOptions('certification'))
+      setSpecialOptionOpts(getOptions('specialOption'))
+    })
   }, [])
 
   useEffect(() => {

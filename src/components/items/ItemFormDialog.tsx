@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { TagSelect } from '@/components/ui/tag-select'
 import { TagMultiSelect } from '@/components/ui/tag-multi-select'
-import { getOptions, addOption, SelectOption, getCellModelGroups, addCellModelGroup, addCellModelEntry, CellModelGroup } from '@/lib/select-options'
+import { getOptions, addOption, SelectOption, getCellModelGroups, addCellModelGroup, addCellModelEntry, CellModelGroup, ensureServerSync, saveToServer } from '@/lib/select-options'
 import {
   buildCodeParts, buildItemCode, buildSimpleCode, buildCellCode,
   buildComponentCode, buildBmsCode, isBatteryPack,
@@ -834,7 +834,6 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
 
   useEffect(() => {
     if (!open) return
-    reload()
     nameManuallyEdited.current = false
     setSelectedCLSpecs(null)
     setSelectedCLItem(null)
@@ -849,6 +848,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
           images: item.images ?? [] }
       : { ...EMPTY, ...(initialValues ?? {}) }
     )
+    ensureServerSync().then(reload)
   }, [item, open])
 
   const set = (key: string, val: any) => setForm((f: any) => ({ ...f, [key]: val }))
@@ -856,7 +856,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
   const handleCategory = (v: string) => setForm((f: any) => ({ ...f, category: v, subCategory: '', chemistryType: '', formFactor: '', itemCode: '' }))
   const handleSub = (v: string) => setForm((f: any) => ({ ...f, subCategory: v, chemistryType: '', formFactor: '' }))
   const handleThird = (field: string, v: string) => set(field, v)
-  const addOpt = (key: string) => (label: string, code?: string) => { addOption(key, label, code); reload() }
+  const addOpt = (key: string) => (label: string, code?: string) => { addOption(key, label, code); reload(); saveToServer() }
 
   const isBP = isBatteryPack(form.category, form.subCategory)
   const isCL = form.category === 'COMPONENT' && form.subCategory === 'CL'
@@ -1049,8 +1049,8 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
               maxSeriesCount={form.maxSeriesCount}
               continuousDischargeCurrent={form.continuousDischargeCurrent}
               cellModelGroups={cellModelGroups}
-              onAddCellModelGroup={mfr => { addCellModelGroup(mfr); setCellModelGroups([...getCellModelGroups()]) }}
-              onAddCellModelEntry={(mfr, label, code) => { addCellModelEntry(mfr, label, code); setCellModelGroups([...getCellModelGroups()]); setOpts(prev => ({ ...prev, cellModel: getOptions('cellModel') })) }}
+              onAddCellModelGroup={mfr => { addCellModelGroup(mfr); setCellModelGroups([...getCellModelGroups()]); saveToServer() }}
+              onAddCellModelEntry={(mfr, label, code) => { addCellModelEntry(mfr, label, code); setCellModelGroups([...getCellModelGroups()]); setOpts(prev => ({ ...prev, cellModel: getOptions('cellModel') })); saveToServer() }}
               onCategory={handleCategory}
               onSub={handleSub}
               onThird={handleThird}

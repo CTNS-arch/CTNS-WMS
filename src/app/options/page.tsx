@@ -7,6 +7,7 @@ import {
   getCellModelGroups, addCellModelGroup, addCellModelEntry,
   deleteCellModelGroup, deleteCellModelEntry,
   isCodeTaken, isCellModelCodeTaken,
+  initStore, initGroups, serializeStore, serializeGroups, saveToServer,
   type SelectOption, type CellModelGroup, PALETTE,
 } from '@/lib/select-options'
 
@@ -98,7 +99,23 @@ export default function OptionsPage() {
     setCellGroups(getCellModelGroups())
   }, [])
 
-  useEffect(() => { reload() }, [reload])
+  // saveToServer는 select-options 모듈에서 직접 import하여 사용
+
+  const loadFromServer = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/options')
+      const json = await res.json()
+      if (json.success) {
+        if (json.data.options)         initStore(json.data.options)
+        if (json.data.cellModelGroups) initGroups(json.data.cellModelGroups)
+        // 서버에 데이터가 없으면 현재 localStorage 값을 최초 업로드
+        if (!json.data.options) saveToServer()
+      }
+    } catch {}
+    reload()
+  }, [reload])
+
+  useEffect(() => { loadFromServer() }, [loadFromServer])
 
   const isCellModel = selected === CELL_MODEL_KEY
   const currentCat  = isCellModel ? null : CAT[selected]
@@ -116,19 +133,19 @@ export default function OptionsPage() {
     if (currentCat?.requireCode && code.length < 2) return
     if (code && isCodeTaken(selected, code)) { toast.error(`코드 "${code}"는 이미 사용 중입니다.`); return }
     addOption(selected, label, code || undefined)
-    setNewLabel(''); setNewCode(''); reload()
+    setNewLabel(''); setNewCode(''); reload(); saveToServer()
     toast.success(`"${label}" 추가되었습니다.`)
   }
 
   const handleDelete = (value: string, label: string) => {
     if (!window.confirm(`"${label}"을(를) 삭제하시겠습니까?`)) return
-    deleteOption(selected, value); reload()
+    deleteOption(selected, value); reload(); saveToServer()
     toast.success(`"${label}" 삭제되었습니다.`)
   }
 
   const handleReset = () => {
     if (!currentCat) return
-    resetToDefault(selected); setEditingValue(null); reload()
+    resetToDefault(selected); setEditingValue(null); reload(); saveToServer()
     toast.success(`${currentCat.label} 옵션이 기본값으로 초기화되었습니다.`)
   }
 
@@ -146,7 +163,7 @@ export default function OptionsPage() {
       if (dup) { toast.error(`코드 "${code}"는 이미 사용 중입니다.`); return }
     }
     updateOption(selected, value, { label, code: code || undefined })
-    setEditingValue(null); reload(); toast.success('수정되었습니다.')
+    setEditingValue(null); reload(); saveToServer(); toast.success('수정되었습니다.')
   }
 
   // ── cell model handlers ─────────────────────────────────────────────────
@@ -155,7 +172,7 @@ export default function OptionsPage() {
     const name = newMfr.trim().toUpperCase()
     if (!name) return
     addCellModelGroup(name); setNewMfr('')
-    setExpandedMfr(p => new Set([...p, name])); reload()
+    setExpandedMfr(p => new Set([...p, name])); reload(); saveToServer()
     toast.success(`"${name}" 추가되었습니다.`)
   }
 
@@ -165,8 +182,20 @@ export default function OptionsPage() {
     if (!label || code.length < 2) return
     if (isCellModelCodeTaken(code)) { toast.error(`코드 "${code}"는 이미 사용 중입니다.`); return }
     addCellModelEntry(mfr, label, code)
-    setAddingModel(null); setNewModelLabel(''); setNewModelCode(''); reload()
+    setAddingModel(null); setNewModelLabel(''); setNewModelCode(''); reload(); saveToServer()
     toast.success(`"${mfr} ${label}" 추가되었습니다.`)
+  }
+
+  const handleDeleteCellModelGroup = (manufacturer: string) => {
+    if (!window.confirm(`"${manufacturer}" 제조사 및 모든 모델을 삭제하시겠습니까?`)) return
+    deleteCellModelGroup(manufacturer); reload(); saveToServer()
+    toast.success(`"${manufacturer}" 삭제되었습니다.`)
+  }
+
+  const handleDeleteCellModelEntry = (manufacturer: string, value: string, modelLabel: string) => {
+    if (!window.confirm(`"${modelLabel}" 모델을 삭제하시겠습니까?`)) return
+    deleteCellModelEntry(manufacturer, value); reload(); saveToServer()
+    toast.success(`"${modelLabel}" 삭제되었습니다.`)
   }
 
   const selectCat = (key: string) => {
@@ -182,7 +211,7 @@ export default function OptionsPage() {
     const [moved] = reordered.splice(dragIndex, 1)
     reordered.splice(toIndex, 0, moved)
     reorderOptions(selected, reordered)
-    setDragIndex(null); setOverIndex(null); reload()
+    setDragIndex(null); setOverIndex(null); reload(); saveToServer()
   }
 
   // ── render ──────────────────────────────────────────────────────────────
@@ -329,7 +358,7 @@ export default function OptionsPage() {
                                 + 모델
                               </button>
                               <button type="button"
-                                onClick={() => { if (!window.confirm(`"${group.manufacturer}" 제조사 및 모든 모델을 삭제하시겠습니까?`)) return; deleteCellModelGroup(group.manufacturer); reload(); toast.success(`"${group.manufacturer}" 삭제되었습니다.`) }}
+                                onClick={() => handleDeleteCellModelGroup(group.manufacturer)}
                                 className="w-7 h-7 rounded flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50">
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -375,7 +404,7 @@ export default function OptionsPage() {
                                   <span className="flex-1 text-sm text-gray-800">{model.label}</span>
                                   <span className="w-20 text-xs text-gray-400 font-mono">{model.code}</span>
                                   <button type="button"
-                                    onClick={() => { if (!window.confirm(`"${model.label}" 모델을 삭제하시겠습니까?`)) return; deleteCellModelEntry(group.manufacturer, model.value); reload(); toast.success(`"${model.label}" 삭제되었습니다.`) }}
+                                    onClick={() => handleDeleteCellModelEntry(group.manufacturer, model.value, model.label)}
                                     className="w-6 h-6 rounded flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all">
                                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

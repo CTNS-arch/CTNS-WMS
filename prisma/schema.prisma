@@ -362,6 +362,14 @@ model ItemCodeHistory {
   createdAt DateTime @default(now())
 }
 
+// ── 공유 옵션 저장소 ────────────────────────────────────────
+// key: '__store__' (일반 옵션), '__groups__' (셀모델 그룹)
+model AppOption {
+  key       String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
 // ── 재고 원가 레이어 (FIFO) ─────────────────────────────────
 
 model StockCostLayer {

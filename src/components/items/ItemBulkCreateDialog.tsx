@@ -10,6 +10,7 @@ import {
   getOptions, addOption, SelectOption,
   getCellModelGroups, CellModelGroup,
   addCellModelGroup, addCellModelEntry,
+  ensureServerSync, saveToServer,
 } from '@/lib/select-options'
 import {
   buildItemCode, buildCodeParts,
@@ -245,7 +246,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
   useEffect(() => {
     if (!open) return
     setBulkType(null); setRows([]); setSelectedKeys(new Set()); setDbNextRevMap({}); setBomSearches({}); setClSearches({})
-    reloadOpts()
+    ensureServerSync().then(reloadOpts)
   }, [open, reloadOpts])
 
   useEffect(() => {
@@ -1065,7 +1066,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                         {bulkType === 'CELL' && (
                           <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 110 }}>
                             <TagSelect value={row.cellManufacturer} onChange={v => updCellMfr(row._key, v)} options={mfrOpts}
-                              onAdd={mfr => { addCellModelGroup(mfr); setCellMfrGroups([...getCellModelGroups()]); updCellMfr(row._key, mfr) }}
+                              onAdd={mfr => { addCellModelGroup(mfr); setCellMfrGroups([...getCellModelGroups()]); updCellMfr(row._key, mfr); saveToServer() }}
                               placeholder="셀제조사" portal size="sm" />
                           </td>
                         )}
@@ -1276,6 +1277,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     setCellMfrGroups([...getCellModelGroups()])
                     upd(rowKey, 'cellModel', `${mfr} ${label}`)
                     setPendingCellModel(null)
+                    saveToServer()
                   } else if (e.key === 'Escape') {
                     setPendingCellModel(null)
                   }
@@ -1294,6 +1296,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     setCellMfrGroups([...getCellModelGroups()])
                     upd(rowKey, 'cellModel', `${mfr} ${label}`)
                     setPendingCellModel(null)
+                    saveToServer()
                   }}
                   className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40">
                   추가

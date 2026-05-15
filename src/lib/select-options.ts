@@ -250,6 +250,62 @@ export function getOptions(field: string): SelectOption[] {
   return _store[field] ?? []
 }
 
+// ── 서버 동기화 ────────────────────────────────────────────
+
+let _serverSynced = false
+
+// 서버에서 받아온 데이터로 인메모리 스토어 초기화
+export function initStore(data: Record<string, SelectOption[]>): void {
+  const merged: Record<string, SelectOption[]> = {}
+  for (const key of Object.keys(DEFAULTS)) {
+    merged[key] = (data[key] ?? DEFAULTS[key]) as SelectOption[]
+  }
+  _store = merged
+  _serverSynced = true
+  saveAll(merged)
+}
+
+export function initGroups(data: CellModelGroup[]): void {
+  _groups = data
+  saveGroups(data)
+}
+
+export function serializeStore(): Record<string, SelectOption[]> {
+  if (!_store) _store = loadAll()
+  return _store
+}
+
+export function serializeGroups(): CellModelGroup[] {
+  if (!_groups) _groups = loadGroups()
+  return _groups
+}
+
+// 세션 내 최초 1회만 서버에서 옵션 동기화 (모든 컴포넌트에서 호출 가능)
+export async function ensureServerSync(): Promise<void> {
+  if (_serverSynced || typeof window === 'undefined') return
+  try {
+    const res  = await fetch('/api/options')
+    const json = await res.json()
+    if (json.success) {
+      if (json.data.options)         initStore(json.data.options)
+      if (json.data.cellModelGroups) initGroups(json.data.cellModelGroups)
+      if (!json.data.options)        saveToServer() // 서버에 없으면 현재 localStorage 업로드
+    }
+  } catch {
+    _serverSynced = true // 실패해도 재시도 방지 (localStorage 폴백 사용)
+  }
+}
+
+// 현재 인메모리 스토어를 서버에 저장 (fire-and-forget)
+export function saveToServer(): void {
+  if (typeof window === 'undefined') return
+  fetch('/api/options', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ options: serializeStore(), cellModelGroups: serializeGroups() }),
+  }).catch(() => {})
+}
+
 // ── 셀모델 계층 구조 (제조사 → 모델) ─────────────────────
 
 export interface CellModelEntry {
