@@ -49,11 +49,11 @@ const EMPTY: any = {
   images: [] as string[],
 }
 
-function SectionHeader({ title }: { title: string }) {
+function SectionHeader({ title, required }: { title: string; required?: boolean }) {
   return (
     <div className="-mx-6 px-6 py-2.5 bg-gray-100 border-t border-b border-gray-200 flex items-center gap-2">
       <div className="w-0.5 h-3.5 bg-blue-500 rounded-full shrink-0" />
-      <span className="text-xs font-bold text-gray-600 tracking-wide">{title}</span>
+      <span className="text-xs font-bold text-gray-600 tracking-wide">{title}{required && <span className="text-red-500 ml-0.5">*</span>}</span>
     </div>
   )
 }
@@ -854,7 +854,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
   const set = (key: string, val: any) => setForm((f: any) => ({ ...f, [key]: val }))
 
   const handleCategory = (v: string) => setForm((f: any) => ({ ...f, category: v, subCategory: '', chemistryType: '', formFactor: '', itemCode: '' }))
-  const handleSub = (v: string) => setForm((f: any) => ({ ...f, subCategory: v, chemistryType: '', formFactor: '' }))
+  const handleSub = (v: string) => setForm((f: any) => ({ ...f, subCategory: v, chemistryType: '', formFactor: '', ...(v === 'CL' ? { unit: 'EA' } : {}) }))
   const handleThird = (field: string, v: string) => set(field, v)
   const addOpt = (key: string) => (label: string, code?: string) => { addOption(key, label, code); reload(); saveToServer() }
 
@@ -955,6 +955,17 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
       const typeLabel = codeType === 'bp' ? '배터리팩' : codeType === 'bms' ? 'BMS/PCM' : '부자재'
       toast.error(`${typeLabel} 분류 정보를 모두 입력해주세요.`)
       return
+    }
+    if (isCL) {
+      const clRequiredFields = ['dischargeCutoffVoltage', 'nominalVoltage', 'chargeCutoffVoltage', 'nominalCapacity', 'energy', 'maxChargeCurrent', 'maxDischargeCurrent', 'continuousChargeCurrent', 'continuousDischargeCurrent', 'chargeCRate', 'dischargeCRate']
+      if (clRequiredFields.some(k => !form[k])) {
+        toast.error('셀 품목은 전기 사양 모든 항목을 입력해야 합니다.')
+        return
+      }
+      if (!form.specSheets || form.specSheets.length === 0) {
+        toast.error('셀 품목은 스펙시트를 1개 이상 첨부해야 합니다.')
+        return
+      }
     }
     setSaving(true)
     const payload = { ...form }
@@ -1161,7 +1172,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
                 ['chargeCRate', '충전 C-rate'],
                 ['dischargeCRate', '방전 C-rate'],
               ] as [string, string][]).map(([k, lb]) => (
-                <Field key={k} label={lb}>
+                <Field key={k} label={lb} required={isCL}>
                   <Input type="number" step="0.01" value={form[k]} onChange={e => set(k, e.target.value)} placeholder="0.00" />
                 </Field>
               ))}
@@ -1324,7 +1335,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
           {/* ── 스펙시트 (셀 전용) ── */}
           {isCL && (
             <div className="space-y-3">
-              <SectionHeader title="스펙시트" />
+              <SectionHeader title="스펙시트" required />
               {!viewOnly && (
                 <div
                   onDragOver={e => { e.preventDefault(); setDragOverSpec(true) }}

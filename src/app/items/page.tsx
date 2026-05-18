@@ -929,7 +929,7 @@ export default function ItemsPage() {
                         <TableCell className="text-xs text-center text-gray-900">{item.continuousDischargeCurrent != null ? Number(item.continuousDischargeCurrent) : '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.chargeCRate != null ? Number(item.chargeCRate) : '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.dischargeCRate != null ? Number(item.dischargeCRate) : '-'}</TableCell>
-                        <TableCell><DrawingsCell urls={item.drawings ?? []} /></TableCell>
+                        <TableCell><DrawingsCell urls={(item as any).specSheets ?? []} /></TableCell>
                       </>}
                       {isCompOther && <>
                         <TableCell className="text-xs text-center text-gray-900">{item.length != null ? Number(item.length) : '-'}</TableCell>
