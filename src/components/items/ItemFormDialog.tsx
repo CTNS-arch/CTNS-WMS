@@ -1179,10 +1179,10 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
             </div>
           )}
 
-          {/* ── BMS 정보 ── */}
+          {/* ── 회로 정보 ── */}
           {bms && (
             <div className="space-y-3">
-              <SectionHeader title="BMS 정보" />
+              <SectionHeader title="회로 정보" />
               <Field label="정격전압 (V)">
                 <Input type="number" step="0.01" value={form.ratedVoltage} onChange={e => set('ratedVoltage', e.target.value)} placeholder="0.00" />
               </Field>
