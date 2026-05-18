@@ -1004,6 +1004,12 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                                     onFocus={() => {
                                       doClSearch(row._key, clState?.query ?? '', true)
                                     }}
+                                    onBlur={() => setTimeout(() => {
+                                      setClSearches(prev => {
+                                        if (!prev[row._key]?.open) return prev
+                                        return { ...prev, [row._key]: { ...prev[row._key], open: false } }
+                                      })
+                                    }, 200)}
                                     placeholder="클릭 시 목록 표시 · 입력 검색"
                                     className={cellCls}
                                   />
@@ -1180,6 +1186,12 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                                     doBomSearch(row._key, q)
                                   }}
                                   onFocus={() => doBomSearch(row._key, bomSearches[row._key]?.query ?? '')}
+                                  onBlur={() => setTimeout(() => {
+                                    setBomSearches(prev => {
+                                      if (!prev[row._key]?.open) return prev
+                                      return { ...prev, [row._key]: { ...prev[row._key], open: false } }
+                                    })
+                                  }, 200)}
                                   placeholder="품번·품명 검색"
                                   className={cellCls + ' pl-5'}
                                 />
