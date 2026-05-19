@@ -36,14 +36,6 @@ export const SUB_OPTIONS: Record<string, SelectOption[]> = {
 
 // 정적 3분류 옵션 (사용자 편집 불가)
 export const THIRD_OPTIONS: Record<string, SelectOption[]> = {
-  CD: [
-    { value: 'NI', label: '니켈',     colorIndex: 9, code: 'NI' },
-    { value: 'NN', label: '니켈합금', colorIndex: 8, code: 'NN' },
-    { value: 'RN', label: '순니켈',   colorIndex: 7, code: 'RN' },
-    { value: 'CP', label: '구리',     colorIndex: 2, code: 'CP' },
-    { value: 'BB', label: '버스바',   colorIndex: 0, code: 'BB' },
-    { value: 'WI', label: '와이어',   colorIndex: 5, code: 'WI' },
-  ],
   FS: [
     { value: 'BL', label: '볼트', colorIndex: 9, code: 'BL' },
     { value: 'NT', label: '너트', colorIndex: 8, code: 'NT' },
@@ -90,7 +82,7 @@ export const THIRD_LEVEL: Record<string, ThirdLevelDef | null> = {
   CL: { field: 'chemistryType', label: '화학계',    optKey: 'chemistryType' },
   EL: { field: 'formFactor',    label: '부품 유형', optKey: 'elComponentType' },
   ME: { field: 'formFactor',    label: '부품 유형', optKey: 'meComponentType' },
-  CD: { field: 'formFactor',    label: '도전재 종류', optKey: 'cdComponentType', staticOptions: THIRD_OPTIONS.CD },
+  CD: { field: 'formFactor',    label: '도전재 종류', optKey: 'cdComponentType' },
   FS: { field: 'formFactor',    label: '체결 종류',   optKey: 'fsComponentType', staticOptions: THIRD_OPTIONS.FS },
   SM: { field: 'formFactor',    label: '소모품 종류', optKey: 'smComponentType', staticOptions: THIRD_OPTIONS.SM },
   RM: { field: 'formFactor',    label: '자재 종류',   optKey: 'rmComponentType', staticOptions: THIRD_OPTIONS.RM },

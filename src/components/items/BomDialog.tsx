@@ -375,7 +375,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
   // 소분류 값 → 레이블 맵 (formFactor + chemistryType 모두 포함)
   const thirdLabelMap: Record<string, string> = {}
   Object.values(THIRD_OPTIONS).forEach(opts => opts.forEach(o => { thirdLabelMap[o.value] = o.label }))
-  ;['elComponentType', 'meComponentType', 'cdComponentType', 'pkComponentType',
+  ;['elComponentType', 'meComponentType', 'cdComponentType',
     'fsComponentType', 'smComponentType', 'rmComponentType', 'otComponentType', 'chemistryType']
     .forEach(key => getOptions(key).forEach(o => { thirdLabelMap[o.value] = o.label }))
 
