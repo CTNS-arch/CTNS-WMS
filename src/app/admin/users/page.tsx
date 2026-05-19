@@ -63,9 +63,11 @@ export default function UsersPage() {
   useEffect(() => { fetchUsers() }, [])
 
   const filtered = users.filter(u =>
-    !search.trim() ||
-    (u.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
-    (u.email ?? '').toLowerCase().includes(search.toLowerCase())
+    u.hasLoggedIn && (
+      !search.trim() ||
+      (u.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (u.email ?? '').toLowerCase().includes(search.toLowerCase())
+    )
   )
 
   const startEdit = (user: MsUser) => {
