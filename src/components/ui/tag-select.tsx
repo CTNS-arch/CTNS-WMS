@@ -131,7 +131,7 @@ export function TagSelect({
                     )}
                   </span>
                   <span className={`px-2 py-0.5 rounded text-xs font-medium ${c.bg} ${c.text}`}>
-                    {opt.code ? `${opt.label}(${opt.code})` : opt.label}
+                    {opt.code && opt.code !== opt.label ? `${opt.label}(${opt.code})` : opt.label}
                   </span>
                 </button>
               )
@@ -200,7 +200,7 @@ export function TagSelect({
       <button ref={btnRef} type="button" disabled={disabled} onClick={handleToggle} className={btnCls}>
         {selected && color ? (
           <span className={`px-2 py-0.5 rounded text-xs font-medium min-w-0 truncate ${color.bg} ${color.text}`}>
-            {selected.code ? `${selected.label}(${selected.code})` : selected.label}
+            {selected.code && selected.code !== selected.label ? `${selected.label}(${selected.code})` : selected.label}
           </span>
         ) : (
           <span className={`text-gray-400 truncate min-w-0 ${size === 'sm' ? 'text-xs' : 'text-sm'}`}>{placeholder}</span>
