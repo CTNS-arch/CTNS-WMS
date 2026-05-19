@@ -2,7 +2,7 @@ import NextAuth from "next-auth"
 import MicrosoftEntraId from "next-auth/providers/microsoft-entra-id"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import { prisma } from "@/lib/prisma"
-import { listActiveOrgUsers } from "@/lib/ms-graph"
+import { listActiveOrgUsers, isOrgUserActive } from "@/lib/ms-graph"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
@@ -38,11 +38,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return true
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user?.id) token.id = user.id
+      if (account?.providerAccountId) token.msOid = account.providerAccountId
+
+      // MS 계정 활성 여부 30분마다 재확인
+      const MS_CHECK_INTERVAL = 30 * 60 * 1000
+      const lastCheck = (token.lastMsCheck as number) ?? 0
+      if (token.msOid && Date.now() - lastCheck > MS_CHECK_INTERVAL) {
+        try {
+          token.msActive = await isOrgUserActive(token.msOid as string)
+        } catch {
+          token.msActive = token.msActive ?? true // Graph API 장애 시 현재 상태 유지
+        }
+        token.lastMsCheck = Date.now()
+      }
       return token
     },
     async session({ session, token }) {
+      // MS에서 삭제/비활성화된 계정은 세션 무효화
+      if (token.msActive === false) {
+        return { ...session, user: undefined } as any
+      }
       if (token.id) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },

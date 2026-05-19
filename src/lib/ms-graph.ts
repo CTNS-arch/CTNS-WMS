@@ -29,6 +29,17 @@ export type MsUser = {
   accountEnabled: boolean
 }
 
+export async function isOrgUserActive(msOid: string): Promise<boolean> {
+  const token = await getAppToken()
+  const res = await fetch(`${GRAPH_BASE}/users/${msOid}?$select=id,accountEnabled`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (res.status === 404) return false
+  if (!res.ok) throw new Error(`Graph API ${res.status}: ${await res.text()}`)
+  const user = await res.json()
+  return user.accountEnabled === true
+}
+
 export async function listActiveOrgUsers(): Promise<MsUser[]> {
   const token = await getAppToken()
   const users: MsUser[] = []
