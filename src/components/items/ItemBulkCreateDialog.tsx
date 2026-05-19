@@ -50,7 +50,7 @@ function getSubOpts(type: BulkType, subMap: Record<string, SelectOption[]>): Sel
 }
 
 const DIALOG_W: Record<BulkType, number> = {
-  BATTERY: 1500, BMS: 1360, ASSEMBLY_OTHER: 1020, CELL: 1760, COMPONENT_OTHER: 1800,
+  BATTERY: 1500, BMS: 1360, ASSEMBLY_OTHER: 1020, CELL: 1760, COMPONENT_OTHER: 1870,
 }
 
 // ── 행 구조 ────────────────────────────────────────────────
@@ -98,6 +98,7 @@ interface BulkRow {
   innerLength: string; innerWidth: string; innerHeight: string
   weight: string; thickness: string
   material: string; color: string
+  ratedCurrent: string
   bomParent?: { id: string; itemCode: string; itemName: string } | null
   _cellSpecs?: {
     dischargeCutoffVoltage: number | null; nominalVoltage: number | null
@@ -120,7 +121,7 @@ function emptyRow(): BulkRow {
     continuousChargeCurrent: '', chargeCRate: '', dischargeCRate: '',
     length: '', width: '', height: '', diameter: '',
     innerLength: '', innerWidth: '', innerHeight: '',
-    weight: '', thickness: '', material: '', color: '',
+    weight: '', thickness: '', material: '', color: '', ratedCurrent: '',
     bomParent: null,
     _cellSpecs: null,
   }
@@ -591,6 +592,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
             innerLength: n(row.innerLength), innerWidth: n(row.innerWidth), innerHeight: n(row.innerHeight),
             weight: n(row.weight), thickness: n(row.thickness),
             material: row.material || null, color: row.color || null,
+            ratedCurrent: n(row.ratedCurrent),
           })
           break
         }
@@ -834,6 +836,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     {bulkType === 'COMPONENT_OTHER' && <th className={thSm} style={{ width: 64 }}>두께</th>}
                     {bulkType === 'COMPONENT_OTHER' && <th className={thSm} style={{ width: 90 }}>재질</th>}
                     {bulkType === 'COMPONENT_OTHER' && <th className={thSm} style={{ width: 90 }}>색상</th>}
+                    {bulkType === 'COMPONENT_OTHER' && <th className={thSm} style={{ width: 70 }}>정격전류(A)</th>}
 
                     {/* 공통 */}
                     <th className={thL} style={{ width: 80 }}>단위 <span className="text-red-400">*</span></th>
@@ -1131,6 +1134,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                         {bulkType === 'COMPONENT_OTHER' && num(64, 'thickness', '0.00')}
                         {bulkType === 'COMPONENT_OTHER' && ts(90, row.material, v => upd(row._key, 'material', v), opts.material ?? [], 'material', '재질')}
                         {bulkType === 'COMPONENT_OTHER' && ts(90, row.color, v => upd(row._key, 'color', v), opts.color ?? [], 'color', '색상')}
+                        {bulkType === 'COMPONENT_OTHER' && num(70, 'ratedCurrent', '0.00')}
 
                         {/* 단위 (공통) */}
                         <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 80 }}>

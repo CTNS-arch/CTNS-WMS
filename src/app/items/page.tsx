@@ -182,6 +182,7 @@ export default function ItemsPage() {
   const isAsmGeneric = isAsm && !isPO && !isBmsPcm
   const isCell      = isComp && filterSubCategory.length > 0 && filterSubCategory.every(s => s === 'CL')
   const isCompOther = isComp && !isCell
+  const isElComp    = isComp && filterSubCategory.length > 0 && filterSubCategory.every(s => s === 'EL')
 
   // 소분류(3분류) 필터: COMPONENT + CL 제외 단일 중분류 선택 시
   const singleNonClSub = isComp && filterSubCategory.length === 1 && filterSubCategory[0] !== 'CL'
@@ -193,7 +194,7 @@ export default function ItemsPage() {
 
   // 뷰별 총 컬럼 수 (colSpan 계산용) — BOM 컬럼은 isComp 제외
   const hasBomCol = !isComp
-  const colCount = isAll ? 11 : (isProd || isPO) ? 24 : isBmsPcm ? 15 : isAsmGeneric ? 19 : isCell ? 26 : isCompOther ? 22 : 17
+  const colCount = isAll ? 11 : (isProd || isPO) ? 24 : isBmsPcm ? 15 : isAsmGeneric ? 19 : isCell ? 26 : isElComp ? 23 : isCompOther ? 22 : 17
 
   const fetchItems = useCallback(async () => {
     setLoading(true)
@@ -423,7 +424,7 @@ export default function ItemsPage() {
     .forEach(key => getOptions(key).forEach((o: SelectOption) => { formFactorLabelMap[o.value] = o.label }))
 
   // 뷰별 테이블 너비
-  const tableWidth = isAll ? 1385 : (isProd || isPO) ? 2410 : isBmsPcm ? 1740 : isAsmGeneric ? 1980 : isCell ? 2750 : isCompOther ? 2240 : 1820
+  const tableWidth = isAll ? 1385 : (isProd || isPO) ? 2410 : isBmsPcm ? 1740 : isAsmGeneric ? 1980 : isCell ? 2750 : isElComp ? 2310 : isCompOther ? 2240 : 1820
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -753,6 +754,8 @@ export default function ItemsPage() {
                 {(isAsmGeneric || isCompOther) && <col style={{ width: 85 }} />}
                 {/* 색상: 셀이외자재 */}
                 {isCompOther && <col style={{ width: 85 }} />}
+                {/* 정격전류: EL 컴포넌트 */}
+                {isElComp && <col style={{ width: 80 }} />}
                 {/* 이미지 */}
                 {(isAsmGeneric || isComp || isBmsPcm) && <col style={{ width: 100 }} />}
                 {/* 일반반제품: 고객사 */}
@@ -840,6 +843,7 @@ export default function ItemsPage() {
                   </>}
                   {(isAsmGeneric || isCompOther) && <TableHead className="whitespace-nowrap text-xs">재질</TableHead>}
                   {isCompOther && <TableHead className="whitespace-nowrap text-xs">색상</TableHead>}
+                  {isElComp && <TableHead className="whitespace-nowrap text-xs">정격전류(A)</TableHead>}
                   {(isAsmGeneric || isComp || isBmsPcm) && <TableHead className="whitespace-nowrap text-xs">이미지</TableHead>}
                   {isAsmGeneric && <TableHead className="whitespace-nowrap text-xs">고객사</TableHead>}
                   {(isProd || isPO) && <>
@@ -944,6 +948,7 @@ export default function ItemsPage() {
                       </>}
                       {(isAsmGeneric || isCompOther) && <TableCell><TooltipCell value={item.material} /></TableCell>}
                       {isCompOther && <TableCell><TooltipCell value={item.color} /></TableCell>}
+                      {isElComp && <TableCell className="text-xs text-center text-gray-900">{item.ratedCurrent != null ? Number(item.ratedCurrent) : '-'}</TableCell>}
                       {(isAsmGeneric || isComp || isBmsPcm) && <TableCell><ImageCell urls={item.images ?? []} /></TableCell>}
                       {isAsmGeneric && <TableCell><TagListCell values={item.vendors ?? []} /></TableCell>}
                       {(isProd || isPO) && <>

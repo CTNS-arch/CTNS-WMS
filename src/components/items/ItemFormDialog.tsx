@@ -34,7 +34,7 @@ const EMPTY: any = {
   revisionNumber: 1, status: 'ACTIVE', memo: '',
   length: '', width: '', height: '', diameter: '', weight: '',
   innerLength: '', innerWidth: '', innerHeight: '', thickness: '',
-  material: '', packType: '', color: '', formFactor: '',
+  material: '', packType: '', color: '', formFactor: '', ratedCurrent: '',
   chemistryType: '', cellModel: '', seriesCount: '', parallelCount: '',
   circuit: '', layerCount: '',
   dischargeCutoffVoltage: '', nominalVoltage: '', chargeCutoffVoltage: '',
@@ -977,7 +977,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
       'dischargeCutoffVoltage', 'nominalVoltage',
       'chargeCutoffVoltage', 'nominalCapacity', 'energy', 'maxChargeCurrent', 'maxDischargeCurrent',
       'continuousChargeCurrent', 'continuousDischargeCurrent', 'chargeCRate', 'dischargeCRate',
-      'maxVoltage', 'ratedVoltage']
+      'maxVoltage', 'ratedVoltage', 'ratedCurrent']
     numF.forEach(k => { payload[k] = payload[k] !== '' ? Number(payload[k]) || null : null })
     decF.forEach(k => { payload[k] = payload[k] !== '' ? parseFloat(payload[k]) || null : null })
 
@@ -1140,6 +1140,11 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
             <Field label="재질">
               <TagSelect value={form.material} onChange={v => set('material', v)} options={opts.material ?? []} onAdd={addOpt('material')} placeholder="재질 선택" />
             </Field>
+            {form.subCategory === 'EL' && (
+              <Field label="정격전류 (A)">
+                <Input type="number" step="0.01" value={form.ratedCurrent} onChange={e => set('ratedCurrent', e.target.value)} placeholder="0.00" />
+              </Field>
+            )}
             {isBP && (
               <Field label="팩타입">
                 <TagSelect value={form.packType} onChange={v => set('packType', v)} options={opts.packType ?? []} onAdd={addOpt('packType')} placeholder="소프트팩 / 하드팩" />

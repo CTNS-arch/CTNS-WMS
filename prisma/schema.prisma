@@ -165,6 +165,9 @@ model Item {
   maxSeriesCount Int?     // 최대 직렬 수
   maxVoltage     Decimal? @db.Decimal(10, 2) // 최대허용전압(V)
 
+  // EL 컴포넌트 전용
+  ratedCurrent   Decimal? @db.Decimal(10, 2) // 정격전류(A)
+
   // 모든 품목 공통 (다중 선택 → 배열)
   vendors        String[] // 거래처
 
