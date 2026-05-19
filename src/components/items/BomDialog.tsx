@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback, Fragment } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import ItemFormDialog from '@/components/items/ItemFormDialog'
-import { THIRD_OPTIONS } from '@/lib/classification'
+import { THIRD_OPTIONS, SUB_OPTIONS, THIRD_LEVEL } from '@/lib/classification'
 import { getOptions } from '@/lib/select-options'
 
 const CAT_LABEL: Record<string, string> = { PRODUCT: '완제품', ASSEMBLY: '반제품', COMPONENT: '자재' }
@@ -30,14 +30,61 @@ const SUB_LABEL: Record<string, string> = {
   CMB: 'Communication Board', JTB: 'Junction Box', HRN: 'Harness',
 }
 
+// ASSEMBLY + COMPONENT 중분류 옵션
+const ALL_SUB_OPTS = [...SUB_OPTIONS.ASSEMBLY, ...SUB_OPTIONS.COMPONENT]
+
+// 중분류별 소분류 옵션
+function getThirdOpts(subCat: string): { value: string; label: string }[] {
+  const def = THIRD_LEVEL[subCat]
+  if (!def) return []
+  if (def.staticOptions) return def.staticOptions
+  if (def.optKey) return getOptions(def.optKey)
+  return []
+}
+
+// 소분류 값 → {field, subCats} 역방향 맵 (전체 소분류 독립 선택 지원)
+function buildThirdValueMap(): Record<string, { field: string; subCats: string[]; label: string }> {
+  const map: Record<string, { field: string; subCats: string[]; label: string }> = {}
+  for (const [subCat, def] of Object.entries(THIRD_LEVEL)) {
+    if (!def) continue
+    for (const opt of getThirdOpts(subCat)) {
+      if (!map[opt.value]) map[opt.value] = { field: def.field, subCats: [], label: opt.label }
+      if (!map[opt.value].subCats.includes(subCat)) map[opt.value].subCats.push(subCat)
+    }
+  }
+  return map
+}
+
+// 전체 소분류 옵션 목록 (중복 제거, label 포함)
+function buildAllThirdOpts(): { value: string; label: string }[] {
+  const seen = new Set<string>()
+  const result: { value: string; label: string }[] = []
+  for (const [subCat, def] of Object.entries(THIRD_LEVEL)) {
+    if (!def) continue
+    for (const opt of getThirdOpts(subCat)) {
+      if (!seen.has(opt.value)) {
+        seen.add(opt.value)
+        result.push({ value: opt.value, label: opt.label })
+      }
+    }
+  }
+  return result
+}
+
 interface BomRow {
   _key: string
   id?: string
   childId?: string
-  child?: { id: string; itemCode: string; itemName: string; unit: string; category: string; subCategory?: string | null }
+  child?: {
+    id: string; itemCode: string; itemName: string; unit: string
+    category: string; subCategory?: string | null
+    formFactor?: string | null; chemistryType?: string | null
+  }
   quantity: string
   unit: string
   memo: string
+  filterSubCat: string  // 중분류 필터
+  filterThird: string   // 소분류 필터
 }
 
 interface SearchState {
@@ -48,6 +95,7 @@ interface SearchState {
 
 let _keyCounter = 0
 const newKey = () => `row-${++_keyCounter}`
+const makeEmptyRow = (): BomRow => ({ _key: newKey(), quantity: '', unit: '', memo: '', filterSubCat: '', filterThird: '' })
 
 interface Props {
   open: boolean
@@ -57,12 +105,7 @@ interface Props {
 }
 
 interface PrintRow {
-  child: any
-  childId: string
-  quantity: string
-  unit: string
-  memo: string
-  level: number
+  child: any; childId: string; quantity: string; unit: string; memo: string; level: number
 }
 
 async function buildLeveledRows(items: PrintRow[], level: number, visited: Set<string>): Promise<PrintRow[]> {
@@ -80,8 +123,7 @@ async function buildLeveledRows(items: PrintRow[], level: number, visited: Set<s
             child: l.child, childId: l.childId, quantity: String(l.quantity),
             unit: l.unit ?? '', memo: l.memo ?? '', level: level + 1,
           }))
-          const nested = await buildLeveledRows(subItems, level + 1, visited)
-          result.push(...nested)
+          result.push(...await buildLeveledRows(subItems, level + 1, visited))
         }
       } catch {}
     }
@@ -103,6 +145,9 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
   const searchTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const dropdownRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
+  const thirdValueMap = buildThirdValueMap()
+  const allThirdOpts = buildAllThirdOpts()
+
   const fetchChildBom = useCallback(async (rowKey: string, childId: string) => {
     setChildBoms(prev => ({ ...prev, [rowKey]: { items: [], loading: true } }))
     try {
@@ -122,46 +167,27 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
       const json = await res.json()
       if (json.success) {
         const existingRows: BomRow[] = json.data.map((l: any) => ({
-          _key: newKey(),
-          id: l.id,
-          childId: l.childId,
-          child: l.child,
-          quantity: String(l.quantity),
-          unit: l.unit,
-          memo: l.memo ?? '',
+          _key: newKey(), id: l.id, childId: l.childId, child: l.child,
+          quantity: String(l.quantity), unit: l.unit, memo: l.memo ?? '',
+          filterSubCat: l.child?.subCategory ?? '', filterThird: '',
         }))
-        setRows([...existingRows, { _key: newKey(), quantity: '', unit: '', memo: '' }])
-        // 반제품 행 자동 펼치기
+        setRows([...existingRows, makeEmptyRow()])
         for (const row of existingRows) {
-          if (row.child?.category === 'ASSEMBLY' && row.childId) {
-            fetchChildBom(row._key, row.childId)
-          }
+          if (row.child?.category === 'ASSEMBLY' && row.childId) fetchChildBom(row._key, row.childId)
         }
       }
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }, [item?.id, fetchChildBom])
 
   useEffect(() => {
-    if (open) {
-      fetchBom()
-      setSelectedKeys(new Set())
-      setSearches({})
-      setIsDirty(false)
-      setDeletedIds(new Set())
-      setChildBoms({})
-    }
+    if (open) { fetchBom(); setSelectedKeys(new Set()); setSearches({}); setIsDirty(false); setDeletedIds(new Set()); setChildBoms({}) }
   }, [open, fetchBom])
 
   useEffect(() => {
     const h = (e: MouseEvent) => {
       Object.entries(dropdownRefs.current).forEach(([key, ref]) => {
         if (ref && !ref.contains(e.target as Node)) {
-          setSearches(prev => {
-            if (!prev[key]?.open) return prev
-            return { ...prev, [key]: { ...prev[key], open: false } }
-          })
+          setSearches(prev => { if (!prev[key]?.open) return prev; return { ...prev, [key]: { ...prev[key], open: false } } })
         }
       })
     }
@@ -169,14 +195,20 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
     return () => document.removeEventListener('mousedown', h)
   }, [])
 
-  const doSearch = useCallback((rowKey: string, q: string, excludeIds: Set<string>, parentId: string) => {
+  const doSearch = useCallback((rowKey: string, q: string, excludeIds: Set<string>, parentId: string, filterSubCat: string, filterThird: string) => {
     clearTimeout(searchTimers.current[rowKey])
     searchTimers.current[rowKey] = setTimeout(async () => {
       try {
-        const url = q.trim()
-          ? `/api/items?search=${encodeURIComponent(q)}&category=ASSEMBLY,COMPONENT&limit=12`
-          : `/api/items?category=ASSEMBLY,COMPONENT&limit=12&sortBy=createdAt&sortOrder=desc`
-        const res = await fetch(url)
+        const params = new URLSearchParams({ category: 'ASSEMBLY,COMPONENT', limit: '12', sortBy: 'createdAt', sortOrder: 'desc' })
+        if (q.trim()) params.set('search', q.trim())
+        if (filterSubCat) params.set('subCategory', filterSubCat)
+        if (filterThird) {
+          // 중분류 선택됐으면 해당 field로, 아니면 역방향 맵에서 추론
+          let field = filterSubCat ? (THIRD_LEVEL[filterSubCat]?.field ?? '') : (thirdValueMap[filterThird]?.field ?? '')
+          if (field === 'chemistryType') params.set('chemistryType', filterThird)
+          else if (field === 'formFactor') params.set('formFactor', filterThird)
+        }
+        const res = await fetch(`/api/items?${params}`)
         const json = await res.json()
         if (json.success) {
           const results = json.data.items.filter((i: any) => i.id !== parentId && !excludeIds.has(i.id))
@@ -184,7 +216,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
         }
       } catch {}
     }, q.trim() ? 250 : 0)
-  }, [])
+  }, [thirdValueMap])
 
   const handleItemSelect = (rowKey: string, selectedItem: any) => {
     setSearches(prev => ({ ...prev, [rowKey]: { query: '', results: [], open: false } }))
@@ -192,8 +224,8 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
       const idx = prev.findIndex(r => r._key === rowKey)
       if (idx === -1) return prev
       const newRows = [...prev]
-      newRows[idx] = { ...newRows[idx], childId: selectedItem.id, child: selectedItem, unit: selectedItem.unit || '', quantity: '1' }
-      if (idx === prev.length - 1) newRows.push({ _key: newKey(), quantity: '', unit: '', memo: '' })
+      newRows[idx] = { ...newRows[idx], childId: selectedItem.id, child: selectedItem, unit: selectedItem.unit || '', quantity: '1', filterSubCat: selectedItem.subCategory ?? newRows[idx].filterSubCat }
+      if (idx === prev.length - 1) newRows.push(makeEmptyRow())
       return newRows
     })
     setIsDirty(true)
@@ -205,14 +237,34 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
     setIsDirty(true)
   }
 
+  const updateClassFilter = (rowKey: string, field: 'filterSubCat' | 'filterThird', value: string) => {
+    setRows(prev => prev.map(r => {
+      if (r._key !== rowKey) return r
+      if (field === 'filterSubCat') {
+        // 중분류 바뀌면 소분류 초기화 (새 중분류의 옵션에 없으면)
+        const newThirdOpts = value ? getThirdOpts(value) : []
+        const keepThird = newThirdOpts.some(o => o.value === r.filterThird)
+        return { ...r, filterSubCat: value, filterThird: keepThird ? r.filterThird : '' }
+      }
+      // 소분류 선택 시 중분류 자동 추론 (단일 부모면 자동 설정)
+      if (field === 'filterThird' && value && !r.filterSubCat) {
+        const info = thirdValueMap[value]
+        // ASSEMBLY+COMPONENT 에만 해당하는 subCats 필터
+        const validSubCats = info?.subCats.filter(s => ALL_SUB_OPTS.some(o => o.value === s)) ?? []
+        const autoSubCat = validSubCats.length === 1 ? validSubCats[0] : ''
+        return { ...r, filterThird: value, filterSubCat: autoSubCat }
+      }
+      return { ...r, filterThird: value }
+    }))
+    setSearches(prev => { if (!prev[rowKey]) return prev; return { ...prev, [rowKey]: { ...prev[rowKey], open: false } } })
+  }
+
   const handleCloneRow = (row: BomRow) => {
-    const newRow: BomRow = { _key: newKey(), childId: row.childId, child: row.child, quantity: row.quantity, unit: row.unit, memo: row.memo }
+    const newRow: BomRow = { _key: newKey(), childId: row.childId, child: row.child, quantity: row.quantity, unit: row.unit, memo: row.memo, filterSubCat: row.filterSubCat, filterThird: row.filterThird }
     setRows(prev => {
       const idx = prev.findIndex(r => r._key === row._key)
       if (idx === -1) return prev
-      const next = [...prev]
-      next.splice(idx + 1, 0, newRow)
-      return next
+      const next = [...prev]; next.splice(idx + 1, 0, newRow); return next
     })
     setIsDirty(true)
   }
@@ -223,44 +275,35 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
     setRows(prev => {
       const remaining = prev.filter(r => r._key !== row._key)
       const last = remaining[remaining.length - 1]
-      if (!last || last.childId) remaining.push({ _key: newKey(), quantity: '', unit: '', memo: '' })
+      if (!last || last.childId) remaining.push(makeEmptyRow())
       return remaining
     })
-    if (row.child) {
-      setSelectedKeys(prev => { const s = new Set(prev); s.delete(row._key); return s })
-      setIsDirty(true)
-    }
+    if (row.child) { setSelectedKeys(prev => { const s = new Set(prev); s.delete(row._key); return s }); setIsDirty(true) }
   }
 
   const handleDeleteSelected = () => {
     const toDelete = rows.filter(r => selectedKeys.has(r._key) && r.child)
     if (toDelete.length === 0) return
     if (!confirm(`선택한 ${toDelete.length}개 항목을 삭제하시겠습니까?`)) return
-
     const idsToMark = toDelete.filter(r => r.id).map(r => r.id!)
     if (idsToMark.length > 0) setDeletedIds(prev => new Set([...prev, ...idsToMark]))
-
     setChildBoms(prev => { const n = { ...prev }; toDelete.forEach(r => delete n[r._key]); return n })
     setRows(prev => {
       const remaining = prev.filter(r => !selectedKeys.has(r._key) || !r.child)
       const last = remaining[remaining.length - 1]
-      if (!last || last.childId) remaining.push({ _key: newKey(), quantity: '', unit: '', memo: '' })
+      if (!last || last.childId) remaining.push(makeEmptyRow())
       return remaining
     })
-    setSelectedKeys(new Set())
-    setIsDirty(true)
+    setSelectedKeys(new Set()); setIsDirty(true)
   }
 
   const handlePrint = async () => {
     const w = window.open('', '_blank', 'width=960,height=700')
     if (!w) return
-
     const rootItems: PrintRow[] = rows.filter(r => r.child).map(r => ({
-      child: r.child!, childId: r.childId!, quantity: r.quantity,
-      unit: r.unit, memo: r.memo, level: 1,
+      child: r.child!, childId: r.childId!, quantity: r.quantity, unit: r.unit, memo: r.memo, level: 1,
     }))
     const allRows = await buildLeveledRows(rootItems, 1, new Set([item?.id ?? '']))
-
     const LEVEL_COLORS = ['', '#f0f4ff', '#f5f0ff', '#f0fff4', '#fff8f0']
     const rowsHtml = allRows.map((r, i) => {
       const bg = r.level > 1 ? (LEVEL_COLORS[r.level] ?? '#f9f9f9') : ''
@@ -277,28 +320,16 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
         <td>${r.memo}</td>
       </tr>`
     }).join('')
-
     w.document.write(`<!DOCTYPE html><html><head>
       <title>BOM - ${item?.itemCode ?? ''}</title>
-      <style>
-        body { font-family: sans-serif; font-size: 12px; padding: 24px; color: #111; }
-        h2 { font-size: 15px; margin: 0 0 4px; }
-        .sub { font-size: 11px; color: #666; margin-bottom: 18px; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ddd; padding: 6px 10px; text-align: left; font-size: 11px; }
-        th { background: #f5f5f5; font-weight: 600; }
-        @media print { body { padding: 12px; } }
-      </style>
+      <style>body{font-family:sans-serif;font-size:12px;padding:24px;color:#111}h2{font-size:15px;margin:0 0 4px}.sub{font-size:11px;color:#666;margin-bottom:18px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px 10px;text-align:left;font-size:11px}th{background:#f5f5f5;font-weight:600}@media print{body{padding:12px}}</style>
     </head><body>
       <h2>BOM 구성 관리</h2>
       <div class="sub">${item?.itemCode ?? ''} — ${item?.itemName ?? ''} &nbsp;|&nbsp; 총 ${allRows.length}개 구성 품목</div>
-      <table>
-        <thead><tr><th>#</th><th>레벨</th><th>품번</th><th>품명</th><th>대분류</th><th>중분류</th><th>수량</th><th>단위</th><th>비고</th></tr></thead>
-        <tbody>${rowsHtml}</tbody>
-      </table>
+      <table><thead><tr><th>#</th><th>레벨</th><th>품번</th><th>품명</th><th>대분류</th><th>중분류</th><th>수량</th><th>단위</th><th>비고</th></tr></thead>
+      <tbody>${rowsHtml}</tbody></table>
     </body></html>`)
-    w.document.close()
-    w.print()
+    w.document.close(); w.print()
   }
 
   const handleViewItem = async (child: any) => {
@@ -307,93 +338,62 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
       const json = await res.json()
       if (json.success) setViewItem(json.data)
       else toast.error('품목 정보를 불러오지 못했습니다.')
-    } catch {
-      toast.error('품목 정보를 불러오지 못했습니다.')
-    }
+    } catch { toast.error('품목 정보를 불러오지 못했습니다.') }
   }
-
-  const handleClose = () => { onClose() }
 
   const handleSave = async () => {
     if (!isDirty || saving) return
     setSaving(true)
     try {
-      // 1. 삭제된 행 서버 반영
-      for (const id of deletedIds) {
-        await fetch(`/api/items/${item.id}/bom/${id}`, { method: 'DELETE' })
-      }
-
-      // 2. 새 행 POST (id 없고 childId 있는 행)
-      const newRows = rows.filter(r => !r.id && r.childId && r.child)
-      for (const row of newRows) {
+      for (const id of deletedIds) await fetch(`/api/items/${item.id}/bom/${id}`, { method: 'DELETE' })
+      for (const row of rows.filter(r => !r.id && r.childId && r.child)) {
         const qty = parseFloat(row.quantity) || 1
         const res = await fetch(`/api/items/${item.id}/bom`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ childId: row.childId, quantity: qty, unit: row.unit || '', memo: row.memo || '' }),
         })
         const json = await res.json()
-        if (json.success) {
-          setRows(prev => prev.map(r => r._key === row._key ? { ...r, id: json.data.id } : r))
-        } else {
-          toast.error(json.message ?? '일부 항목 저장 실패')
-        }
+        if (json.success) setRows(prev => prev.map(r => r._key === row._key ? { ...r, id: json.data.id } : r))
+        else toast.error(json.message ?? '일부 항목 저장 실패')
       }
-
-      // 3. 기존 행 PUT (id 있는 행)
-      const existingRows = rows.filter(r => r.id && r.childId && r.quantity && parseFloat(r.quantity) > 0)
-      for (const row of existingRows) {
+      for (const row of rows.filter(r => r.id && r.childId && r.quantity && parseFloat(r.quantity) > 0)) {
         await fetch(`/api/items/${item.id}/bom/${row.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ quantity: row.quantity, unit: row.unit, memo: row.memo }),
         })
       }
-
-      setDeletedIds(new Set())
-      setIsDirty(false)
-      const activeCount = rows.filter(r => r.child).length
-      onBomChanged?.(activeCount)
+      setDeletedIds(new Set()); setIsDirty(false)
+      onBomChanged?.(rows.filter(r => r.child).length)
       toast.success('BOM이 저장되었습니다.')
-    } catch {
-      toast.error('저장 중 오류가 발생했습니다.')
-    } finally {
-      setSaving(false)
-    }
+    } catch { toast.error('저장 중 오류가 발생했습니다.') }
+    finally { setSaving(false) }
   }
 
   if (!open) return null
 
-  // formFactor 코드 → 한글명
-  const formFactorLabelMap: Record<string, string> = {}
-  Object.values(THIRD_OPTIONS).forEach(opts => opts.forEach(o => { formFactorLabelMap[o.value] = o.label }))
+  // 소분류 값 → 레이블 맵 (formFactor + chemistryType 모두 포함)
+  const thirdLabelMap: Record<string, string> = {}
+  Object.values(THIRD_OPTIONS).forEach(opts => opts.forEach(o => { thirdLabelMap[o.value] = o.label }))
   ;['elComponentType', 'meComponentType', 'cdComponentType', 'pkComponentType',
-    'fsComponentType', 'smComponentType', 'rmComponentType', 'otComponentType']
-    .forEach(key => getOptions(key).forEach(o => { formFactorLabelMap[o.value] = o.label }))
+    'fsComponentType', 'smComponentType', 'rmComponentType', 'otComponentType', 'chemistryType']
+    .forEach(key => getOptions(key).forEach(o => { thirdLabelMap[o.value] = o.label }))
 
   const activeRows = rows.filter(r => r.child)
-  const selectableRows = activeRows
-  const allSelected = selectableRows.length > 0 && selectableRows.every(r => selectedKeys.has(r._key))
+  const allSelected = activeRows.length > 0 && activeRows.every(r => selectedKeys.has(r._key))
   const existingChildIds = new Set(rows.filter(r => r.childId).map(r => r.childId!))
 
-  // precompute display numbers (저장 행 + 복제 미저장 행 모두 포함)
   const displayNums = new Map<string, number>()
   let cnt = 0
   rows.forEach(r => { if (r.child) displayNums.set(r._key, ++cnt) })
 
   const cell = 'h-7 w-full bg-transparent px-2 text-xs focus:bg-white focus:ring-1 focus:ring-blue-400 focus:outline-none hover:bg-gray-50 transition-colors rounded border-0 disabled:opacity-30 disabled:cursor-not-allowed'
+  const selCls = 'h-6 w-full text-xs border border-gray-200 rounded px-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer'
 
   return (
     <>
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-      onClick={handleClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-        style={{ width: 1100, height: 720 }}
-        onClick={e => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden" style={{ width: 1200, height: 720 }} onClick={e => e.stopPropagation()}>
+
         {/* 헤더 */}
         <div className="flex items-start justify-between px-6 py-4 border-b bg-gradient-to-r from-gray-50 to-white shrink-0">
           <div className="flex flex-col gap-1.5">
@@ -402,9 +402,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CAT_COLOR[item?.category] ?? 'bg-gray-100 text-gray-600'}`}>
                 {CAT_LABEL[item?.category] ?? item?.category}
               </span>
-              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                {activeRows.length}개 구성 품목
-              </span>
+              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{activeRows.length}개 구성 품목</span>
             </div>
             <p className="text-xs text-gray-500 font-mono">
               <span className="font-semibold text-gray-700">{item?.itemCode}</span>
@@ -419,10 +417,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
               </svg>
               PDF 출력
             </Button>
-            <button onClick={handleClose}
-              className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors text-lg leading-none">
-              ×
-            </button>
+            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors text-lg leading-none">×</button>
           </div>
         </div>
 
@@ -430,12 +425,8 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
         {selectedKeys.size > 0 && (
           <div className="flex items-center gap-2.5 px-6 py-2 bg-blue-50 border-b shrink-0">
             <span className="text-xs text-blue-700 font-medium">{selectedKeys.size}개 선택됨</span>
-            <Button size="sm" variant="destructive" className="h-6 text-xs px-3" onClick={handleDeleteSelected}>
-              선택 삭제
-            </Button>
-            <button className="text-xs text-gray-400 hover:text-gray-600" onClick={() => setSelectedKeys(new Set())}>
-              선택 해제
-            </button>
+            <Button size="sm" variant="destructive" className="h-6 text-xs px-3" onClick={handleDeleteSelected}>선택 삭제</Button>
+            <button className="text-xs text-gray-400 hover:text-gray-600" onClick={() => setSelectedKeys(new Set())}>선택 해제</button>
           </div>
         )}
 
@@ -452,33 +443,29 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
           ) : (
             <table className="w-full text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
               <colgroup>
-                <col style={{ width: 36 }} />
-                <col style={{ width: 36 }} />
-                <col style={{ width: 180 }} />
-                <col />
-                <col style={{ width: 72 }} />
-                <col style={{ width: 120 }} />
-                <col style={{ width: 76 }} />
-                <col style={{ width: 60 }} />
-                <col style={{ width: 200 }} />
-                <col style={{ width: 80 }} />
+                <col style={{ width: 36 }} />   {/* 체크 */}
+                <col style={{ width: 32 }} />   {/* # */}
+                <col style={{ width: 155 }} />  {/* 품목코드 */}
+                <col style={{ width: 110 }} />  {/* 중분류 */}
+                <col style={{ width: 95 }} />   {/* 소분류 */}
+                <col />                          {/* 품명 */}
+                <col style={{ width: 68 }} />   {/* 수량 */}
+                <col style={{ width: 52 }} />   {/* 단위 */}
+                <col style={{ width: 180 }} />  {/* 비고 */}
+                <col style={{ width: 72 }} />   {/* 작업 */}
               </colgroup>
               <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="py-2.5 text-center">
                     <input type="checkbox" checked={allSelected}
-                      onChange={() => {
-                        if (allSelected) setSelectedKeys(new Set())
-                        else setSelectedKeys(new Set(selectableRows.map(r => r._key)))
-                      }}
-                      className="rounded"
-                    />
+                      onChange={() => allSelected ? setSelectedKeys(new Set()) : setSelectedKeys(new Set(activeRows.map(r => r._key)))}
+                      className="rounded" />
                   </th>
                   <th className="py-2.5 text-center text-gray-400 font-medium">#</th>
-                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium">품번</th>
-                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium">품명</th>
-                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium">대분류</th>
+                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium">품목코드</th>
                   <th className="px-2 py-2.5 text-left text-gray-500 font-medium">중분류</th>
+                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium">소분류</th>
+                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium">품명</th>
                   <th className="px-2 py-2.5 text-right text-gray-500 font-medium">수량 <span className="text-red-400">*</span></th>
                   <th className="px-2 py-2.5 text-center text-gray-500 font-medium">단위</th>
                   <th className="px-2 py-2.5 text-left text-gray-500 font-medium">비고</th>
@@ -487,263 +474,282 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
               </thead>
               <tbody>
                 {rows.map(row => {
-                  const isSaved = !!row.id
                   const isSel = selectedKeys.has(row._key)
                   const search = searches[row._key]
                   const num = displayNums.get(row._key) ?? ''
                   const isAssembly = row.child?.category === 'ASSEMBLY' && !!row.id
                   const childBom = childBoms[row._key]
+                  const isCell = row.filterSubCat === 'CL'
+
+                  // 현재 행의 소분류 옵션: 중분류 선택 시 해당 옵션, 없으면 전체
+                  const currentThirdOpts = row.filterSubCat ? getThirdOpts(row.filterSubCat) : allThirdOpts
+
+                  // 선택된 item의 소분류 표시값
+                  const childThirdVal = row.child
+                    ? (THIRD_LEVEL[row.child.subCategory ?? '']?.field === 'chemistryType'
+                        ? row.child.chemistryType
+                        : row.child.formFactor)
+                    : null
 
                   return (
                     <Fragment key={row._key}>
-                    <tr
-                      className={`border-b border-gray-100 transition-colors ${isSel ? 'bg-blue-50' : 'hover:bg-gray-50/60'}`}
-                    >
-                      {/* 체크 */}
-                      <td className="py-1 text-center">
-                        {row.child && (
-                          <input type="checkbox" checked={isSel}
-                            onChange={() => setSelectedKeys(prev => {
-                              const s = new Set(prev)
-                              s.has(row._key) ? s.delete(row._key) : s.add(row._key)
-                              return s
-                            })}
-                            className="rounded"
-                          />
-                        )}
-                      </td>
+                      <tr className={`border-b border-gray-100 transition-colors ${isSel ? 'bg-blue-50' : 'hover:bg-gray-50/60'}`}>
 
-                      {/* # */}
-                      <td className="py-1 text-center text-gray-400 tabular-nums">{num}</td>
+                        {/* 체크 */}
+                        <td className="py-1 text-center">
+                          {row.child && (
+                            <input type="checkbox" checked={isSel}
+                              onChange={() => setSelectedKeys(prev => { const s = new Set(prev); s.has(row._key) ? s.delete(row._key) : s.add(row._key); return s })}
+                              className="rounded" />
+                          )}
+                        </td>
 
-                      {/* 품번 (검색 or 표시) */}
-                      <td className="px-0.5 py-0.5 border-r border-gray-100">
-                        {row.child && isSaved ? (
-                          <div className="flex items-center h-7 px-2">
-                            <span className="font-mono text-gray-700 truncate text-xs">{row.child.itemCode}</span>
-                          </div>
-                        ) : row.child && !isSaved ? (
-                          <div className="flex items-center h-7 px-2">
-                            <span className="font-mono text-gray-700 truncate text-xs">{row.child.itemCode}</span>
-                          </div>
-                        ) : (
-                          <div ref={el => { dropdownRefs.current[row._key] = el }} className="relative">
-                            <div className="relative">
-                              <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-300 pointer-events-none"
-                                fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                              </svg>
-                              <input
-                                value={search?.query ?? ''}
-                                onChange={e => {
-                                  const q = e.target.value
-                                  setSearches(prev => ({ ...prev, [row._key]: { ...(prev[row._key] ?? { query: '', results: [], open: false }), query: q, open: true } }))
-                                  doSearch(row._key, q, existingChildIds, item?.id)
-                                }}
-                                onFocus={() => doSearch(row._key, search?.query ?? '', existingChildIds, item?.id)}
-                                placeholder="품번·품명 검색"
-                                className={cell + ' pl-6'}
-                              />
+                        {/* # */}
+                        <td className="py-1 text-center text-gray-400 tabular-nums">{num}</td>
+
+                        {/* 품목코드 (검색 or 표시) */}
+                        <td className="px-0.5 py-0.5 border-r border-gray-100">
+                          {row.child ? (
+                            <div className="flex items-center h-7 px-2">
+                              <span className="font-mono text-gray-700 truncate text-xs">{row.child.itemCode}</span>
                             </div>
-                            {search?.open && (
-                              <div
-                                className="absolute top-full left-0 z-50 mt-1 border border-gray-200 rounded-lg bg-white shadow-xl"
-                                style={{ width: 960, maxHeight: 320, overflowY: 'auto', overflowX: 'auto' }}
-                              >
-                                {search.results.length === 0 ? (
-                                  <div className="px-4 py-3 text-xs text-gray-400 text-center">
-                                    {search.query.trim() ? '검색 결과 없음' : '불러오는 중...'}
-                                  </div>
-                                ) : (
-                                  <table style={{ minWidth: 960, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
-                                    <colgroup>
-                                      <col style={{ width: 65 }} />
-                                      <col style={{ width: 155 }} />
-                                      <col />
-                                      <col style={{ width: 60 }} />
-                                      <col style={{ width: 120 }} />
-                                      <col style={{ width: 48 }} />
-                                      <col style={{ width: 68 }} />
-                                      <col style={{ width: 100 }} />
-                                      <col style={{ width: 44 }} />
-                                      <col style={{ width: 44 }} />
-                                      <col style={{ width: 90 }} />
-                                    </colgroup>
-                                    <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
-                                      <tr>
-                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">상태</th>
-                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">품번</th>
-                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">품명</th>
-                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">대분류</th>
-                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">중분류</th>
-                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">단위</th>
-                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">화학계</th>
-                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">셀 모델</th>
-                                        <th className="px-2 py-2 text-center text-[10px] font-semibold text-gray-400 whitespace-nowrap">S</th>
-                                        <th className="px-2 py-2 text-center text-[10px] font-semibold text-gray-400 whitespace-nowrap">P</th>
-                                        <th className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">소분류</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {search.results.map((r: any) => (
-                                        <tr key={r.id}
-                                          onMouseDown={() => handleItemSelect(row._key, r)}
-                                          className="cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-0 transition-colors"
-                                        >
-                                          <td className="px-2 py-1.5">
-                                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold whitespace-nowrap ${STATUS_COLOR[r.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                                              {STATUS_LABEL[r.status] ?? r.status}
-                                            </span>
-                                          </td>
-                                          <td className="px-2 py-1.5 font-mono text-[11px] text-gray-700 truncate">{r.itemCode}</td>
-                                          <td className="px-2 py-1.5 text-xs text-gray-800 truncate">{r.itemName}</td>
-                                          <td className="px-2 py-1.5">
-                                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold whitespace-nowrap ${CAT_COLOR[r.category] ?? 'bg-gray-100 text-gray-600'}`}>
-                                              {CAT_LABEL[r.category] ?? r.category}
-                                            </span>
-                                          </td>
-                                          <td className="px-2 py-1.5 text-xs text-gray-600 truncate">
-                                            {r.subCategory ? (SUB_LABEL[r.subCategory] ?? r.subCategory) : <span className="text-gray-300">—</span>}
-                                          </td>
-                                          <td className="px-2 py-1.5 text-xs text-gray-500">{r.unit || <span className="text-gray-300">—</span>}</td>
-                                          <td className="px-2 py-1.5 text-xs text-gray-500 truncate">{r.chemistryType || <span className="text-gray-300">—</span>}</td>
-                                          <td className="px-2 py-1.5 text-xs text-gray-500 truncate">{r.cellModel || <span className="text-gray-300">—</span>}</td>
-                                          <td className="px-2 py-1.5 text-xs text-gray-500 text-center tabular-nums">{r.seriesCount ?? <span className="text-gray-300">—</span>}</td>
-                                          <td className="px-2 py-1.5 text-xs text-gray-500 text-center tabular-nums">{r.parallelCount ?? <span className="text-gray-300">—</span>}</td>
-                                          <td className="px-2 py-1.5 text-xs text-gray-500 truncate">
-                                            {r.formFactor ? (formFactorLabelMap[r.formFactor] ?? r.formFactor) : <span className="text-gray-300">—</span>}
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                )}
+                          ) : (
+                            <div ref={el => { dropdownRefs.current[row._key] = el }} className="relative">
+                              <div className="relative">
+                                <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-300 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                                <input
+                                  value={search?.query ?? ''}
+                                  onChange={e => {
+                                    const q = e.target.value
+                                    setSearches(prev => ({ ...prev, [row._key]: { ...(prev[row._key] ?? { query: '', results: [], open: false }), query: q, open: true } }))
+                                    doSearch(row._key, q, existingChildIds, item?.id, row.filterSubCat, row.filterThird)
+                                  }}
+                                  onFocus={() => doSearch(row._key, search?.query ?? '', existingChildIds, item?.id, row.filterSubCat, row.filterThird)}
+                                  placeholder="품번·품명 검색"
+                                  className={cell + ' pl-6'}
+                                />
                               </div>
+
+                              {/* 검색 드롭다운 */}
+                              {search?.open && (
+                                <div className="absolute top-full left-0 z-50 mt-1 border border-gray-200 rounded-lg bg-white shadow-xl"
+                                  style={{ maxHeight: 340, overflowY: 'auto', overflowX: 'auto', ...(isCell ? { width: 1160 } : { width: 740 }) }}>
+                                  {search.results.length === 0 ? (
+                                    <div className="px-4 py-3 text-xs text-gray-400 text-center">
+                                      {search.query.trim() ? '검색 결과 없음' : '불러오는 중...'}
+                                    </div>
+                                  ) : isCell ? (
+                                    /* CL 셀 전용 검색 결과 */
+                                    <table style={{ minWidth: 1160, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                                      <colgroup>
+                                        <col style={{ width: 52 }} />
+                                        <col style={{ width: 128 }} />
+                                        <col />
+                                        <col style={{ width: 52 }} />
+                                        <col style={{ width: 78 }} />
+                                        <col style={{ width: 52 }} />
+                                        <col style={{ width: 52 }} />
+                                        <col style={{ width: 60 }} />
+                                        <col style={{ width: 56 }} />
+                                        <col style={{ width: 60 }} />
+                                        <col style={{ width: 60 }} />
+                                        <col style={{ width: 52 }} />
+                                        <col style={{ width: 60 }} />
+                                        <col style={{ width: 60 }} />
+                                        <col style={{ width: 60 }} />
+                                        <col style={{ width: 60 }} />
+                                        <col style={{ width: 56 }} />
+                                        <col style={{ width: 56 }} />
+                                      </colgroup>
+                                      <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
+                                        <tr>
+                                          {['상태','품번','품명','화학계','셀 모델','직경(mm)','높이(mm)','방전종료(V)','공칭전압(V)','충전종료(V)','공칭용량(Ah)','에너지(Wh)','피크충전(A)','피크방전(A)','연속충전(A)','연속방전(A)','충전C-rate','방전C-rate'].map(h => (
+                                            <th key={h} className="px-1.5 py-2 text-[10px] font-semibold text-gray-400 whitespace-nowrap text-left">{h}</th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {search.results.map((r: any) => (
+                                          <tr key={r.id} onMouseDown={() => handleItemSelect(row._key, r)} className="cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-0 transition-colors">
+                                            <td className="px-1.5 py-1.5"><span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold whitespace-nowrap ${STATUS_COLOR[r.status] ?? 'bg-gray-100 text-gray-600'}`}>{STATUS_LABEL[r.status] ?? r.status}</span></td>
+                                            <td className="px-1.5 py-1.5 font-mono text-[11px] text-gray-700 truncate">{r.itemCode}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-800 truncate">{r.itemName}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-500 truncate">{r.chemistryType || <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-500 truncate">{r.cellModel || <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-500 text-right tabular-nums">{r.diameter ?? <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-500 text-right tabular-nums">{r.height ?? <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-500 text-right tabular-nums">{r.dischargeCutoffVoltage ?? <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-500 text-right tabular-nums">{r.nominalVoltage ?? <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-500 text-right tabular-nums">{r.chargeCutoffVoltage ?? <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-500 text-right tabular-nums">{r.nominalCapacity ?? <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-500 text-right tabular-nums">{r.energy ?? <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-500 text-right tabular-nums">{r.maxChargeCurrent ?? <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-500 text-right tabular-nums">{r.maxDischargeCurrent ?? <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-500 text-right tabular-nums">{r.continuousChargeCurrent ?? <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-500 text-right tabular-nums">{r.continuousDischargeCurrent ?? <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-500 text-right tabular-nums">{r.chargeCRate ?? <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-1.5 py-1.5 text-xs text-gray-500 text-right tabular-nums">{r.dischargeCRate ?? <span className="text-gray-300">—</span>}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  ) : (
+                                    /* 일반 검색 결과 */
+                                    <table style={{ minWidth: 740, borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                                      <colgroup>
+                                        <col style={{ width: 52 }} />
+                                        <col style={{ width: 150 }} />
+                                        <col />
+                                        <col style={{ width: 110 }} />
+                                        <col style={{ width: 100 }} />
+                                        <col style={{ width: 44 }} />
+                                      </colgroup>
+                                      <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
+                                        <tr>
+                                          {['상태','품번','품명','중분류','소분류','단위'].map(h => (
+                                            <th key={h} className="px-2 py-2 text-left text-[10px] font-semibold text-gray-400 whitespace-nowrap">{h}</th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {search.results.map((r: any) => (
+                                          <tr key={r.id} onMouseDown={() => handleItemSelect(row._key, r)} className="cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-0 transition-colors">
+                                            <td className="px-2 py-1.5"><span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold whitespace-nowrap ${STATUS_COLOR[r.status] ?? 'bg-gray-100 text-gray-600'}`}>{STATUS_LABEL[r.status] ?? r.status}</span></td>
+                                            <td className="px-2 py-1.5 font-mono text-[11px] text-gray-700 truncate">{r.itemCode}</td>
+                                            <td className="px-2 py-1.5 text-xs text-gray-800 truncate">{r.itemName}</td>
+                                            <td className="px-2 py-1.5 text-xs text-gray-600 truncate">{r.subCategory ? (SUB_LABEL[r.subCategory] ?? r.subCategory) : <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-2 py-1.5 text-xs text-gray-500 truncate">{r.formFactor ? (thirdLabelMap[r.formFactor] ?? r.formFactor) : r.chemistryType ? (thirdLabelMap[r.chemistryType] ?? r.chemistryType) : <span className="text-gray-300">—</span>}</td>
+                                            <td className="px-2 py-1.5 text-xs text-gray-500">{r.unit || <span className="text-gray-300">—</span>}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 중분류 */}
+                        <td className="px-1 py-1 border-r border-gray-100">
+                          {row.child ? (
+                            <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded whitespace-nowrap">
+                              {SUB_LABEL[row.child.subCategory ?? ''] ?? row.child.subCategory ?? '—'}
+                            </span>
+                          ) : (
+                            <select value={row.filterSubCat} onChange={e => updateClassFilter(row._key, 'filterSubCat', e.target.value)} className={selCls}>
+                              <option value="">전체</option>
+                              {ALL_SUB_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                          )}
+                        </td>
+
+                        {/* 소분류 */}
+                        <td className="px-1 py-1 border-r border-gray-100">
+                          {row.child ? (
+                            childThirdVal ? (
+                              <span className="text-[10px] bg-gray-50 text-gray-500 px-1.5 py-0.5 rounded border border-gray-100 whitespace-nowrap">
+                                {thirdLabelMap[childThirdVal] ?? childThirdVal}
+                              </span>
+                            ) : <span className="text-gray-200 text-xs px-1">—</span>
+                          ) : currentThirdOpts.length > 0 ? (
+                            <select value={row.filterThird} onChange={e => updateClassFilter(row._key, 'filterThird', e.target.value)} className={selCls}>
+                              <option value="">전체</option>
+                              {currentThirdOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            </select>
+                          ) : (
+                            <span className="text-gray-200 text-xs px-1">—</span>
+                          )}
+                        </td>
+
+                        {/* 품명 */}
+                        <td className="px-2 py-1 text-gray-700 truncate border-r border-gray-100 text-xs">
+                          {row.child?.itemName ?? <span className="text-gray-200">—</span>}
+                        </td>
+
+                        {/* 수량 */}
+                        <td className="px-0.5 py-0.5 border-r border-gray-100">
+                          <input type="number" min="0" step="any" value={row.quantity}
+                            onChange={e => updateField(row._key, 'quantity', e.target.value)}
+                            onWheel={e => e.currentTarget.blur()}
+                            placeholder="수량" disabled={!row.child}
+                            className={cell + ' text-right'} />
+                        </td>
+
+                        {/* 단위 */}
+                        <td className="px-0.5 py-0.5 border-r border-gray-100">
+                          <input value={row.unit} onChange={e => updateField(row._key, 'unit', e.target.value)}
+                            placeholder="단위" disabled={!row.child} className={cell + ' text-center'} />
+                        </td>
+
+                        {/* 비고 */}
+                        <td className="px-0.5 py-0.5">
+                          <input value={row.memo} onChange={e => updateField(row._key, 'memo', e.target.value)}
+                            placeholder="비고" disabled={!row.child} className={cell} />
+                        </td>
+
+                        {/* 작업 버튼 */}
+                        <td className="py-1 px-1">
+                          <div className="flex items-center justify-center gap-0.5">
+                            {row.child && (
+                              <button onClick={() => handleViewItem(row.child!)} title="보기" className="w-6 h-6 flex items-center justify-center rounded text-blue-400 hover:text-blue-600 hover:bg-blue-50">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                              </button>
+                            )}
+                            {row.child && (
+                              <button onClick={() => handleCloneRow(row)} title="복제" className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                              </button>
+                            )}
+                            {row.child && (
+                              <button onClick={() => handleDeleteRow(row)} title="삭제" className="w-6 h-6 flex items-center justify-center rounded text-gray-300 hover:text-red-500 hover:bg-red-50">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                              </button>
                             )}
                           </div>
-                        )}
-                      </td>
-
-                      {/* 품명 */}
-                      <td className="px-2 py-1 text-gray-700 truncate border-r border-gray-100 text-xs">
-                        {row.child?.itemName ?? <span className="text-gray-200">—</span>}
-                      </td>
-
-                      {/* 대분류 */}
-                      <td className="px-2 py-1 border-r border-gray-100">
-                        {row.child ? (
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${CAT_COLOR[row.child.category] ?? 'bg-gray-100 text-gray-600'}`}>
-                            {CAT_LABEL[row.child.category] ?? row.child.category}
-                          </span>
-                        ) : <span className="text-gray-200">—</span>}
-                      </td>
-
-                      {/* 중분류 */}
-                      <td className="px-2 py-1 border-r border-gray-100">
-                        {row.child?.subCategory ? (
-                          <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
-                            {SUB_LABEL[row.child.subCategory] ?? row.child.subCategory}
-                          </span>
-                        ) : <span className="text-gray-200 text-xs">—</span>}
-                      </td>
-
-                      {/* 수량 */}
-                      <td className="px-0.5 py-0.5 border-r border-gray-100">
-                        <input type="number" min="0" step="any"
-                          value={row.quantity}
-                          onChange={e => updateField(row._key, 'quantity', e.target.value)}
-                          placeholder="수량"
-                          disabled={!row.child}
-                          className={cell + ' text-right'}
-                        />
-                      </td>
-
-                      {/* 단위 */}
-                      <td className="px-0.5 py-0.5 border-r border-gray-100">
-                        <input
-                          value={row.unit}
-                          onChange={e => updateField(row._key, 'unit', e.target.value)}
-                          placeholder="단위"
-                          disabled={!row.child}
-                          className={cell + ' text-center'}
-                        />
-                      </td>
-
-                      {/* 비고 */}
-                      <td className="px-0.5 py-0.5">
-                        <input
-                          value={row.memo}
-                          onChange={e => updateField(row._key, 'memo', e.target.value)}
-                          placeholder="비고"
-                          disabled={!row.child}
-                          className={cell}
-                        />
-                      </td>
-
-                      {/* 작업 버튼 */}
-                      <td className="py-1 px-1">
-                        <div className="flex items-center justify-center gap-0.5">
-                          {row.child && (
-                            <button onClick={() => handleViewItem(row.child!)} title="보기"
-                              className="w-6 h-6 flex items-center justify-center rounded text-blue-400 hover:text-blue-600 hover:bg-blue-50">
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                            </button>
-                          )}
-                          {row.child && (
-                            <button onClick={() => handleCloneRow(row)} title="복제"
-                              className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100">
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                              </svg>
-                            </button>
-                          )}
-                          {row.child && (
-                            <button onClick={() => handleDeleteRow(row)} title="삭제"
-                              className="w-6 h-6 flex items-center justify-center rounded text-gray-300 hover:text-red-500 hover:bg-red-50">
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  {isAssembly && childBom && (
-                    childBom.loading ? (
-                      <tr key={`${row._key}-loading`}>
-                        <td colSpan={10} className="py-2 text-center text-xs text-gray-400 bg-purple-50/20">불러오는 중...</td>
+                        </td>
                       </tr>
-                    ) : childBom.items.length === 0 ? (
-                      <tr key={`${row._key}-empty`}>
-                        <td colSpan={10} className="py-1.5 text-center text-xs text-gray-300 bg-purple-50/10">하위 BOM 없음</td>
-                      </tr>
-                    ) : (
-                      childBom.items.map((sub: any, si: number) => (
-                        <tr key={`${row._key}-s${si}`} className="bg-purple-50/20 border-b border-purple-100/40">
-                          <td className="py-1"></td>
-                          <td className="py-1 text-center text-gray-300 text-[10px]">└</td>
-                          <td className="px-2 py-1 pl-5 border-r border-gray-100">
-                            <span className="font-mono text-gray-400 truncate text-xs">{sub.child?.itemCode}</span>
-                          </td>
-                          <td className="px-2 py-1 text-gray-500 truncate border-r border-gray-100 text-xs">{sub.child?.itemName}</td>
-                          <td className="px-2 py-1 border-r border-gray-100">
-                            {sub.child && <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${CAT_COLOR[sub.child.category] ?? 'bg-gray-100 text-gray-600'}`}>{CAT_LABEL[sub.child.category] ?? sub.child.category}</span>}
-                          </td>
-                          <td className="px-2 py-1 border-r border-gray-100">
-                            {sub.child?.subCategory && <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{SUB_LABEL[sub.child.subCategory] ?? sub.child.subCategory}</span>}
-                          </td>
-                          <td className="px-2 py-1 text-right text-xs text-gray-400 border-r border-gray-100 tabular-nums">{sub.quantity}</td>
-                          <td className="px-2 py-1 text-center text-xs text-gray-400 border-r border-gray-100">{sub.unit}</td>
-                          <td className="px-2 py-1 text-xs text-gray-300">{sub.memo}</td>
-                          <td></td>
-                        </tr>
-                      ))
-                    )
-                  )}
-                  </Fragment>
+
+                      {/* 반제품 하위 BOM 펼침 */}
+                      {isAssembly && childBom && (
+                        childBom.loading ? (
+                          <tr key={`${row._key}-loading`}>
+                            <td colSpan={10} className="py-2 text-center text-xs text-gray-400 bg-purple-50/20">불러오는 중...</td>
+                          </tr>
+                        ) : childBom.items.length === 0 ? (
+                          <tr key={`${row._key}-empty`}>
+                            <td colSpan={10} className="py-1.5 text-center text-xs text-gray-300 bg-purple-50/10">하위 BOM 없음</td>
+                          </tr>
+                        ) : (
+                          childBom.items.map((sub: any, si: number) => (
+                            <tr key={`${row._key}-s${si}`} className="bg-purple-50/20 border-b border-purple-100/40">
+                              <td className="py-1"></td>
+                              <td className="py-1 text-center text-gray-300 text-[10px]">└</td>
+                              <td className="px-2 py-1 pl-5 border-r border-gray-100">
+                                <span className="font-mono text-gray-400 truncate text-xs">{sub.child?.itemCode}</span>
+                              </td>
+                              <td className="px-2 py-1 border-r border-gray-100">
+                                {sub.child?.subCategory && <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{SUB_LABEL[sub.child.subCategory] ?? sub.child.subCategory}</span>}
+                              </td>
+                              <td className="px-2 py-1 border-r border-gray-100">
+                                {(() => {
+                                  const v = THIRD_LEVEL[sub.child?.subCategory ?? '']?.field === 'chemistryType' ? sub.child?.chemistryType : sub.child?.formFactor
+                                  return v ? <span className="text-[10px] bg-gray-50 text-gray-400 px-1.5 py-0.5 rounded border border-gray-100">{thirdLabelMap[v] ?? v}</span> : null
+                                })()}
+                              </td>
+                              <td className="px-2 py-1 text-gray-500 truncate border-r border-gray-100 text-xs">{sub.child?.itemName}</td>
+                              <td className="px-2 py-1 text-right text-xs text-gray-400 border-r border-gray-100 tabular-nums">{sub.quantity}</td>
+                              <td className="px-2 py-1 text-center text-xs text-gray-400 border-r border-gray-100">{sub.unit}</td>
+                              <td className="px-2 py-1 text-xs text-gray-300">{sub.memo}</td>
+                              <td></td>
+                            </tr>
+                          ))
+                        )
+                      )}
+                    </Fragment>
                   )
                 })}
               </tbody>
@@ -757,7 +763,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
             {activeRows.length === 0 ? '구성 품목 없음' : `총 ${activeRows.length}개 구성 품목`}
           </span>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" className="text-xs h-8 rounded-lg px-5" onClick={handleClose}>닫기</Button>
+            <Button size="sm" variant="outline" className="text-xs h-8 rounded-lg px-5" onClick={onClose}>닫기</Button>
             <Button size="sm" className="text-xs h-8 rounded-lg px-5" onClick={handleSave} disabled={!isDirty || saving}>
               {saving ? '저장 중...' : '저장'}
             </Button>
@@ -767,13 +773,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
     </div>
 
     {viewItem && (
-      <ItemFormDialog
-        open={!!viewItem}
-        item={viewItem}
-        viewOnly
-        onClose={() => setViewItem(null)}
-        onSaved={() => {}}
-      />
+      <ItemFormDialog open={!!viewItem} item={viewItem} viewOnly onClose={() => setViewItem(null)} onSaved={() => {}} />
     )}
   </>
   )
