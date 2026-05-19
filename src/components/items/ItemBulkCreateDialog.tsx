@@ -653,7 +653,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
     options.forEach(o => { thirdToSubMap[o.value] = sub })
   })
   const info      = bulkType ? TYPE_INFO[bulkType] : null
-  const dialogW   = bulkType ? DIALOG_W[bulkType] : 600
+  const dialogW   = bulkType ? DIALOG_W[bulkType] : 780
   const codeColW  = bulkType === 'BATTERY' ? 185
                   : bulkType === 'BMS'      ? 140
                   : bulkType === 'CELL'     ? 130
@@ -699,7 +699,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
               <p className="text-sm font-semibold text-gray-800">등록할 품목 유형을 선택하세요</p>
               <p className="text-xs text-gray-400 mt-1">같은 유형의 품목만 동시에 등록할 수 있습니다</p>
             </div>
-            <div className="flex flex-col gap-4 w-full max-w-lg">
+            <div className="flex flex-col gap-4 w-full max-w-2xl">
               {/* 완제품 */}
               <div className="flex items-center gap-4">
                 <span className="w-16 text-right text-xs font-bold text-blue-500 shrink-0">완제품</span>
@@ -715,9 +715,9 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                 <span className="w-16 text-right text-xs font-bold text-purple-500 shrink-0">반제품</span>
                 <div className="flex gap-2">
                   {[
+                    { label: '소프트팩', type: 'ASSEMBLY_OTHER' as BulkType, sub: 'PO' },
                     { label: 'BMS',    type: 'BMS' as BulkType,            sub: 'BM' },
                     { label: 'PCM',    type: 'BMS' as BulkType,            sub: 'PC' },
-                    { label: '소프트팩', type: 'ASSEMBLY_OTHER' as BulkType, sub: 'PO' },
                     { label: '그 외',  type: 'ASSEMBLY_OTHER' as BulkType, sub: ''   },
                   ].map(({ label, type, sub }) => (
                     <button key={label} onClick={() => selectType(type, sub)}

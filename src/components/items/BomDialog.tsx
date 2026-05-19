@@ -451,7 +451,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                 <col />                          {/* 품명 */}
                 <col style={{ width: 68 }} />   {/* 수량 */}
                 <col style={{ width: 52 }} />   {/* 단위 */}
-                <col style={{ width: 220 }} />  {/* 비고 */}
+                <col style={{ width: 300 }} />  {/* 비고 */}
                 <col style={{ width: 72 }} />   {/* 작업 */}
               </colgroup>
               <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
