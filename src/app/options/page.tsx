@@ -33,7 +33,6 @@ const CAT: Record<string, CategoryDef> = {
   elComponentType: { key: 'elComponentType', label: '전장/전기부품',  hasDefault: true,  requireCode: true  },
   meComponentType: { key: 'meComponentType', label: '기구/외장부품',  hasDefault: true,  requireCode: true  },
   cdComponentType: { key: 'cdComponentType', label: '도전재',        hasDefault: true,  requireCode: true  },
-  pkComponentType: { key: 'pkComponentType', label: '포장자재',      hasDefault: true,  requireCode: true  },
   fsComponentType: { key: 'fsComponentType', label: '체결부품',      hasDefault: true,  requireCode: true  },
   smComponentType: { key: 'smComponentType', label: '부자재/소모품',  hasDefault: true,  requireCode: true  },
   otComponentType: { key: 'otComponentType', label: '기타',          hasDefault: false, requireCode: true  },
@@ -60,7 +59,7 @@ const NAV: NavGroup[] = [
     label: '자재',
     sections: [
       { label: '일반',        keys: ['material', 'color'] },
-      { label: '소분류 유형', keys: ['elComponentType', 'meComponentType', 'cdComponentType', 'pkComponentType', 'fsComponentType', 'smComponentType', 'otComponentType'] },
+      { label: '소분류 유형', keys: ['elComponentType', 'meComponentType', 'cdComponentType', 'fsComponentType', 'smComponentType', 'otComponentType'] },
     ],
   },
   {

@@ -28,7 +28,6 @@ const DEFAULTS: Record<string, SelectOption[]> = {
     { value: 'EL', label: '전장/전기부품', colorIndex: 0, code: 'EL' },
     { value: 'ME', label: '기구/외장부품', colorIndex: 3, code: 'ME' },
     { value: 'CD', label: '도전재',       colorIndex: 2, code: 'CD' },
-    { value: 'PK', label: '포장자재',     colorIndex: 5, code: 'PK' },
     { value: 'FS', label: '체결부품',     colorIndex: 6, code: 'FS' },
     { value: 'SM', label: '부자재/소모품', colorIndex: 7, code: 'SM' },
     { value: 'OT', label: '샘플/기타',    colorIndex: 9, code: 'OT' },
@@ -193,13 +192,6 @@ const DEFAULTS: Record<string, SelectOption[]> = {
     { value: 'BS', label: '버스바',     colorIndex: 9, code: 'BS' },
     { value: 'CT', label: '구리테이프', colorIndex: 2, code: 'CT' },
     { value: 'WT', label: '연결탭',     colorIndex: 9, code: 'WT' },
-  ],
-  // 포장자재 부품 유형
-  pkComponentType: [
-    { value: 'BX', label: '박스',   colorIndex: 5, code: 'BX' },
-    { value: 'BC', label: '에어캡', colorIndex: 0, code: 'BC' },
-    { value: 'FC', label: '완충재', colorIndex: 2, code: 'FC' },
-    { value: 'SH', label: '완충시트', colorIndex: 3, code: 'SH' },
   ],
   // 체결부품 부품 유형
   fsComponentType: [
