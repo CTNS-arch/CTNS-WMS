@@ -1140,11 +1140,6 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
             <Field label="재질">
               <TagSelect value={form.material} onChange={v => set('material', v)} options={opts.material ?? []} onAdd={addOpt('material')} placeholder="재질 선택" />
             </Field>
-            {form.subCategory === 'EL' && (
-              <Field label="정격전류 (A)">
-                <Input type="number" step="0.01" value={form.ratedCurrent} onChange={e => set('ratedCurrent', e.target.value)} placeholder="0.00" />
-              </Field>
-            )}
             {isBP && (
               <Field label="팩타입">
                 <TagSelect value={form.packType} onChange={v => set('packType', v)} options={opts.packType ?? []} onAdd={addOpt('packType')} placeholder="소프트팩 / 하드팩" />
@@ -1154,6 +1149,16 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
               <TagSelect value={form.color} onChange={v => set('color', v)} options={opts.color ?? []} onAdd={addOpt('color')} placeholder="색상 선택" />
             </Field>
           </div>
+
+          {/* ── 전기 사양 (EL 컴포넌트) ── */}
+          {form.subCategory === 'EL' && (
+            <div className="space-y-3">
+              <SectionHeader title="전기 사양" />
+              <Field label="정격전류 (A)">
+                <Input type="number" step="0.01" value={form.ratedCurrent} onChange={e => set('ratedCurrent', e.target.value)} placeholder="0.00" />
+              </Field>
+            </div>
+          )}
 
           {/* ── 전기 사양 ── */}
           {elec && (

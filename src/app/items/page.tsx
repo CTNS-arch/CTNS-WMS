@@ -85,6 +85,18 @@ export default function ItemsPage() {
   const [filterSpecialOption, setFilterSpecialOption] = useState<string[]>([])
   const [filterBMSItems, setFilterBMSItems] = useState<string[]>([])   // UI용 (item IDs)
   const [filterCLItems, setFilterCLItems] = useState<string[]>([])     // UI용 (item IDs)
+  // 셀(CL) 전기사양 필터 (이상)
+  const [filterDischargeCutoffMin, setFilterDischargeCutoffMin] = useState('')
+  const [filterNominalVoltageMin, setFilterNominalVoltageMin] = useState('')
+  const [filterChargeCutoffMin, setFilterChargeCutoffMin] = useState('')
+  const [filterNominalCapacityMin, setFilterNominalCapacityMin] = useState('')
+  const [filterEnergyMin, setFilterEnergyMin] = useState('')
+  const [filterMaxChargeCurrentMin, setFilterMaxChargeCurrentMin] = useState('')
+  const [filterMaxDischargeCurrentMin, setFilterMaxDischargeCurrentMin] = useState('')
+  const [filterContinuousChargeCurrentMin, setFilterContinuousChargeCurrentMin] = useState('')
+  const [filterContinuousDischargeCurrentMin, setFilterContinuousDischargeCurrentMin] = useState('')
+  const [filterChargeCRateMin, setFilterChargeCRateMin] = useState('')
+  const [filterDischargeCRateMin, setFilterDischargeCRateMin] = useState('')
 
   // ── 정렬 ──
   const [sortBy, setSortBy] = useState('createdAt')
@@ -121,7 +133,7 @@ export default function ItemsPage() {
   const [certificationOpts, setCertificationOpts] = useState<SelectOption[]>([])
   const [specialOptionOpts, setSpecialOptionOpts] = useState<SelectOption[]>([])
   const [bmsItemOpts, setBmsItemOpts] = useState<{ value: string; label: string; subCat: string }[]>([])
-  const [clItemOpts, setClItemOpts] = useState<{ value: string; label: string; cellModel: string }[]>([])
+  const [clItemOpts, setClItemOpts] = useState<{ value: string; label: string; cellModel: string; chemistryType: string }[]>([])
 
   useEffect(() => {
     ensureServerSync().then(() => {
@@ -161,6 +173,7 @@ export default function ItemsPage() {
               value: item.id,
               label: item.itemName,
               cellModel: item.cellModel,
+              chemistryType: item.chemistryType ?? '',
             }))
           )
         }
@@ -191,6 +204,19 @@ export default function ItemsPage() {
   const formFactorOpts = thirdDef
     ? (thirdDef.optKey ? getOptions(thirdDef.optKey) : (thirdDef.staticOptions ?? []))
     : []
+
+  // 화학계 선택 시 셀 품목/모델 옵션 캐스케이딩 (실제 등록된 CL 품목 기반)
+  const filteredClItemOpts = filterChemistry.length > 0
+    ? clItemOpts.filter(o => filterChemistry.includes(o.chemistryType))
+    : clItemOpts
+  // 셀 모델 필터 옵션: 등록된 CL 품목의 cellModel 값에서 dedup (화학계 필터 적용)
+  const cellModelFilterOpts = (() => {
+    const source = filterChemistry.length > 0 ? filteredClItemOpts : clItemOpts
+    const seen = new Set<string>()
+    return source
+      .filter(o => o.cellModel && !seen.has(o.cellModel) && seen.add(o.cellModel))
+      .map(o => ({ value: o.cellModel, label: o.cellModel, colorIndex: 0 as number }))
+  })()
 
   // 뷰별 총 컬럼 수 (colSpan 계산용) — BOM 컬럼은 isComp 제외
   const hasBomCol = !isComp
@@ -233,6 +259,17 @@ export default function ItemsPage() {
     if (filterHeightMin) params.set('heightMin', filterHeightMin)
     if (filterDiameterMin) params.set('diameterMin', filterDiameterMin)
     if (filterWeightMin) params.set('weightMin', filterWeightMin)
+    if (filterDischargeCutoffMin) params.set('dischargeCutoffVoltageMin', filterDischargeCutoffMin)
+    if (filterNominalVoltageMin) params.set('nominalVoltageMin', filterNominalVoltageMin)
+    if (filterChargeCutoffMin) params.set('chargeCutoffVoltageMin', filterChargeCutoffMin)
+    if (filterNominalCapacityMin) params.set('nominalCapacityMin', filterNominalCapacityMin)
+    if (filterEnergyMin) params.set('energyMin', filterEnergyMin)
+    if (filterMaxChargeCurrentMin) params.set('maxChargeCurrentMin', filterMaxChargeCurrentMin)
+    if (filterMaxDischargeCurrentMin) params.set('maxDischargeCurrentMin', filterMaxDischargeCurrentMin)
+    if (filterContinuousChargeCurrentMin) params.set('continuousChargeCurrentMin', filterContinuousChargeCurrentMin)
+    if (filterContinuousDischargeCurrentMin) params.set('continuousDischargeCurrentMin', filterContinuousDischargeCurrentMin)
+    if (filterChargeCRateMin) params.set('chargeCRateMin', filterChargeCRateMin)
+    if (filterDischargeCRateMin) params.set('dischargeCRateMin', filterDischargeCRateMin)
 
     const res = await fetch(`/api/items?${params}`)
     const json = await res.json()
@@ -244,6 +281,11 @@ export default function ItemsPage() {
     filterBMSItems, filterCLItems,
     filterSeriesCount, filterParallelCount, filterLayerCount,
     filterLengthMin, filterWidthMin, filterHeightMin, filterDiameterMin, filterWeightMin,
+    filterDischargeCutoffMin, filterNominalVoltageMin, filterChargeCutoffMin,
+    filterNominalCapacityMin, filterEnergyMin,
+    filterMaxChargeCurrentMin, filterMaxDischargeCurrentMin,
+    filterContinuousChargeCurrentMin, filterContinuousDischargeCurrentMin,
+    filterChargeCRateMin, filterDischargeCRateMin,
     sortBy, sortOrder])
 
   useEffect(() => { fetchItems() }, [fetchItems])
@@ -276,6 +318,11 @@ export default function ItemsPage() {
     setFilterBMSItems([]); setFilterCLItems([])
     setFilterSeriesCount(''); setFilterParallelCount(''); setFilterLayerCount('')
     setFilterLengthMin(''); setFilterWidthMin(''); setFilterHeightMin(''); setFilterDiameterMin(''); setFilterWeightMin('')
+    setFilterDischargeCutoffMin(''); setFilterNominalVoltageMin(''); setFilterChargeCutoffMin('')
+    setFilterNominalCapacityMin(''); setFilterEnergyMin('')
+    setFilterMaxChargeCurrentMin(''); setFilterMaxDischargeCurrentMin('')
+    setFilterContinuousChargeCurrentMin(''); setFilterContinuousDischargeCurrentMin('')
+    setFilterChargeCRateMin(''); setFilterDischargeCRateMin('')
     setPage(1); setSelected(new Set())
   }
 
@@ -408,7 +455,12 @@ export default function ItemsPage() {
     filterPackType.length || filterMaterial.length || filterFormFactor.length || filterVendor.length ||
     filterCertification.length || filterSpecialOption.length ||
     filterSeriesCount || filterParallelCount || filterLayerCount ||
-    filterLengthMin || filterWidthMin || filterHeightMin || filterDiameterMin || filterWeightMin
+    filterLengthMin || filterWidthMin || filterHeightMin || filterDiameterMin || filterWeightMin ||
+    filterDischargeCutoffMin || filterNominalVoltageMin || filterChargeCutoffMin ||
+    filterNominalCapacityMin || filterEnergyMin ||
+    filterMaxChargeCurrentMin || filterMaxDischargeCurrentMin ||
+    filterContinuousChargeCurrentMin || filterContinuousDischargeCurrentMin ||
+    filterChargeCRateMin || filterDischargeCRateMin
   )
   const hasBom = (cat: string) => cat === 'PRODUCT' || cat === 'ASSEMBLY'
 
@@ -493,8 +545,8 @@ export default function ItemsPage() {
               />
             </FilterSection>
 
-            {/* 완제품/소프트팩 전용 필터 */}
-            {(isAll || isProd || isPO) && chemistryOpts.length > 0 && (
+            {/* 완제품/소프트팩/셀 공통 필터 */}
+            {(isAll || isProd || isPO || isCell) && chemistryOpts.length > 0 && (
               <FilterSection label="화학계">
                 <SearchableMultiSelect
                   value={filterChemistry}
@@ -505,12 +557,23 @@ export default function ItemsPage() {
               </FilterSection>
             )}
 
+            {isCell && (
+              <FilterSection label="셀 모델">
+                <SearchableMultiSelect
+                  value={filterCellModel}
+                  onChange={v => { setFilterCellModel(v); resetAndPage() }}
+                  options={cellModelFilterOpts}
+                  placeholder="셀 모델 선택"
+                />
+              </FilterSection>
+            )}
+
             {(isAll || isProd || isPO) && clItemOpts.length > 0 && (
               <FilterSection label="셀 품목">
                 <SearchableMultiSelect
                   value={filterCLItems}
                   onChange={handleCLItemsChange}
-                  options={clItemOpts.map(o => ({ value: o.value, label: o.label, colorIndex: 0 }))}
+                  options={filteredClItemOpts.map(o => ({ value: o.value, label: o.label, colorIndex: 0 }))}
                   placeholder="셀 품목 선택"
                 />
               </FilterSection>
@@ -544,69 +607,99 @@ export default function ItemsPage() {
                   <input type="number" min="1" value={filterSeriesCount}
                     onChange={e => debounce(setFilterSeriesCount)(e.target.value)}
                     placeholder="예) 12"
-                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    onWheel={e => e.currentTarget.blur()} className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
                   />
                 </FilterSection>
                 <FilterSection label="병렬 수 (P)">
                   <input type="number" min="1" value={filterParallelCount}
                     onChange={e => debounce(setFilterParallelCount)(e.target.value)}
                     placeholder="예) 5"
-                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    onWheel={e => e.currentTarget.blur()} className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
                   />
                 </FilterSection>
                 <FilterSection label="단 수">
                   <input type="number" min="1" value={filterLayerCount}
                     onChange={e => debounce(setFilterLayerCount)(e.target.value)}
                     placeholder="예) 2"
-                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    onWheel={e => e.currentTarget.blur()} className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
                   />
                 </FilterSection>
               </>
             )}
 
-            {/* 일반반제품/자재 물리규격 필터 */}
-            {(isAsmGeneric || isComp) && (
+            {/* 일반반제품/자재(셀 제외) 물리규격 필터 */}
+            {(isAsmGeneric || (isComp && !isCell)) && (
               <>
                 <FilterSection label="길이 이상(mm)">
                   <input type="number" min="0" value={filterLengthMin}
                     onChange={e => debounce(setFilterLengthMin)(e.target.value)}
                     placeholder="예) 100"
-                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    onWheel={e => e.currentTarget.blur()} className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
                   />
                 </FilterSection>
                 <FilterSection label="폭 이상(mm)">
                   <input type="number" min="0" value={filterWidthMin}
                     onChange={e => debounce(setFilterWidthMin)(e.target.value)}
                     placeholder="예) 50"
-                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    onWheel={e => e.currentTarget.blur()} className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
                   />
                 </FilterSection>
                 <FilterSection label="높이 이상(mm)">
                   <input type="number" min="0" value={filterHeightMin}
                     onChange={e => debounce(setFilterHeightMin)(e.target.value)}
                     placeholder="예) 20"
-                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    onWheel={e => e.currentTarget.blur()} className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
                   />
                 </FilterSection>
                 <FilterSection label="직경 이상(mm)">
                   <input type="number" min="0" value={filterDiameterMin}
                     onChange={e => debounce(setFilterDiameterMin)(e.target.value)}
                     placeholder="예) 18"
-                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    onWheel={e => e.currentTarget.blur()} className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
                   />
                 </FilterSection>
                 <FilterSection label="무게 이상(g)">
                   <input type="number" min="0" value={filterWeightMin}
                     onChange={e => debounce(setFilterWeightMin)(e.target.value)}
                     placeholder="예) 50"
-                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    onWheel={e => e.currentTarget.blur()} className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
                   />
                 </FilterSection>
               </>
             )}
 
-            {/* 자재 전용: 재질 */}
-            {materialOpts.length > 0 && (isAll || isComp) && (
+            {/* 셀(CL) 전용: 물리 + 전기사양 필터 */}
+            {isCell && (() => {
+              const numCls = 'w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400'
+              const cellElecFilters: [string, string, string, (v: string) => void][] = [
+                ['직경 이상(mm)',       '예) 18',  filterDiameterMin,                  setFilterDiameterMin],
+                ['높이 이상(mm)',       '예) 65',  filterHeightMin,                    setFilterHeightMin],
+                ['방전종료전압 이상(V)', '예) 2.5', filterDischargeCutoffMin,           setFilterDischargeCutoffMin],
+                ['공칭전압 이상(V)',    '예) 3.2', filterNominalVoltageMin,            setFilterNominalVoltageMin],
+                ['충전종료전압 이상(V)', '예) 3.65',filterChargeCutoffMin,             setFilterChargeCutoffMin],
+                ['공칭용량 이상(Ah)',   '예) 100', filterNominalCapacityMin,           setFilterNominalCapacityMin],
+                ['에너지 이상(Wh)',     '예) 320', filterEnergyMin,                    setFilterEnergyMin],
+                ['피크충전전류 이상(A)', '예) 100', filterMaxChargeCurrentMin,          setFilterMaxChargeCurrentMin],
+                ['피크방전전류 이상(A)', '예) 200', filterMaxDischargeCurrentMin,       setFilterMaxDischargeCurrentMin],
+                ['연속충전전류 이상(A)', '예) 50',  filterContinuousChargeCurrentMin,   setFilterContinuousChargeCurrentMin],
+                ['연속방전전류 이상(A)', '예) 100', filterContinuousDischargeCurrentMin,setFilterContinuousDischargeCurrentMin],
+                ['충전C-rate 이상',    '예) 0.5', filterChargeCRateMin,               setFilterChargeCRateMin],
+                ['방전C-rate 이상',    '예) 1.0', filterDischargeCRateMin,            setFilterDischargeCRateMin],
+              ]
+              return cellElecFilters.map(([label, ph, val, setter]) => (
+                <FilterSection key={label} label={label}>
+                  <input type="number" min="0" value={val}
+                    onChange={e => debounce(setter)(e.target.value)}
+                    onWheel={e => e.currentTarget.blur()}
+                    placeholder={ph}
+                    className={numCls}
+                  />
+                </FilterSection>
+              ))
+            })()}
+
+            {/* 자재(셀 제외): 재질 */}
+            {materialOpts.length > 0 && (isAll || (isComp && !isCell)) && (
               <FilterSection label="재질">
                 <SearchableMultiSelect
                   value={filterMaterial}

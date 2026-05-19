@@ -907,7 +907,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     type UpdField = keyof Omit<BulkRow, '_key' | 'error'>
                     const num = (w: number, field: UpdField, ph = '') => (
                       <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: w }}>
-                        <input type="number" step="any" value={row[field] as string} onChange={e => upd(row._key, field, e.target.value)} placeholder={ph} className={cellCls + ' text-right'} />
+                        <input type="number" step="any" value={row[field] as string} onChange={e => upd(row._key, field, e.target.value)} onWheel={e => e.currentTarget.blur()} placeholder={ph} className={cellCls + ' text-right'} />
                       </td>
                     )
 
@@ -1055,12 +1055,12 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                         {/* ── BATTERY 전용 ── */}
                         {bulkType === 'BATTERY' && (
                           <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 60 }}>
-                            <input type="number" step="any" value={row.seriesCount} onChange={e => updBatteryCount(row._key, 'seriesCount', e.target.value)} placeholder="S" className={cellCls + ' text-right'} />
+                            <input type="number" step="any" value={row.seriesCount} onChange={e => updBatteryCount(row._key, 'seriesCount', e.target.value)} onWheel={e => e.currentTarget.blur()} placeholder="S" className={cellCls + ' text-right'} />
                           </td>
                         )}
                         {bulkType === 'BATTERY' && (
                           <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 60 }}>
-                            <input type="number" step="any" value={row.parallelCount} onChange={e => updBatteryCount(row._key, 'parallelCount', e.target.value)} placeholder="P" className={cellCls + ' text-right'} />
+                            <input type="number" step="any" value={row.parallelCount} onChange={e => updBatteryCount(row._key, 'parallelCount', e.target.value)} onWheel={e => e.currentTarget.blur()} placeholder="P" className={cellCls + ' text-right'} />
                           </td>
                         )}
                         {bulkType === 'BATTERY' && ts(90, row.circuit, v => upd(row._key, 'circuit', v), opts.circuit ?? [], 'circuit', '회로')}

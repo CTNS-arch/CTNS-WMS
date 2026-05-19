@@ -105,6 +105,29 @@ export async function GET(req: NextRequest) {
     if (diameterMin) where.diameter = { gte: parseFloat(diameterMin) } as any
     if (weightMin) where.weight = { gte: parseFloat(weightMin) } as any
 
+    const dischargeCutoffVoltageMin = searchParams.get('dischargeCutoffVoltageMin')
+    const nominalVoltageMin = searchParams.get('nominalVoltageMin')
+    const chargeCutoffVoltageMin = searchParams.get('chargeCutoffVoltageMin')
+    const nominalCapacityMin = searchParams.get('nominalCapacityMin')
+    const energyMin = searchParams.get('energyMin')
+    const maxChargeCurrentMin = searchParams.get('maxChargeCurrentMin')
+    const maxDischargeCurrentMin = searchParams.get('maxDischargeCurrentMin')
+    const continuousChargeCurrentMin = searchParams.get('continuousChargeCurrentMin')
+    const continuousDischargeCurrentMin = searchParams.get('continuousDischargeCurrentMin')
+    const chargeCRateMin = searchParams.get('chargeCRateMin')
+    const dischargeCRateMin = searchParams.get('dischargeCRateMin')
+    if (dischargeCutoffVoltageMin) where.dischargeCutoffVoltage = { gte: parseFloat(dischargeCutoffVoltageMin) } as any
+    if (nominalVoltageMin) where.nominalVoltage = { gte: parseFloat(nominalVoltageMin) } as any
+    if (chargeCutoffVoltageMin) where.chargeCutoffVoltage = { gte: parseFloat(chargeCutoffVoltageMin) } as any
+    if (nominalCapacityMin) where.nominalCapacity = { gte: parseFloat(nominalCapacityMin) } as any
+    if (energyMin) where.energy = { gte: parseFloat(energyMin) } as any
+    if (maxChargeCurrentMin) where.maxChargeCurrent = { gte: parseFloat(maxChargeCurrentMin) } as any
+    if (maxDischargeCurrentMin) where.maxDischargeCurrent = { gte: parseFloat(maxDischargeCurrentMin) } as any
+    if (continuousChargeCurrentMin) where.continuousChargeCurrent = { gte: parseFloat(continuousChargeCurrentMin) } as any
+    if (continuousDischargeCurrentMin) where.continuousDischargeCurrent = { gte: parseFloat(continuousDischargeCurrentMin) } as any
+    if (chargeCRateMin) where.chargeCRate = { gte: parseFloat(chargeCRateMin) } as any
+    if (dischargeCRateMin) where.dischargeCRate = { gte: parseFloat(dischargeCRateMin) } as any
+
     const validSort = ['itemCode', 'itemName', 'category', 'subCategory', 'status', 'createdAt', 'updatedAt', 'revisionNumber']
     const orderBy: Prisma.ItemOrderByWithRelationInput = validSort.includes(sortBy)
       ? { [sortBy]: sortOrder }
