@@ -230,7 +230,8 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
   const reloadOpts = useCallback(() => {
     const keys = ['unit', 'chemistryType', 'circuit', 'manufacturer',
       'material', 'color', 'formFactor', 'vendor', 'specialOption', 'certification',
-      'elComponentType', 'meComponentType']
+      'elComponentType', 'meComponentType', 'cdComponentType',
+      'fsComponentType', 'smComponentType', 'rmComponentType', 'otComponentType']
     const store: OptStore = {}
     keys.forEach(k => {
       store[k] = (getOptions(k) as any[]).map(o => ({ value: o.value, label: o.label, colorIndex: o.colorIndex ?? 0, code: o.code ?? o.value }))
