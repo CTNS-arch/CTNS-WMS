@@ -469,6 +469,21 @@ export default function PurchasesPage() {
   async function handleSave() {
     const validItems = form.items.filter(it => it.domestic?.trim() && it.quantity && Number(it.quantity) > 0 && it.unit.trim())
     if (validItems.length === 0) { toast.error('구분(국내/해외) 및 수량·단위가 입력된 품목이 1개 이상 필요합니다.'); return }
+
+    const missingFields = new Set<string>()
+    for (const it of validItems) {
+      if (!it.workCode?.trim())              missingFields.add('프로젝트코드')
+      if (!it.bomNo?.trim())                 missingFields.add('품목코드')
+      if (!it.spec?.trim())                  missingFields.add('품목명')
+      if (!it.deliveryLocation?.trim())      missingFields.add('입고장소')
+      if (!it.requestedDeliveryDate?.trim()) missingFields.add('입고희망일')
+      if (!it.purchaseReason?.trim())        missingFields.add('구매사유')
+    }
+    if (missingFields.size > 0) {
+      toast.error(`필수 항목을 입력해주세요: ${[...missingFields].join(', ')}`)
+      return
+    }
+
     setSaving(true)
     const itemsPayload = form.items.map(it => ({
       domestic: it.domestic || null,
@@ -1114,7 +1129,7 @@ export default function PurchasesPage() {
                 </div>
 
                 <div className="border border-gray-200 rounded-xl overflow-auto flex-1 bg-white">
-                  <table className="text-xs border-collapse" style={{ tableLayout: 'fixed', minWidth: 2040 }}>
+                  <table className="text-xs border-collapse" style={{ tableLayout: 'fixed', minWidth: 1640 }}>
                     <colgroup>
                       <col style={{ width: 36 }} />
                       <col style={{ width: 72 }} />
@@ -1128,10 +1143,6 @@ export default function PurchasesPage() {
                       <col style={{ width: 60 }} />
                       <col style={{ width: 70 }} />
                       <col style={{ width: 70 }} />
-                      <col style={{ width: 100 }} />
-                      <col style={{ width: 110 }} />
-                      <col style={{ width: 90 }} />
-                      <col style={{ width: 100 }} />
                       <col style={{ width: 130 }} />
                       <col style={{ width: 90 }} />
                       <col style={{ width: 110 }} />
@@ -1153,11 +1164,7 @@ export default function PurchasesPage() {
                           { label: '단위', req: true },
                           { label: '수량', req: true },
                           { label: '통화', req: true },
-                          { label: '부대비용', req: true, tooltip: '배송비·수수료 등 부가 비용' },
-                          { label: '공급가액', req: true },
-                          { label: '세액', req: true },
-                          { label: '총액', req: false },
-                          { label: '공급처', req: true },
+                          { label: '공급처', req: false },
                           { label: '입고장소', req: true },
                           { label: '입고희망일', req: true },
                           { label: '구매사유', req: true },
@@ -1293,34 +1300,6 @@ export default function PurchasesPage() {
                               </select>
                             </td>
                             <td className="px-0.5 py-0.5 border-r">
-                              <input type="number" min={0} value={row.additionalCost}
-                                onChange={e => updItem(row._key, 'additionalCost', e.target.value)}
-                                disabled={!isDomesticSelected}
-                                placeholder="0" className={cell + ' text-right' + dimCls} />
-                            </td>
-                            <td className="px-0.5 py-0.5 border-r">
-                              <input type="number" min={0} value={row.supplyAmount}
-                                onChange={e => {
-                                  const val = e.target.value
-                                  const tax = val && Number(val) > 0 ? String(Math.round(Number(val) * 0.1)) : ''
-                                  setForm(f => ({
-                                    ...f,
-                                    items: f.items.map(r => r._key === row._key ? { ...r, supplyAmount: val, taxAmount: tax } : r),
-                                  }))
-                                }}
-                                disabled={!isDomesticSelected}
-                                placeholder="0" className={cell + ' text-right' + dimCls} />
-                            </td>
-                            <td className="px-0.5 py-0.5 border-r">
-                              <input type="number" min={0} value={row.taxAmount}
-                                onChange={e => updItem(row._key, 'taxAmount', e.target.value)}
-                                disabled={!isDomesticSelected}
-                                placeholder="0" className={cell + ' text-right' + dimCls} />
-                            </td>
-                            <td className="px-1.5 py-0.5 border-r text-right tabular-nums text-[11px] font-medium text-gray-600">
-                              {rowTotal > 0 ? fmtMoney(rowTotal) : <span className="text-gray-300">—</span>}
-                            </td>
-                            <td className="px-0.5 py-0.5 border-r">
                               <input
                                 ref={el => { supplierRefs.current[row._key] = el }}
                                 value={row.supplier}
@@ -1370,18 +1349,6 @@ export default function PurchasesPage() {
                         <tr className="bg-blue-50/60 border-t-2 border-blue-100">
                           <td colSpan={12} className="px-3 py-1.5 text-right text-[11px] font-semibold text-blue-700">
                             합계 ({formTotals.count}건)
-                          </td>
-                          <td className="px-2 py-1.5 text-right text-[11px] font-bold text-blue-800 tabular-nums border-r">
-                            {fmtMoney(formTotals.additional)}
-                          </td>
-                          <td className="px-2 py-1.5 text-right text-[11px] font-bold text-blue-800 tabular-nums border-r">
-                            {fmtMoney(formTotals.supply)}
-                          </td>
-                          <td className="px-2 py-1.5 text-right text-[11px] font-bold text-blue-800 tabular-nums border-r">
-                            {fmtMoney(formTotals.tax)}
-                          </td>
-                          <td className="px-2 py-1.5 text-right text-[11px] font-bold text-blue-900 tabular-nums border-r">
-                            {fmtMoney(formTotals.total)}
                           </td>
                           <td colSpan={5} className="px-2 py-1.5 text-[11px] text-blue-500" />
                         </tr>
@@ -1471,16 +1438,21 @@ export default function PurchasesPage() {
 
       {/* ── 공급처 검색 드롭다운 ────────────────────────── */}
       {supplierDropdown && (
-        <div
-          style={{
-            position: 'fixed',
-            top: supplierDropdown.pos.top,
-            left: supplierDropdown.pos.left,
-            minWidth: Math.max(supplierDropdown.pos.width, 320),
-            zIndex: 99999,
-          }}
-          className="bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden"
-        >
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 99998 }}
+            onClick={() => setSupplierDropdown(null)}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: supplierDropdown.pos.top,
+              left: supplierDropdown.pos.left,
+              minWidth: Math.max(supplierDropdown.pos.width, 320),
+              zIndex: 99999,
+            }}
+            className="bg-white border border-gray-200 rounded-xl shadow-2xl overflow-hidden"
+          >
           <div className="px-3 py-2 border-b bg-gray-50 flex items-center justify-between">
             <span className="text-xs text-gray-500 font-medium">공급처 선택</span>
             <span className="text-xs text-gray-400">{supplierDropdown.results.length}건</span>
@@ -1510,7 +1482,8 @@ export default function PurchasesPage() {
               &quot;{supplierDropdown.query}&quot; 신규 등록
             </button>
           )}
-        </div>
+          </div>
+        </>
       )}
 
       {/* ── 구매 처리 다이얼로그 ─────────────────────────── */}

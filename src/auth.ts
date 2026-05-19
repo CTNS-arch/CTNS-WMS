@@ -25,6 +25,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   callbacks: {
     async signIn({ user }) {
       if (!user.email) return false
+      // 관리자가 차단한 계정 확인
+      const dbUser = await prisma.user.findUnique({
+        where: { email: user.email.toLowerCase() },
+        select: { roles: true },
+      }).catch(() => null)
+      if (dbUser?.roles.includes('ACCESS_BLOCKED')) return '/login?error=AccessDenied'
       try {
         const msUsers = await listActiveOrgUsers()
         const emailLower = user.email.toLowerCase()

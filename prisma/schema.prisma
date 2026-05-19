@@ -9,11 +9,12 @@ datasource db {
 // ── 인증 / 사용자 ──────────────────────────────────────────
 
 enum UserRole {
-  ITEM_WRITE   // 품번 생성/편집
-  ITEM_DELETE  // 품번 삭제
-  LAB_STOCK    // 연구소 재고 관리
-  PROD_STOCK   // 생산구매팀 재고 관리
-  MASTER_ADMIN // 마스터 관리자
+  ITEM_WRITE      // 품번 생성/편집
+  ITEM_DELETE     // 품번 삭제
+  LAB_STOCK       // 연구소 재고 관리
+  PROD_STOCK      // 생산구매팀 재고 관리
+  MASTER_ADMIN    // 마스터 관리자
+  ACCESS_BLOCKED  // 로그인 차단
 }
 
 model User {

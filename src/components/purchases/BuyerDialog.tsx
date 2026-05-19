@@ -215,8 +215,8 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
       buyerCurrency:     it.buyerCurrency ?? 'KRW',
       exchangeRate:      it.exchangeRate      != null ? String(it.exchangeRate)      : '',
       additionalCost:    it.additionalCost    != null ? String(it.additionalCost)    : '',
-      buyerSupplyAmount: it.buyerSupplyAmount != null ? String(it.buyerSupplyAmount) : (it.supplyAmount != null ? String(it.supplyAmount) : ''),
-      buyerTaxAmount:    it.buyerTaxAmount    != null ? String(it.buyerTaxAmount)    : (it.taxAmount   != null ? String(it.taxAmount)    : ''),
+      buyerSupplyAmount: it.buyerSupplyAmount != null ? String(it.buyerSupplyAmount) : '',
+      buyerTaxAmount:    it.buyerTaxAmount    != null ? String(it.buyerTaxAmount)    : '',
       krwAmount: it.krwAmount != null ? String(it.krwAmount) : '',
       unitPrice: it.unitPrice != null ? String(it.unitPrice) : '',
       plannedShipDate: toDate(it.plannedShipDate), actualShipDate: toDate(it.actualShipDate),
@@ -246,12 +246,12 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
     const initMap: Record<string, CostRow[]> = {}
     for (const it of request.items ?? []) {
       const rows: CostRow[] = []
-      if (it.buyerSupplyAmount != null || it.supplyAmount != null) {
+      if (it.buyerSupplyAmount != null) {
         rows.push({
           _key: `s-${it.id}`,
           type: '공급금액',
-          supplyAmount: it.buyerSupplyAmount != null ? String(it.buyerSupplyAmount) : (it.supplyAmount != null ? String(it.supplyAmount) : ''),
-          taxAmount: it.buyerTaxAmount != null ? String(it.buyerTaxAmount) : (it.taxAmount != null ? String(it.taxAmount) : ''),
+          supplyAmount: String(it.buyerSupplyAmount),
+          taxAmount: it.buyerTaxAmount != null ? String(it.buyerTaxAmount) : '',
           memo: '',
         })
       }

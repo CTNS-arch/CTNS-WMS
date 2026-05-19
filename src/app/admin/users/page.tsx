@@ -102,6 +102,32 @@ export default function UsersPage() {
     }
   }
 
+  const toggleBlock = async (user: MsUser) => {
+    if (!user.dbId) return
+    const isBlocked = user.roles.includes('ACCESS_BLOCKED')
+    if (!isBlocked) {
+      const confirmed = window.confirm(`${user.name ?? user.email} 사용자의 로그인을 차단하시겠습니까?\n\n차단된 사용자는 즉시 로그인이 불가능합니다.`)
+      if (!confirmed) return
+    }
+    const newRoles = isBlocked
+      ? user.roles.filter(r => r !== 'ACCESS_BLOCKED')
+      : [...user.roles.filter(r => r !== 'ACCESS_BLOCKED'), 'ACCESS_BLOCKED']
+    try {
+      const res = await fetch(`/api/admin/users/${user.dbId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roles: newRoles }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        setUsers(prev => prev.map(u => u.msId === user.msId ? { ...u, roles: newRoles } : u))
+        toast.success(isBlocked ? '차단이 해제되었습니다.' : '로그인이 차단되었습니다.')
+      } else toast.error('저장에 실패했습니다.')
+    } catch {
+      toast.error('서버 오류가 발생했습니다.')
+    }
+  }
+
   const avatarColor = (email: string) =>
     AVATAR_COLORS[email.charCodeAt(0) % AVATAR_COLORS.length]
 
@@ -200,9 +226,10 @@ export default function UsersPage() {
               const isEditing = editingId === user.msId
               const initials = (user.name?.[0] ?? user.email?.[0] ?? '?').toUpperCase()
               const isMaster = user.roles.includes('MASTER_ADMIN')
+              const isBlocked = user.roles.includes('ACCESS_BLOCKED')
 
               return (
-                <div key={user.msId} className={`bg-white rounded-xl border transition-all ${isEditing ? 'ring-2 ring-blue-200 border-blue-300 shadow-sm' : 'hover:border-gray-300'}`}>
+                <div key={user.msId} className={`rounded-xl border transition-all ${isBlocked ? 'bg-red-50/40 border-red-200' : isEditing ? 'bg-white ring-2 ring-blue-200 border-blue-300 shadow-sm' : 'bg-white hover:border-gray-300'}`}>
                   <div className="flex items-start gap-4 p-4">
                     {/* 아바타 */}
                     <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0 ${avatarColor(user.email ?? '')}`}>
@@ -223,6 +250,11 @@ export default function UsersPage() {
                             관리자
                           </span>
                         )}
+                        {isBlocked && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-600 text-white font-semibold border border-red-700">
+                            차단됨
+                          </span>
+                        )}
                         {!user.hasLoggedIn && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-400 border border-gray-200">
                             미로그인
@@ -239,8 +271,8 @@ export default function UsersPage() {
                       {/* 역할 뱃지 (보기 모드) */}
                       {!isEditing && (
                         <div className="mt-2.5 flex flex-wrap gap-1">
-                          {user.roles.length > 0 ? (
-                            user.roles.map(role => (
+                          {user.roles.filter(r => r !== 'ACCESS_BLOCKED').length > 0 ? (
+                            user.roles.filter(r => r !== 'ACCESS_BLOCKED').map(role => (
                               <span key={role} className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${ROLE_MAP[role]?.color ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                                 {ROLE_MAP[role]?.label ?? role}
                               </span>
@@ -291,11 +323,21 @@ export default function UsersPage() {
                       )}
                     </div>
 
-                    {/* 수정 버튼 — 로그인한 사용자만 */}
+                    {/* 수정/차단 버튼 — 로그인한 사용자만 */}
                     {!isEditing && user.hasLoggedIn && (
-                      <Button size="sm" variant="outline" className="shrink-0 h-8 text-xs" onClick={() => startEdit(user)}>
-                        권한 수정
-                      </Button>
+                      <div className="flex flex-col gap-1.5 shrink-0">
+                        <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => startEdit(user)}>
+                          권한 수정
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className={`h-8 text-xs ${isBlocked ? 'border-red-300 text-red-600 hover:bg-red-50' : 'border-gray-300 text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-300'}`}
+                          onClick={() => toggleBlock(user)}
+                        >
+                          {isBlocked ? '차단 해제' : '차단'}
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </div>
