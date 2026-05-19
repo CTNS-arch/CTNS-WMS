@@ -1174,20 +1174,6 @@ export default function PurchasesPage() {
                             <span className="inline-flex items-center gap-0.5">
                               {h.label}
                               {h.req && <span className="text-red-400">*</span>}
-                              {h.tooltip && (
-                                <span
-                                  className="ml-0.5 inline-flex items-center cursor-help"
-                                  onMouseEnter={e => {
-                                    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                                    setTooltipInfo({ x: r.left + r.width / 2, y: r.top, text: h.tooltip! })
-                                  }}
-                                  onMouseLeave={() => setTooltipInfo(null)}
-                                >
-                                  <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                </span>
-                              )}
                             </span>
                           </th>
                         ))}
