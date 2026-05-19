@@ -94,8 +94,8 @@ export function TagMultiSelect({
                   </svg>
                 )}
               </span>
-              <span className={`px-2 py-0.5 rounded text-xs font-medium ${c.bg} ${c.text}`}>
-                {opt.code ? `${opt.label}(${opt.code})` : opt.label}
+              <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${c.bg} ${c.text}`}>
+                {opt.code && opt.code !== opt.label ? `${opt.label}(${opt.code})` : opt.label}
               </span>
             </button>
           )

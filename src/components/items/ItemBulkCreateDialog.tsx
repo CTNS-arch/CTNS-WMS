@@ -23,7 +23,7 @@ type BulkType = 'BATTERY' | 'BMS' | 'ASSEMBLY_OTHER' | 'CELL' | 'COMPONENT_OTHER
 const TYPE_INFO: Record<BulkType, {
   label: string; desc: string; category: string; btnCls: string; badgeCls: string
 }> = {
-  BATTERY:         { label: '배터리팩',    desc: '완제품 배터리팩·소프트팩', category: 'PRODUCT',   btnCls: 'border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700',     badgeCls: 'bg-blue-100 text-blue-700' },
+  BATTERY:         { label: '배터리팩',    desc: '완제품 배터리팩',          category: 'PRODUCT',   btnCls: 'border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700',     badgeCls: 'bg-blue-100 text-blue-700' },
   BMS:             { label: 'BMS/PCM',     desc: 'BMS, PCM 반제품',          category: 'ASSEMBLY',  btnCls: 'border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700', badgeCls: 'bg-purple-100 text-purple-700' },
   ASSEMBLY_OTHER:  { label: '그 외 반제품', desc: 'BMS/PCM 제외 반제품',       category: 'ASSEMBLY',  btnCls: 'border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700', badgeCls: 'bg-indigo-100 text-indigo-700' },
   CELL:            { label: '셀',          desc: '배터리 셀 (CL)',            category: 'COMPONENT', btnCls: 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700', badgeCls: 'bg-emerald-100 text-emerald-700' },
@@ -704,15 +704,10 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
               <div className="flex items-center gap-4">
                 <span className="w-16 text-right text-xs font-bold text-blue-500 shrink-0">완제품</span>
                 <div className="flex gap-2">
-                  {[
-                    { label: '배터리팩', sub: 'BP' },
-                    { label: '소프트팩', sub: 'PO' },
-                  ].map(({ label, sub }) => (
-                    <button key={sub} onClick={() => selectType('BATTERY', sub)}
-                      className="w-28 py-4 rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 hover:shadow-md transition-all text-sm font-bold">
-                      {label}
-                    </button>
-                  ))}
+                  <button onClick={() => selectType('BATTERY', 'BP')}
+                    className="w-28 py-4 rounded-xl border-2 border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 hover:shadow-md transition-all text-sm font-bold">
+                    배터리팩
+                  </button>
                 </div>
               </div>
               {/* 반제품 */}
@@ -720,9 +715,10 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                 <span className="w-16 text-right text-xs font-bold text-purple-500 shrink-0">반제품</span>
                 <div className="flex gap-2">
                   {[
-                    { label: 'BMS',   type: 'BMS' as BulkType,            sub: 'BM' },
-                    { label: 'PCM',   type: 'BMS' as BulkType,            sub: 'PC' },
-                    { label: '그 외', type: 'ASSEMBLY_OTHER' as BulkType, sub: ''   },
+                    { label: 'BMS',    type: 'BMS' as BulkType,            sub: 'BM' },
+                    { label: 'PCM',    type: 'BMS' as BulkType,            sub: 'PC' },
+                    { label: '소프트팩', type: 'ASSEMBLY_OTHER' as BulkType, sub: 'PO' },
+                    { label: '그 외',  type: 'ASSEMBLY_OTHER' as BulkType, sub: ''   },
                   ].map(({ label, type, sub }) => (
                     <button key={label} onClick={() => selectType(type, sub)}
                       className="w-28 py-4 rounded-xl border-2 border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 hover:shadow-md transition-all text-sm font-bold">

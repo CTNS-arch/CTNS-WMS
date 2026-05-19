@@ -445,13 +445,13 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
               <colgroup>
                 <col style={{ width: 36 }} />   {/* 체크 */}
                 <col style={{ width: 32 }} />   {/* # */}
-                <col style={{ width: 155 }} />  {/* 품목코드 */}
-                <col style={{ width: 110 }} />  {/* 중분류 */}
-                <col style={{ width: 95 }} />   {/* 소분류 */}
+                <col style={{ width: 130 }} />  {/* 중분류 */}
+                <col style={{ width: 115 }} />  {/* 소분류 */}
+                <col style={{ width: 145 }} />  {/* 품목코드 */}
                 <col />                          {/* 품명 */}
                 <col style={{ width: 68 }} />   {/* 수량 */}
                 <col style={{ width: 52 }} />   {/* 단위 */}
-                <col style={{ width: 180 }} />  {/* 비고 */}
+                <col style={{ width: 220 }} />  {/* 비고 */}
                 <col style={{ width: 72 }} />   {/* 작업 */}
               </colgroup>
               <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
@@ -462,9 +462,9 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                       className="rounded" />
                   </th>
                   <th className="py-2.5 text-center text-gray-400 font-medium">#</th>
-                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium">품목코드</th>
                   <th className="px-2 py-2.5 text-left text-gray-500 font-medium">중분류</th>
                   <th className="px-2 py-2.5 text-left text-gray-500 font-medium">소분류</th>
+                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium">품목코드</th>
                   <th className="px-2 py-2.5 text-left text-gray-500 font-medium">품명</th>
                   <th className="px-2 py-2.5 text-right text-gray-500 font-medium">수량 <span className="text-red-400">*</span></th>
                   <th className="px-2 py-2.5 text-center text-gray-500 font-medium">단위</th>
@@ -506,6 +506,50 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
 
                         {/* # */}
                         <td className="py-1 text-center text-gray-400 tabular-nums">{num}</td>
+
+                        {/* 중분류 */}
+                        <td className="px-1 py-1 border-r border-gray-100">
+                          {row.child ? (
+                            <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded whitespace-nowrap">
+                              {SUB_LABEL[row.child.subCategory ?? ''] ?? row.child.subCategory ?? '—'}
+                            </span>
+                          ) : (
+                            <TagSelect
+                              value={row.filterSubCat}
+                              onChange={v => updateClassFilter(row._key, 'filterSubCat', v)}
+                              options={ALL_SUB_OPTS}
+                              onAdd={() => {}}
+                              placeholder="전체"
+                              size="sm"
+                              portal
+                              noCreate
+                            />
+                          )}
+                        </td>
+
+                        {/* 소분류 */}
+                        <td className="px-1 py-1 border-r border-gray-100">
+                          {row.child ? (
+                            childThirdVal ? (
+                              <span className="text-[10px] bg-gray-50 text-gray-500 px-1.5 py-0.5 rounded border border-gray-100 whitespace-nowrap">
+                                {thirdLabelMap[childThirdVal] ?? childThirdVal}
+                              </span>
+                            ) : <span className="text-gray-200 text-xs px-1">—</span>
+                          ) : currentThirdOpts.length > 0 ? (
+                            <TagSelect
+                              value={row.filterThird}
+                              onChange={v => updateClassFilter(row._key, 'filterThird', v)}
+                              options={currentThirdOpts}
+                              onAdd={() => {}}
+                              placeholder="전체"
+                              size="sm"
+                              portal
+                              noCreate
+                            />
+                          ) : (
+                            <span className="text-gray-200 text-xs px-1">—</span>
+                          )}
+                        </td>
 
                         {/* 품목코드 (검색 or 표시) */}
                         <td className="px-0.5 py-0.5 border-r border-gray-100">
@@ -633,50 +677,6 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                           )}
                         </td>
 
-                        {/* 중분류 */}
-                        <td className="px-1 py-1 border-r border-gray-100">
-                          {row.child ? (
-                            <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded whitespace-nowrap">
-                              {SUB_LABEL[row.child.subCategory ?? ''] ?? row.child.subCategory ?? '—'}
-                            </span>
-                          ) : (
-                            <TagSelect
-                              value={row.filterSubCat}
-                              onChange={v => updateClassFilter(row._key, 'filterSubCat', v)}
-                              options={ALL_SUB_OPTS}
-                              onAdd={() => {}}
-                              placeholder="전체"
-                              size="sm"
-                              portal
-                              noCreate
-                            />
-                          )}
-                        </td>
-
-                        {/* 소분류 */}
-                        <td className="px-1 py-1 border-r border-gray-100">
-                          {row.child ? (
-                            childThirdVal ? (
-                              <span className="text-[10px] bg-gray-50 text-gray-500 px-1.5 py-0.5 rounded border border-gray-100 whitespace-nowrap">
-                                {thirdLabelMap[childThirdVal] ?? childThirdVal}
-                              </span>
-                            ) : <span className="text-gray-200 text-xs px-1">—</span>
-                          ) : currentThirdOpts.length > 0 ? (
-                            <TagSelect
-                              value={row.filterThird}
-                              onChange={v => updateClassFilter(row._key, 'filterThird', v)}
-                              options={currentThirdOpts}
-                              onAdd={() => {}}
-                              placeholder="전체"
-                              size="sm"
-                              portal
-                              noCreate
-                            />
-                          ) : (
-                            <span className="text-gray-200 text-xs px-1">—</span>
-                          )}
-                        </td>
-
                         {/* 품명 */}
                         <td className="px-2 py-1 text-gray-700 truncate border-r border-gray-100 text-xs">
                           {row.child?.itemName ?? <span className="text-gray-200">—</span>}
@@ -740,9 +740,6 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                             <tr key={`${row._key}-s${si}`} className="bg-purple-50/20 border-b border-purple-100/40">
                               <td className="py-1"></td>
                               <td className="py-1 text-center text-gray-300 text-[10px]">└</td>
-                              <td className="px-2 py-1 pl-5 border-r border-gray-100">
-                                <span className="font-mono text-gray-400 truncate text-xs">{sub.child?.itemCode}</span>
-                              </td>
                               <td className="px-2 py-1 border-r border-gray-100">
                                 {sub.child?.subCategory && <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{SUB_LABEL[sub.child.subCategory] ?? sub.child.subCategory}</span>}
                               </td>
@@ -751,6 +748,9 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                                   const v = THIRD_LEVEL[sub.child?.subCategory ?? '']?.field === 'chemistryType' ? sub.child?.chemistryType : sub.child?.formFactor
                                   return v ? <span className="text-[10px] bg-gray-50 text-gray-400 px-1.5 py-0.5 rounded border border-gray-100">{thirdLabelMap[v] ?? v}</span> : null
                                 })()}
+                              </td>
+                              <td className="px-2 py-1 pl-5 border-r border-gray-100">
+                                <span className="font-mono text-gray-400 truncate text-xs">{sub.child?.itemCode}</span>
                               </td>
                               <td className="px-2 py-1 text-gray-500 truncate border-r border-gray-100 text-xs">{sub.child?.itemName}</td>
                               <td className="px-2 py-1 text-right text-xs text-gray-400 border-r border-gray-100 tabular-nums">{sub.quantity}</td>
