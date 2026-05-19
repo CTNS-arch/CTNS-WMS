@@ -5,7 +5,8 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import ItemFormDialog from '@/components/items/ItemFormDialog'
 import { THIRD_OPTIONS, SUB_OPTIONS, THIRD_LEVEL } from '@/lib/classification'
-import { getOptions } from '@/lib/select-options'
+import { getOptions, SelectOption } from '@/lib/select-options'
+import { TagSelect } from '@/components/ui/tag-select'
 
 const CAT_LABEL: Record<string, string> = { PRODUCT: '완제품', ASSEMBLY: '반제품', COMPONENT: '자재' }
 const CAT_COLOR: Record<string, string> = {
@@ -34,10 +35,10 @@ const SUB_LABEL: Record<string, string> = {
 const ALL_SUB_OPTS = [...SUB_OPTIONS.ASSEMBLY, ...SUB_OPTIONS.COMPONENT]
 
 // 중분류별 소분류 옵션
-function getThirdOpts(subCat: string): { value: string; label: string }[] {
+function getThirdOpts(subCat: string): SelectOption[] {
   const def = THIRD_LEVEL[subCat]
   if (!def) return []
-  if (def.staticOptions) return def.staticOptions
+  if (def.staticOptions) return def.staticOptions as SelectOption[]
   if (def.optKey) return getOptions(def.optKey)
   return []
 }
@@ -55,16 +56,16 @@ function buildThirdValueMap(): Record<string, { field: string; subCats: string[]
   return map
 }
 
-// 전체 소분류 옵션 목록 (중복 제거, label 포함)
-function buildAllThirdOpts(): { value: string; label: string }[] {
+// 전체 소분류 옵션 목록 (중복 제거)
+function buildAllThirdOpts(): SelectOption[] {
   const seen = new Set<string>()
-  const result: { value: string; label: string }[] = []
+  const result: SelectOption[] = []
   for (const [subCat, def] of Object.entries(THIRD_LEVEL)) {
     if (!def) continue
     for (const opt of getThirdOpts(subCat)) {
       if (!seen.has(opt.value)) {
         seen.add(opt.value)
-        result.push({ value: opt.value, label: opt.label })
+        result.push(opt)
       }
     }
   }
@@ -387,7 +388,6 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
   rows.forEach(r => { if (r.child) displayNums.set(r._key, ++cnt) })
 
   const cell = 'h-7 w-full bg-transparent px-2 text-xs focus:bg-white focus:ring-1 focus:ring-blue-400 focus:outline-none hover:bg-gray-50 transition-colors rounded border-0 disabled:opacity-30 disabled:cursor-not-allowed'
-  const selCls = 'h-6 w-full text-xs border border-gray-200 rounded px-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer'
 
   return (
     <>
@@ -640,10 +640,16 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                               {SUB_LABEL[row.child.subCategory ?? ''] ?? row.child.subCategory ?? '—'}
                             </span>
                           ) : (
-                            <select value={row.filterSubCat} onChange={e => updateClassFilter(row._key, 'filterSubCat', e.target.value)} className={selCls}>
-                              <option value="">전체</option>
-                              {ALL_SUB_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </select>
+                            <TagSelect
+                              value={row.filterSubCat}
+                              onChange={v => updateClassFilter(row._key, 'filterSubCat', v)}
+                              options={ALL_SUB_OPTS}
+                              onAdd={() => {}}
+                              placeholder="전체"
+                              size="sm"
+                              portal
+                              noCreate
+                            />
                           )}
                         </td>
 
@@ -656,10 +662,16 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                               </span>
                             ) : <span className="text-gray-200 text-xs px-1">—</span>
                           ) : currentThirdOpts.length > 0 ? (
-                            <select value={row.filterThird} onChange={e => updateClassFilter(row._key, 'filterThird', e.target.value)} className={selCls}>
-                              <option value="">전체</option>
-                              {currentThirdOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </select>
+                            <TagSelect
+                              value={row.filterThird}
+                              onChange={v => updateClassFilter(row._key, 'filterThird', v)}
+                              options={currentThirdOpts}
+                              onAdd={() => {}}
+                              placeholder="전체"
+                              size="sm"
+                              portal
+                              noCreate
+                            />
                           ) : (
                             <span className="text-gray-200 text-xs px-1">—</span>
                           )}

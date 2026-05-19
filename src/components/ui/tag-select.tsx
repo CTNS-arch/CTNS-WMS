@@ -15,12 +15,13 @@ interface Props {
   size?: 'sm' | 'md'
   minDropdownWidth?: number
   requireCode?: boolean
+  noCreate?: boolean
 }
 
 export function TagSelect({
   value, onChange, options, onAdd,
   placeholder = '선택', disabled, portal, size = 'md', minDropdownWidth = 180,
-  requireCode = false,
+  requireCode = false, noCreate = false,
 }: Props) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -130,7 +131,7 @@ export function TagSelect({
                       </svg>
                     )}
                   </span>
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${c.bg} ${c.text}`}>
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${c.bg} ${c.text}`}>
                     {opt.code && opt.code !== opt.label ? `${opt.label}(${opt.code})` : opt.label}
                   </span>
                 </button>
@@ -138,7 +139,7 @@ export function TagSelect({
             })}
             {filtered.length === 0 && !canCreate && <p className="px-3 py-2 text-xs text-gray-400">결과 없음</p>}
           </div>
-          {canCreate && (
+          {canCreate && !noCreate && (
             <div className="border-t px-3 py-2">
               <button type="button"
                 onClick={() => requireCode ? setCodeStep(true) : handleCreateSimple()}
