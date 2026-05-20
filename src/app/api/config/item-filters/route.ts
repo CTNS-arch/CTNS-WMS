@@ -16,9 +16,9 @@ const SMS_SUB_OPTIONS: Record<string, { value: string; label: string }[]> = {
 
 // 중분류별 추가 필터 필드 정의
 const SMS_EXTRA_FILTERS: Record<string, string[]> = {
-  BP: ['chemistryType', 'cellModel', 'circuit', 'packType', 'seriesCount', 'parallelCount', 'layerCount'],
-  BM: ['circuit', 'seriesCount', 'parallelCount', 'layerCount'],
-  PC: ['circuit', 'seriesCount', 'parallelCount', 'layerCount'],
+  BP: ['chemistryType', 'cellModel', 'circuit', 'packType', 'seriesCount', 'parallelCount', 'layerCount', 'certifications', 'specialOptions', 'vendors'],
+  BM: ['manufacturer', 'maxSeriesCount', 'continuousDischargeCurrent', 'certifications', 'specialOptions'],
+  PC: ['manufacturer', 'maxSeriesCount', 'continuousDischargeCurrent', 'certifications', 'specialOptions'],
   CH: ['length', 'width', 'height', 'diameter', 'weight', 'material'],
 }
 
