@@ -771,7 +771,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     셀
                   </button>
                   <button onClick={() => selectType('CHARGER')}
-                    className="w-28 py-4 rounded-xl border-2 border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700 hover:shadow-md transition-all text-sm font-bold">
+                    className="w-28 py-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:shadow-md transition-all text-sm font-bold">
                     충전기
                   </button>
                   <button onClick={() => selectType('COMPONENT_OTHER')}
