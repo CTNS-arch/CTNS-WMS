@@ -832,7 +832,6 @@ export default function PurchasesPage() {
               <col style={{ width: 110 }} />
               <col style={{ width: 160 }} />
               <col style={{ width: 80 }} />
-              <col style={{ width: 90 }} />
               <col style={{ width: 100 }} />
               <col style={{ width: 90 }} />
               <col style={{ width: 130 }} />
@@ -842,7 +841,7 @@ export default function PurchasesPage() {
             <thead className="bg-white sticky top-0 z-10">
               <tr className="border-b border-gray-200">
                 <th className="w-1 p-0" />
-                {['상태', '구분', '구매요청코드', '요청자', '배송지', '품목코드', '품목명', '수량', '총액', '공급처', '입고희망일', '구매사유', '진행자', '관리'].map(h => (
+                {['상태', '구분', '구매요청코드', '요청자', '배송지', '품목코드', '품목명', '수량', '공급처', '입고희망일', '구매사유', '진행자', '관리'].map(h => (
                   <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 whitespace-nowrap">
                     {h}
                   </th>
@@ -851,10 +850,10 @@ export default function PurchasesPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={15} className="px-3 py-16 text-center text-gray-400 text-xs">불러오는 중...</td></tr>
+                <tr><td colSpan={14} className="px-3 py-16 text-center text-gray-400 text-xs">불러오는 중...</td></tr>
               ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan={15} className="px-3 py-16 text-center">
+                  <td colSpan={14} className="px-3 py-16 text-center">
                     <div className="text-gray-300 text-2xl mb-2">📋</div>
                     <div className="text-gray-400 text-xs">구매 요청 내역이 없습니다.</div>
                   </td>
@@ -925,11 +924,6 @@ export default function PurchasesPage() {
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap text-right text-xs tabular-nums text-gray-700">
                         {item ? `${Number(item.quantity).toLocaleString()} ${item.unit || ''}` : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-right text-xs tabular-nums text-gray-700 font-medium">
-                        {itemTotal && itemTotal > 0
-                          ? fmtMoney(itemTotal)
-                          : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-3 py-2 text-gray-600 whitespace-nowrap text-xs">
                         {item?.supplier || <span className="text-gray-300">—</span>}
