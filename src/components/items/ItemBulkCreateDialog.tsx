@@ -712,7 +712,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                   : 110
 
   const thL  = 'px-1.5 py-2.5 text-left text-[11px] text-gray-600 font-semibold whitespace-nowrap'
-  const thSm = 'px-1 py-2.5 text-center text-[10px] text-gray-400 font-medium whitespace-nowrap'
+  const thSm = 'px-1 py-2.5 text-center text-[11px] text-gray-600 font-semibold whitespace-nowrap'
   const cellCls = 'h-7 w-full rounded border-0 bg-transparent px-1.5 text-xs focus:bg-white focus:ring-1 focus:ring-blue-400 focus:outline-none hover:bg-gray-50 transition-colors'
 
   return (
