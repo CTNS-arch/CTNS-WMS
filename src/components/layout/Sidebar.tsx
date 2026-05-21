@@ -177,18 +177,18 @@ export default function Sidebar() {
                 {session.user.name ?? session.user.email}
               </p>
               {session.user.name && (
-                <p className="text-[10px] truncate" style={{ color: '#475569' }}>{session.user.email}</p>
+                <p className="text-[10px] text-slate-400 truncate">{session.user.email}</p>
               )}
             </div>
             <button
               onClick={() => signOut({ callbackUrl: '/login' })}
-              className="shrink-0 transition-colors hover:text-white"
-              style={{ color: '#475569' }}
+              className="shrink-0 flex items-center gap-1 text-slate-400 hover:text-white transition-colors text-[10px]"
               title="로그아웃"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
               </svg>
+              <span>로그아웃</span>
             </button>
           </div>
         </div>

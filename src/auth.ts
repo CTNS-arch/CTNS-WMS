@@ -48,12 +48,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user?.id) token.id = user.id
       if (account?.providerAccountId) token.msOid = account.providerAccountId
 
-      // MS 계정 활성 여부 30분마다 재확인
+      // MS 계정 활성 여부 30분마다 재확인 (이메일/UPN 기준 — OID 불일치 방지)
       const MS_CHECK_INTERVAL = 30 * 60 * 1000
       const lastCheck = (token.lastMsCheck as number) ?? 0
-      if (token.msOid && Date.now() - lastCheck > MS_CHECK_INTERVAL) {
+      const checkId = (token.email as string | undefined) ?? (token.msOid as string | undefined)
+      if (checkId && Date.now() - lastCheck > MS_CHECK_INTERVAL) {
         try {
-          token.msActive = await isOrgUserActive(token.msOid as string)
+          token.msActive = await isOrgUserActive(checkId)
         } catch {
           token.msActive = token.msActive ?? true // Graph API 장애 시 현재 상태 유지
         }
