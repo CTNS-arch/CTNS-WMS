@@ -765,18 +765,17 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
               <div className="flex items-center gap-4">
                 <span className="w-16 text-right text-xs font-bold text-emerald-500 shrink-0">자재</span>
                 <div className="flex gap-2">
-                  {[
-                    { label: '셀',    type: 'CELL' as BulkType,            sub: 'CL' },
-                    { label: '그 외', type: 'COMPONENT_OTHER' as BulkType, sub: ''   },
-                  ].map(({ label, type, sub }) => (
-                    <button key={label} onClick={() => selectType(type, sub)}
-                      className="w-28 py-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:shadow-md transition-all text-sm font-bold">
-                      {label}
-                    </button>
-                  ))}
+                  <button onClick={() => selectType('CELL', 'CL')}
+                    className="w-28 py-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:shadow-md transition-all text-sm font-bold">
+                    셀
+                  </button>
                   <button onClick={() => selectType('CHARGER')}
                     className="w-28 py-4 rounded-xl border-2 border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700 hover:shadow-md transition-all text-sm font-bold">
                     충전기
+                  </button>
+                  <button onClick={() => selectType('COMPONENT_OTHER')}
+                    className="w-28 py-4 rounded-xl border-2 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 hover:shadow-md transition-all text-sm font-bold">
+                    그 외
                   </button>
                 </div>
               </div>
@@ -826,7 +825,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     {/* 소분류: COMPONENT_OTHER만 */}
                     {bulkType === 'COMPONENT_OTHER' && <th className={thL} style={{ width: subColW }}>소분류</th>}
 
-                    {bulkType !== 'CELL' && <th className={thL} style={{ width: bulkType === 'BATTERY' ? 220 : undefined }}>품명 <span className="text-red-400">*</span></th>}
+                    {bulkType !== 'CELL' && <th className={thL} style={{ width: bulkType === 'BATTERY' || bulkType === 'CHARGER' ? 220 : undefined }}>품명 <span className="text-red-400">*</span></th>}
 
                     {/* BATTERY 전용 */}
                     {bulkType === 'BATTERY' && <th className={thSm} style={{ width: 220 }}>셀(CL) 선택</th>}
@@ -1012,7 +1011,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
 
                         {/* 품명 (CELL 제외) */}
                         {bulkType !== 'CELL' && (
-                          <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: bulkType === 'BATTERY' ? 220 : undefined }}>
+                          <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: bulkType === 'BATTERY' || bulkType === 'CHARGER' ? 220 : undefined }}>
                             {row.error
                               ? <span className="px-2 text-xs text-red-500 block py-1.5">{row.error}</span>
                               : <input
