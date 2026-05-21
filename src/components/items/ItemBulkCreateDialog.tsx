@@ -886,7 +886,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     {(bulkType === 'BATTERY' || bulkType === 'BMS') && <th className={thSm} style={{ width: 130 }}>특수옵션</th>}
                     {bulkType === 'BATTERY' && <th className={thSm} style={{ width: 120 }}>인증</th>}
                     {bulkType === 'BATTERY' && <th className={thSm} style={{ width: 64 }}>도면</th>}
-                    {bulkType !== 'COMPONENT_OTHER' && bulkType !== 'CELL' && <th className={thSm} style={{ width: 130 }}>고객사</th>}
+                    {bulkType !== 'COMPONENT_OTHER' && bulkType !== 'CELL' && bulkType !== 'CHARGER' && <th className={thSm} style={{ width: 130 }}>고객사</th>}
                     <th className={thL} style={{ width: 120 }}>비고</th>
                     <th className={thL} style={{ width: 180 }}>BOM 연결 <span className="text-gray-400 font-normal">(완제품/반제품)</span></th>
                     <th className="py-2.5 text-center text-[10px] text-gray-400 font-medium" style={{ width: 52 }}>작업</th>
