@@ -338,13 +338,15 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
     return () => { if (revFetchTimer.current) clearTimeout(revFetchTimer.current) }
   }, [rows, bulkType])
 
+  const makeRowForType = useCallback((type: BulkType, sub: string) => (): BulkRow => {
+    if (type === 'CHARGER') return { ...emptyRow(), subCategory: 'EL', thirdLevel: 'CH' }
+    return { ...emptyRow(), subCategory: sub }
+  }, [])
+
   const selectType = (type: BulkType, sub = '') => {
     setBulkType(type)
     setFixedSub(sub)
-    const makeRow = type === 'CHARGER'
-      ? () => ({ ...emptyRow(), subCategory: 'EL', thirdLevel: 'CH' })
-      : () => ({ ...emptyRow(), subCategory: sub })
-    setRows(Array.from({ length: 10 }, makeRow))
+    setRows(Array.from({ length: 10 }, makeRowForType(type, sub)))
     setSelectedKeys(new Set())
   }
 
@@ -393,7 +395,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
     e.preventDefault()
     setRows(prev => {
       if (idx >= prev.length - 1) {
-        const row = emptyRow()
+        const row = bulkType ? makeRowForType(bulkType, fixedSub)() : emptyRow()
         setTimeout(() => nameRefs.current[row._key]?.focus(), 30)
         return [...prev, row]
       }
@@ -467,7 +469,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
   const handleSubmit = async () => {
     if (!bulkType) return
     if (filledRows.length === 0) { toast.error('등록할 품목이 없습니다.'); return }
-    const needSub = bulkType !== 'CELL'
+    const needSub = bulkType !== 'CELL' && bulkType !== 'CHARGER'
     const invalid = filledRows.filter(r => !r.unit || (needSub && !r.subCategory))
     if (invalid.length > 0) {
       setRows(prev => prev.map(r => {
@@ -802,8 +804,8 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                 )}
               </div>
               <div className="flex gap-1.5">
-                <Button variant="outline" size="sm" className="h-7 text-xs px-3" onClick={() => setRows(p => [...p, ...Array.from({ length: 5 }, emptyRow)])}>+ 5행</Button>
-                <Button variant="outline" size="sm" className="h-7 text-xs px-3" onClick={() => setRows(p => [...p, ...Array.from({ length: 10 }, emptyRow)])}>+ 10행</Button>
+                <Button variant="outline" size="sm" className="h-7 text-xs px-3" onClick={() => { const mk = bulkType ? makeRowForType(bulkType, fixedSub) : emptyRow; setRows(p => [...p, ...Array.from({ length: 5 }, mk)]) }}>+ 5행</Button>
+                <Button variant="outline" size="sm" className="h-7 text-xs px-3" onClick={() => { const mk = bulkType ? makeRowForType(bulkType, fixedSub) : emptyRow; setRows(p => [...p, ...Array.from({ length: 10 }, mk)]) }}>+ 10행</Button>
               </div>
             </div>
 
