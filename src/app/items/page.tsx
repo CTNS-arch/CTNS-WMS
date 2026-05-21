@@ -196,6 +196,7 @@ export default function ItemsPage() {
   const isCell      = isComp && filterSubCategory.length > 0 && filterSubCategory.every(s => s === 'CL')
   const isCompOther = isComp && !isCell
   const isElComp    = isComp && filterSubCategory.length > 0 && filterSubCategory.every(s => s === 'EL')
+  const isCharger   = isAsm && filterSubCategory.length > 0 && filterSubCategory.every(s => s === 'CHG')
 
   // 소분류(3분류) 필터: COMPONENT + CL 제외 단일 중분류 선택 시
   const singleNonClSub = isComp && filterSubCategory.length === 1 && filterSubCategory[0] !== 'CL'
@@ -220,7 +221,7 @@ export default function ItemsPage() {
 
   // 뷰별 총 컬럼 수 (colSpan 계산용) — BOM 컬럼은 isComp 제외
   const hasBomCol = !isComp
-  const colCount = isAll ? 11 : (isProd || isPO) ? 24 : isBmsPcm ? 15 : isAsmGeneric ? 19 : isCell ? 26 : isElComp ? 23 : isCompOther ? 22 : 17
+  const colCount = isAll ? 11 : (isProd || isPO) ? 24 : isBmsPcm ? 15 : isCharger ? 22 : isAsmGeneric ? 19 : isCell ? 26 : isElComp ? 23 : isCompOther ? 22 : 17
 
   const fetchItems = useCallback(async () => {
     setLoading(true)
@@ -476,7 +477,7 @@ export default function ItemsPage() {
     .forEach(key => getOptions(key).forEach((o: SelectOption) => { formFactorLabelMap[o.value] = o.label }))
 
   // 뷰별 테이블 너비
-  const tableWidth = isAll ? 1385 : (isProd || isPO) ? 2410 : isBmsPcm ? 1740 : isAsmGeneric ? 1980 : isCell ? 2750 : isElComp ? 2310 : isCompOther ? 2240 : 1820
+  const tableWidth = isAll ? 1385 : (isProd || isPO) ? 2410 : isBmsPcm ? 1740 : isCharger ? 2250 : isAsmGeneric ? 1980 : isCell ? 2750 : isElComp ? 2310 : isCompOther ? 2240 : 1820
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -841,6 +842,8 @@ export default function ItemsPage() {
                 {isAsmGeneric && <><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /></>}
                 {/* 셀: 화학계, 셀모델, 직경, 높이, 전기사양 11개, 스펙시트 */}
                 {isCell && <><col style={{ width: 85 }} /><col style={{ width: 120 }} /><col style={{ width: 75 }} /><col style={{ width: 75 }} /><col style={{ width: 105 }} /><col style={{ width: 85 }} /><col style={{ width: 105 }} /><col style={{ width: 90 }} /><col style={{ width: 80 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 85 }} /><col style={{ width: 85 }} /><col style={{ width: 80 }} /></>}
+                {/* 충전기: 직렬 수, 충전종료전압, 충전전류 */}
+                {isCharger && <><col style={{ width: 65 }} /><col style={{ width: 105 }} /><col style={{ width: 100 }} /></>}
                 {/* 셀이외자재: 가로, 세로, 높이, 내경가로, 내경세로, 내경높이, 직경, 두께, 무게 */}
                 {isCompOther && <><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 80 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /></>}
                 {/* 재질: 일반반제품·셀이외자재 */}
@@ -922,6 +925,11 @@ export default function ItemsPage() {
                     <TableHead className="whitespace-nowrap text-xs">충전 C-rate</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">방전 C-rate</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">스펙시트</TableHead>
+                  </>}
+                  {isCharger && <>
+                    <TableHead className="whitespace-nowrap text-xs">직렬 수(S)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">충전종료전압(V)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">충전전류(A)</TableHead>
                   </>}
                   {isCompOther && <>
                     <TableHead className="whitespace-nowrap text-xs">가로(mm)</TableHead>
@@ -1027,6 +1035,11 @@ export default function ItemsPage() {
                         <TableCell className="text-xs text-center text-gray-900">{item.chargeCRate != null ? Number(item.chargeCRate) : '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.dischargeCRate != null ? Number(item.dischargeCRate) : '-'}</TableCell>
                         <TableCell><DrawingsCell urls={(item as any).specSheets ?? []} /></TableCell>
+                      </>}
+                      {isCharger && <>
+                        <TableCell className="text-xs text-center text-gray-900">{item.seriesCount ?? '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.chargeCutoffVoltage != null ? Number(item.chargeCutoffVoltage) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.continuousChargeCurrent != null ? Number(item.continuousChargeCurrent) : '-'}</TableCell>
                       </>}
                       {isCompOther && <>
                         <TableCell className="text-xs text-center text-gray-900">{item.length != null ? Number(item.length) : '-'}</TableCell>
