@@ -1138,7 +1138,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
             <Field label="단위">
               <TagSelect value={form.unit} onChange={v => set('unit', v)} options={opts.unit ?? []} onAdd={addOpt('unit')} placeholder="단위 선택" />
             </Field>
-            {form.category !== 'COMPONENT' && (
+            {(form.category !== 'COMPONENT' || isCharger) && (
               <Field label="고객사">
                 <TagMultiSelect value={form.vendors} onChange={v => set('vendors', v)} options={opts.vendor ?? []} onAdd={addOpt('vendor')} placeholder="고객사 선택 또는 입력 후 만들기" />
               </Field>

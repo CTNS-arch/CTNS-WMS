@@ -886,7 +886,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     {(bulkType === 'BATTERY' || bulkType === 'BMS') && <th className={thSm} style={{ width: 130 }}>특수옵션</th>}
                     {bulkType === 'BATTERY' && <th className={thSm} style={{ width: 120 }}>인증</th>}
                     {bulkType === 'BATTERY' && <th className={thSm} style={{ width: 64 }}>도면</th>}
-                    {bulkType !== 'COMPONENT_OTHER' && bulkType !== 'CELL' && bulkType !== 'CHARGER' && <th className={thSm} style={{ width: 130 }}>고객사</th>}
+                    {bulkType !== 'COMPONENT_OTHER' && bulkType !== 'CELL' && <th className={thSm} style={{ width: 130 }}>고객사</th>}
                     <th className={thL} style={{ width: 120 }}>비고</th>
                     <th className={thL} style={{ width: 180 }}>BOM 연결 <span className="text-gray-400 font-normal">(완제품/반제품)</span></th>
                     <th className="py-2.5 text-center text-[10px] text-gray-400 font-medium" style={{ width: 52 }}>작업</th>
@@ -1238,8 +1238,8 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                           </td>
                         )}
 
-                        {/* 고객사 (COMPONENT_OTHER, CELL, CHARGER 제외) */}
-                        {bulkType !== 'COMPONENT_OTHER' && bulkType !== 'CELL' && bulkType !== 'CHARGER' && tms(130, row.vendors, v => upd(row._key, 'vendors', v), opts.vendor ?? [], 'vendor', '고객사')}
+                        {/* 고객사 (COMPONENT_OTHER, CELL 제외) */}
+                        {bulkType !== 'COMPONENT_OTHER' && bulkType !== 'CELL' && tms(130, row.vendors, v => upd(row._key, 'vendors', v), opts.vendor ?? [], 'vendor', '고객사')}
 
                         {/* 비고 */}
                         <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 120 }}>
