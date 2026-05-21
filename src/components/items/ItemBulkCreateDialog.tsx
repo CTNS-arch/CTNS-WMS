@@ -18,12 +18,13 @@ import {
 } from '@/lib/item-code'
 
 // ── 품목 유형 ──────────────────────────────────────────────
-type BulkType = 'BATTERY' | 'BMS' | 'ASSEMBLY_OTHER' | 'CELL' | 'COMPONENT_OTHER' | 'CHARGER'
+type BulkType = 'BATTERY' | 'BMS' | 'ASSEMBLY_OTHER' | 'CELL' | 'COMPONENT_OTHER' | 'CHARGER' | 'SOFTPACK'
 
 const TYPE_INFO: Record<BulkType, {
   label: string; desc: string; category: string; btnCls: string; badgeCls: string
 }> = {
   BATTERY:         { label: '배터리팩',    desc: '완제품 배터리팩',          category: 'PRODUCT',   btnCls: 'border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700',     badgeCls: 'bg-blue-100 text-blue-700' },
+  SOFTPACK:        { label: '소프트팩',    desc: '반제품 Soft pack (PO)',     category: 'ASSEMBLY',  btnCls: 'border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700', badgeCls: 'bg-purple-100 text-purple-700' },
   BMS:             { label: 'BMS/PCM',     desc: 'BMS, PCM 반제품',          category: 'ASSEMBLY',  btnCls: 'border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700', badgeCls: 'bg-purple-100 text-purple-700' },
   ASSEMBLY_OTHER:  { label: '그 외 반제품', desc: 'BMS/PCM 제외 반제품',       category: 'ASSEMBLY',  btnCls: 'border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700', badgeCls: 'bg-indigo-100 text-indigo-700' },
   CELL:            { label: '셀',          desc: '배터리 셀 (CL)',            category: 'COMPONENT', btnCls: 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700', badgeCls: 'bg-emerald-100 text-emerald-700' },
@@ -43,6 +44,7 @@ function getSubOpts(type: BulkType, subMap: Record<string, SelectOption[]>): Sel
   const comp = subMap['COMPONENT'] ?? []
   switch (type) {
     case 'BATTERY':         return subMap['PRODUCT'] ?? []
+    case 'SOFTPACK':        return asm.filter(o => o.value === 'PO')
     case 'BMS':             return asm.filter(o => ['BM', 'PC'].includes(o.value))
     case 'ASSEMBLY_OTHER':  return asm.filter(o => !['BM', 'PC', 'PO'].includes(o.value))
     case 'CELL':            return comp.filter(o => o.value === 'CL')
@@ -52,7 +54,7 @@ function getSubOpts(type: BulkType, subMap: Record<string, SelectOption[]>): Sel
 }
 
 const DIALOG_W: Record<BulkType, number> = {
-  BATTERY: 1500, BMS: 1360, ASSEMBLY_OTHER: 1020, CELL: 1760, COMPONENT_OTHER: 1870, CHARGER: 1190,
+  BATTERY: 1500, SOFTPACK: 1500, BMS: 1360, ASSEMBLY_OTHER: 1020, CELL: 1760, COMPONENT_OTHER: 1870, CHARGER: 1190,
 }
 
 // ── 행 구조 ────────────────────────────────────────────────
@@ -163,6 +165,7 @@ function previewCode(row: BulkRow, type: BulkType, revisionNumber = 1): string {
   if (!sub) return '—'
   switch (type) {
     case 'BATTERY':
+    case 'SOFTPACK':
       return buildItemCode(buildCodeParts({
         category, subCategory: sub,
         chemistryType: row.chemistryType || undefined,
@@ -339,7 +342,8 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
   }, [rows, bulkType])
 
   const makeRowForType = useCallback((type: BulkType, sub: string) => (): BulkRow => {
-    if (type === 'CHARGER') return { ...emptyRow(), subCategory: 'EL', thirdLevel: 'CH' }
+    if (type === 'CHARGER')  return { ...emptyRow(), subCategory: 'EL', thirdLevel: 'CH' }
+    if (type === 'SOFTPACK') return { ...emptyRow(), subCategory: 'PO' }
     return { ...emptyRow(), subCategory: sub }
   }, [])
 
@@ -498,6 +502,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
       let code1: string
       switch (bulkType) {
         case 'BATTERY':
+        case 'SOFTPACK':
           code1 = buildItemCode(buildCodeParts({ category, subCategory: sub, chemistryType: row.chemistryType || undefined, cellModel: row.cellModel || undefined, seriesCount: row.seriesCount ? Number(row.seriesCount) : undefined, parallelCount: row.parallelCount ? Number(row.parallelCount) : undefined, circuit: row.circuit || undefined, revisionNumber: 1 }))
           break
         case 'BMS':
@@ -557,6 +562,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
 
         switch (bulkType) {
           case 'BATTERY':
+          case 'SOFTPACK':
             itemCode = buildItemCode(buildCodeParts({ category, subCategory: sub, chemistryType: row.chemistryType || undefined, cellModel: row.cellModel || undefined, seriesCount: row.seriesCount ? Number(row.seriesCount) : undefined, parallelCount: row.parallelCount ? Number(row.parallelCount) : undefined, circuit: row.circuit || undefined, revisionNumber }))
             break
           case 'BMS':
@@ -582,6 +588,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
 
       switch (bulkType) {
         case 'BATTERY':
+        case 'SOFTPACK':
           Object.assign(payload, {
             chemistryType: row.chemistryType || null, cellModel: row.cellModel || null,
             seriesCount: ni(row.seriesCount), parallelCount: ni(row.parallelCount),
@@ -697,9 +704,10 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
     const options = def.staticOptions ?? (def.optKey ? opts[def.optKey] ?? [] : [])
     options.forEach(o => { thirdToSubMap[o.value] = sub })
   })
-  const info      = bulkType ? TYPE_INFO[bulkType] : null
-  const dialogW   = bulkType ? DIALOG_W[bulkType] : 780
-  const codeColW  = bulkType === 'BATTERY' ? 185
+  const info         = bulkType ? TYPE_INFO[bulkType] : null
+  const dialogW      = bulkType ? DIALOG_W[bulkType] : 780
+  const isBatteryLike = bulkType === 'BATTERY' || bulkType === 'SOFTPACK'
+  const codeColW  = isBatteryLike ? 185
                   : bulkType === 'BMS'      ? 140
                   : bulkType === 'CELL'     ? 130
                   : bulkType === 'COMPONENT_OTHER' ? 100
@@ -761,7 +769,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                 <span className="w-16 text-right text-xs font-bold text-purple-500 shrink-0">반제품</span>
                 <div className="flex gap-2">
                   {[
-                    { label: '소프트팩', type: 'ASSEMBLY_OTHER' as BulkType, sub: 'PO' },
+                    { label: '소프트팩', type: 'SOFTPACK' as BulkType,       sub: 'PO' },
                     { label: 'BMS',    type: 'BMS' as BulkType,            sub: 'BM' },
                     { label: 'PCM',    type: 'BMS' as BulkType,            sub: 'PC' },
                     { label: '그 외',  type: 'ASSEMBLY_OTHER' as BulkType, sub: ''   },
@@ -837,13 +845,13 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     {/* 소분류: COMPONENT_OTHER만 */}
                     {bulkType === 'COMPONENT_OTHER' && <th className={thL} style={{ width: subColW }}>소분류</th>}
 
-                    {bulkType !== 'CELL' && <th className={thL} style={{ width: bulkType === 'BATTERY' || bulkType === 'CHARGER' ? 220 : undefined }}>품명 <span className="text-red-400">*</span></th>}
+                    {bulkType !== 'CELL' && <th className={thL} style={{ width: isBatteryLike || bulkType === 'CHARGER' ? 220 : undefined }}>품명 <span className="text-red-400">*</span></th>}
 
-                    {/* BATTERY 전용 */}
-                    {bulkType === 'BATTERY' && <th className={thSm} style={{ width: 220 }}>셀(CL) 선택</th>}
-                    {bulkType === 'BATTERY' && <th className={thSm} style={{ width: 60 }}>직렬(S)</th>}
-                    {bulkType === 'BATTERY' && <th className={thSm} style={{ width: 60 }}>병렬(P)</th>}
-                    {bulkType === 'BATTERY' && <th className={thSm} style={{ width: 90 }}>회로</th>}
+                    {/* BATTERY / SOFTPACK 전용 */}
+                    {isBatteryLike && <th className={thSm} style={{ width: 220 }}>셀(CL) 선택</th>}
+                    {isBatteryLike && <th className={thSm} style={{ width: 60 }}>직렬(S)</th>}
+                    {isBatteryLike && <th className={thSm} style={{ width: 60 }}>병렬(P)</th>}
+                    {isBatteryLike && <th className={thSm} style={{ width: 90 }}>회로</th>}
 
                     {/* BMS 전용 */}
                     {bulkType === 'BMS' && <th className={thSm} style={{ width: 110 }}>제조사</th>}
@@ -891,9 +899,9 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
 
                     {/* 공통 */}
                     <th className={thL} style={{ width: 80 }}>단위 <span className="text-red-400">*</span></th>
-                    {(bulkType === 'BATTERY' || bulkType === 'BMS') && <th className={thSm} style={{ width: 130 }}>특수옵션</th>}
-                    {bulkType === 'BATTERY' && <th className={thSm} style={{ width: 120 }}>인증</th>}
-                    {bulkType === 'BATTERY' && <th className={thSm} style={{ width: 64 }}>도면</th>}
+                    {(isBatteryLike || bulkType === 'BMS') && <th className={thSm} style={{ width: 130 }}>특수옵션</th>}
+                    {isBatteryLike && <th className={thSm} style={{ width: 120 }}>인증</th>}
+                    {isBatteryLike && <th className={thSm} style={{ width: 64 }}>도면</th>}
                     {bulkType !== 'COMPONENT_OTHER' && bulkType !== 'CELL' && <th className={thSm} style={{ width: 130 }}>고객사</th>}
                     <th className={thL} style={{ width: 120 }}>비고</th>
                     <th className={thL} style={{ width: 180 }}>BOM 연결 <span className="text-gray-400 font-normal">(완제품/반제품)</span></th>
@@ -982,11 +990,16 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                         </td>
 
                         {/* 중분류 */}
-                        {bulkType !== 'CELL' && bulkType !== 'CHARGER' && (
+                        {bulkType !== 'CELL' && bulkType !== 'CHARGER' && bulkType !== 'SOFTPACK' && (
                           <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: subColW }}>
                             <TagSelect value={row.subCategory} onChange={v => updSub(row._key, v)} options={subOpts}
                               onAdd={() => {}} placeholder="선택" portal size="sm"
                               minDropdownWidth={bulkType === 'ASSEMBLY_OTHER' ? 240 : 180} />
+                          </td>
+                        )}
+                        {bulkType === 'SOFTPACK' && (
+                          <td className="px-1.5 py-1" style={{ width: subColW }}>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-purple-100 text-purple-700">소프트팩(PO)</span>
                           </td>
                         )}
                         {bulkType === 'CHARGER' && (
@@ -1024,7 +1037,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
 
                         {/* 품명 (CELL 제외) */}
                         {bulkType !== 'CELL' && (
-                          <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: bulkType === 'BATTERY' || bulkType === 'CHARGER' ? 220 : undefined }}>
+                          <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: isBatteryLike || bulkType === 'CHARGER' ? 220 : undefined }}>
                             {row.error
                               ? <span className="px-2 text-xs text-red-500 block py-1.5">{row.error}</span>
                               : <input
@@ -1038,8 +1051,8 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                           </td>
                         )}
 
-                        {/* ── BATTERY 전용: CL 품목 선택 ── */}
-                        {bulkType === 'BATTERY' && (() => {
+                        {/* ── BATTERY/SOFTPACK 전용: CL 품목 선택 ── */}
+                        {isBatteryLike && (() => {
                           const clState = clSearches[row._key]
                           const selectedCL = clState?.selected ?? null
                           return (
@@ -1108,18 +1121,18 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                             </td>
                           )
                         })()}
-                        {/* ── BATTERY 전용 ── */}
-                        {bulkType === 'BATTERY' && (
+                        {/* ── BATTERY/SOFTPACK 전용 ── */}
+                        {isBatteryLike && (
                           <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 60 }}>
                             <input type="number" step="any" value={row.seriesCount} onChange={e => updBatteryCount(row._key, 'seriesCount', e.target.value)} onWheel={e => e.currentTarget.blur()} placeholder="S" className={cellCls + ' text-right'} />
                           </td>
                         )}
-                        {bulkType === 'BATTERY' && (
+                        {isBatteryLike && (
                           <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 60 }}>
                             <input type="number" step="any" value={row.parallelCount} onChange={e => updBatteryCount(row._key, 'parallelCount', e.target.value)} onWheel={e => e.currentTarget.blur()} placeholder="P" className={cellCls + ' text-right'} />
                           </td>
                         )}
-                        {bulkType === 'BATTERY' && ts(90, row.circuit, v => upd(row._key, 'circuit', v), opts.circuit ?? [], 'circuit', '회로')}
+                        {isBatteryLike && ts(90, row.circuit, v => upd(row._key, 'circuit', v), opts.circuit ?? [], 'circuit', '회로')}
 
                         {/* ── BMS 전용 ── */}
                         {bulkType === 'BMS' && ts(110, row.manufacturer, v => upd(row._key, 'manufacturer', v), opts.manufacturer ?? [], 'manufacturer', '제조사')}
@@ -1230,14 +1243,14 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                             placeholder="단위" portal size="sm" />
                         </td>
 
-                        {/* 특수옵션 (BATTERY, BMS) */}
-                        {(bulkType === 'BATTERY' || bulkType === 'BMS') && tms(130, row.specialOptions, v => upd(row._key, 'specialOptions', v), opts.specialOption ?? [], 'specialOption', '특수옵션')}
+                        {/* 특수옵션 (BATTERY/SOFTPACK, BMS) */}
+                        {(isBatteryLike || bulkType === 'BMS') && tms(130, row.specialOptions, v => upd(row._key, 'specialOptions', v), opts.specialOption ?? [], 'specialOption', '특수옵션')}
 
-                        {/* 인증 (BATTERY) */}
-                        {bulkType === 'BATTERY' && tms(120, row.certifications, v => upd(row._key, 'certifications', v), opts.certification ?? [], 'certification', '인증')}
+                        {/* 인증 (BATTERY/SOFTPACK) */}
+                        {isBatteryLike && tms(120, row.certifications, v => upd(row._key, 'certifications', v), opts.certification ?? [], 'certification', '인증')}
 
-                        {/* 도면 (BATTERY) */}
-                        {bulkType === 'BATTERY' && (
+                        {/* 도면 (BATTERY/SOFTPACK) */}
+                        {isBatteryLike && (
                           <td className="px-0.5 py-0.5 border-r border-gray-100 text-center" style={{ width: 64 }}>
                             <button onClick={() => triggerDrawingUpload(row._key)} disabled={uploadingKey === row._key}
                               className="text-xs font-medium text-blue-500 hover:text-blue-700 disabled:opacity-50 py-1">
