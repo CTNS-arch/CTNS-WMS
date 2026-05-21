@@ -916,17 +916,19 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
     set('itemName', `${form.seriesCount}S ${form.parallelCount}P 배터리팩`)
   }, [form.seriesCount, form.parallelCount, isBP])
 
-  // 충전기 품목명 자동 설정: 충전기 {S}S {V}V {A}A
+  // 충전기 품목명 자동 설정: {화학계} 충전기 {S}S {V}V {A}A
   useEffect(() => {
     if (!isCharger || item?.id) return
     if (nameManuallyEdited.current) return
+    const chem = form.chemistryType
     const s = form.seriesCount
     const v = form.chargeCutoffVoltage
     const a = form.continuousChargeCurrent
-    if (!s && !v && !a) return
+    if (!chem && !s && !v && !a) return
     const parts = [s && `${s}S`, v && `${v}V`, a && `${a}A`].filter(Boolean)
-    set('itemName', `충전기 ${parts.join(' ')}`)
-  }, [form.seriesCount, form.chargeCutoffVoltage, form.continuousChargeCurrent, isCharger])
+    const prefix = chem ? `${chem} ` : ''
+    set('itemName', `${prefix}충전기${parts.length ? ' ' + parts.join(' ') : ''}`)
+  }, [form.chemistryType, form.seriesCount, form.chargeCutoffVoltage, form.continuousChargeCurrent, isCharger])
 
   // 셀 선택 + S/P/L 변경 시 전기 사양 자동 계산
   useEffect(() => {
@@ -1177,6 +1179,9 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
                 <Input type="number" step="0.01" value={form.ratedCurrent} onChange={e => set('ratedCurrent', e.target.value)} placeholder="0.00" />
               </Field>}
               {isCharger && (<>
+                <Field label="화학계">
+                  <TagSelect value={form.chemistryType} onChange={v => set('chemistryType', v)} options={opts.chemistryType ?? []} onAdd={addOpt('chemistryType')} placeholder="예) NMC" />
+                </Field>
                 <Field label="직렬 수 (S)" required>
                   <Input type="number" value={form.seriesCount} onChange={e => set('seriesCount', e.target.value)} placeholder="예) 12" />
                 </Field>

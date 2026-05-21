@@ -52,7 +52,7 @@ function getSubOpts(type: BulkType, subMap: Record<string, SelectOption[]>): Sel
 }
 
 const DIALOG_W: Record<BulkType, number> = {
-  BATTERY: 1500, BMS: 1360, ASSEMBLY_OTHER: 1020, CELL: 1760, COMPONENT_OTHER: 1870, CHARGER: 1080,
+  BATTERY: 1500, BMS: 1360, ASSEMBLY_OTHER: 1020, CELL: 1760, COMPONENT_OTHER: 1870, CHARGER: 1190,
 }
 
 // ── 행 구조 ────────────────────────────────────────────────
@@ -374,15 +374,17 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
       }
     }))
 
-  const updChargerField = (key: string, field: 'seriesCount' | 'chargeCutoffVoltage' | 'continuousChargeCurrent', val: string) =>
+  const updChargerField = (key: string, field: 'chemistryType' | 'seriesCount' | 'chargeCutoffVoltage' | 'continuousChargeCurrent', val: string) =>
     setRows(prev => prev.map(r => {
       if (r._key !== key) return r
+      const newChem = field === 'chemistryType' ? val : r.chemistryType
       const newS = field === 'seriesCount' ? val : r.seriesCount
       const newV = field === 'chargeCutoffVoltage' ? val : r.chargeCutoffVoltage
       const newA = field === 'continuousChargeCurrent' ? val : r.continuousChargeCurrent
       const parts = [newS && `${newS}S`, newV && `${newV}V`, newA && `${newA}A`].filter(Boolean)
-      const autoName = parts.length > 0 ? `충전기 ${parts.join(' ')}` : ''
-      const nameIsAuto = !r.itemName || /^충전기(\s+[\d.]+[SVA])+$/.test(r.itemName)
+      const prefix = newChem ? `${newChem} ` : ''
+      const autoName = (newChem || parts.length > 0) ? `${prefix}충전기${parts.length ? ' ' + parts.join(' ') : ''}` : ''
+      const nameIsAuto = !r.itemName || /^(\S+ )?충전기( \d+(\.\d+)?[SVA])*$/.test(r.itemName)
       return { ...r, [field]: val, itemName: nameIsAuto && autoName ? autoName : r.itemName, error: undefined }
     }))
 
@@ -625,6 +627,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
         case 'CHARGER':
           Object.assign(payload, {
             formFactor: 'CH',
+            chemistryType: row.chemistryType || null,
             seriesCount: ni(row.seriesCount),
             chargeCutoffVoltage: n(row.chargeCutoffVoltage),
             continuousChargeCurrent: n(row.continuousChargeCurrent),
@@ -873,6 +876,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     {bulkType === 'COMPONENT_OTHER' && <th className={thSm} style={{ width: 70 }}>정격전류(A)</th>}
 
                     {/* CHARGER 전용 */}
+                    {bulkType === 'CHARGER' && <th className={thSm} style={{ width: 110 }}>화학계</th>}
                     {bulkType === 'CHARGER' && <th className={thSm} style={{ width: 70 }}>직렬 수(S)</th>}
                     {bulkType === 'CHARGER' && <th className={thSm} style={{ width: 90 }}>충전종료전압(V)</th>}
                     {bulkType === 'CHARGER' && <th className={thSm} style={{ width: 80 }}>충전전류(A)</th>}
@@ -1181,6 +1185,14 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                         {bulkType === 'COMPONENT_OTHER' && num(70, 'ratedCurrent', '0.00')}
 
                         {/* ── CHARGER 전용 ── */}
+                        {bulkType === 'CHARGER' && (
+                          <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 110 }}>
+                            <TagSelect value={row.chemistryType} onChange={v => updChargerField(row._key, 'chemistryType', v)}
+                              options={opts.chemistryType ?? []}
+                              onAdd={(lbl, code) => { addOption('chemistryType', lbl, code); reloadOpts() }}
+                              placeholder="예) NMC" portal size="sm" />
+                          </td>
+                        )}
                         {bulkType === 'CHARGER' && (
                           <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 70 }}>
                             <input type="number" step="any" value={row.seriesCount}
