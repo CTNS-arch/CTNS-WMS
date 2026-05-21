@@ -860,7 +860,8 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
 
   const isBP = isBatteryPack(form.category, form.subCategory)
   const isCL = form.category === 'COMPONENT' && form.subCategory === 'CL'
-  const isCharger = form.category === 'COMPONENT' && form.subCategory === 'EL' && form.formFactor === 'CH'
+  const isCharger = form.category === 'COMPONENT' && form.subCategory === 'EL'
+    && (form.formFactor === 'CH' || item?.formFactor === 'CH')
   const codeType = getItemCodeType(form.category, form.subCategory)
 
   const codeParts = useMemo(() => buildCodeParts(form), [
