@@ -916,6 +916,18 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
     set('itemName', `${form.seriesCount}S ${form.parallelCount}P 배터리팩`)
   }, [form.seriesCount, form.parallelCount, isBP])
 
+  // 충전기 품목명 자동 설정: 충전기 {S}S {V}V {A}A
+  useEffect(() => {
+    if (!isCharger || item?.id) return
+    if (nameManuallyEdited.current) return
+    const s = form.seriesCount
+    const v = form.chargeCutoffVoltage
+    const a = form.continuousChargeCurrent
+    if (!s && !v && !a) return
+    const parts = [s && `${s}S`, v && `${v}V`, a && `${a}A`].filter(Boolean)
+    set('itemName', `충전기 ${parts.join(' ')}`)
+  }, [form.seriesCount, form.chargeCutoffVoltage, form.continuousChargeCurrent, isCharger])
+
   // 셀 선택 + S/P/L 변경 시 전기 사양 자동 계산
   useEffect(() => {
     if (!isBP || !selectedCLSpecs) return
@@ -1117,7 +1129,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
             </Field>
             <Field label="품명" required>
               <Input value={form.itemName} onChange={e => {
-                if (isBP && !item?.id) nameManuallyEdited.current = true
+                if ((isBP || isCharger) && !item?.id) nameManuallyEdited.current = true
                 set('itemName', e.target.value)
               }} placeholder="예) 배터리팩 48V100Ah" />
             </Field>
@@ -1132,7 +1144,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
           </div>
 
           {/* ── 물리 규격 ── */}
-          <div className="space-y-3">
+          {!isCharger && <div className="space-y-3">
             <SectionHeader title="물리 규격" />
             {([
               ['length', '가로/길이 (mm)'], ['width', '세로/폭 (mm)'], ['height', '높이 (mm)'],
@@ -1155,15 +1167,15 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
             <Field label="색상">
               <TagSelect value={form.color} onChange={v => set('color', v)} options={opts.color ?? []} onAdd={addOpt('color')} placeholder="색상 선택" />
             </Field>
-          </div>
+          </div>}
 
           {/* ── 전기 사양 (EL 컴포넌트) ── */}
           {form.subCategory === 'EL' && (
             <div className="space-y-3">
               <SectionHeader title="전기 사양" />
-              <Field label="정격전류 (A)">
+              {!isCharger && <Field label="정격전류 (A)">
                 <Input type="number" step="0.01" value={form.ratedCurrent} onChange={e => set('ratedCurrent', e.target.value)} placeholder="0.00" />
-              </Field>
+              </Field>}
               {isCharger && (<>
                 <Field label="직렬 수 (S)" required>
                   <Input type="number" value={form.seriesCount} onChange={e => set('seriesCount', e.target.value)} placeholder="예) 12" />

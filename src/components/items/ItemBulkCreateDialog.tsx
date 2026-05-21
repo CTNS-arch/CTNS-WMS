@@ -18,7 +18,7 @@ import {
 } from '@/lib/item-code'
 
 // ── 품목 유형 ──────────────────────────────────────────────
-type BulkType = 'BATTERY' | 'BMS' | 'ASSEMBLY_OTHER' | 'CELL' | 'COMPONENT_OTHER'
+type BulkType = 'BATTERY' | 'BMS' | 'ASSEMBLY_OTHER' | 'CELL' | 'COMPONENT_OTHER' | 'CHARGER'
 
 const TYPE_INFO: Record<BulkType, {
   label: string; desc: string; category: string; btnCls: string; badgeCls: string
@@ -28,6 +28,7 @@ const TYPE_INFO: Record<BulkType, {
   ASSEMBLY_OTHER:  { label: '그 외 반제품', desc: 'BMS/PCM 제외 반제품',       category: 'ASSEMBLY',  btnCls: 'border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700', badgeCls: 'bg-indigo-100 text-indigo-700' },
   CELL:            { label: '셀',          desc: '배터리 셀 (CL)',            category: 'COMPONENT', btnCls: 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700', badgeCls: 'bg-emerald-100 text-emerald-700' },
   COMPONENT_OTHER: { label: '그 외 자재',  desc: '셀 제외 자재',               category: 'COMPONENT', btnCls: 'border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700',       badgeCls: 'bg-gray-100 text-gray-700' },
+  CHARGER:         { label: '충전기',      desc: '자재 EL > 충전기(CH)',        category: 'COMPONENT', btnCls: 'border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700', badgeCls: 'bg-orange-100 text-orange-700' },
 }
 
 const CAT_BADGE: Record<string, string> = {
@@ -46,11 +47,12 @@ function getSubOpts(type: BulkType, subMap: Record<string, SelectOption[]>): Sel
     case 'ASSEMBLY_OTHER':  return asm.filter(o => !['BM', 'PC', 'PO'].includes(o.value))
     case 'CELL':            return comp.filter(o => o.value === 'CL')
     case 'COMPONENT_OTHER': return comp.filter(o => o.value !== 'CL')
+    case 'CHARGER':         return comp.filter(o => o.value === 'EL')
   }
 }
 
 const DIALOG_W: Record<BulkType, number> = {
-  BATTERY: 1500, BMS: 1360, ASSEMBLY_OTHER: 1020, CELL: 1760, COMPONENT_OTHER: 1870,
+  BATTERY: 1500, BMS: 1360, ASSEMBLY_OTHER: 1020, CELL: 1760, COMPONENT_OTHER: 1870, CHARGER: 1080,
 }
 
 // ── 행 구조 ────────────────────────────────────────────────
@@ -182,6 +184,8 @@ function previewCode(row: BulkRow, type: BulkType, revisionNumber = 1): string {
       return buildCellCode({ category, chemistryType: row.chemistryType || undefined, cellModel: row.cellModel || undefined })
     case 'COMPONENT_OTHER':
       return buildComponentCode({ category, subCategory: sub, formFactor: row.thirdLevel || undefined, revisionNumber })
+    case 'CHARGER':
+      return buildComponentCode({ category, subCategory: 'EL', formFactor: 'CH', revisionNumber })
     default:
       return buildSimpleCode({ category, subCategory: sub, revisionNumber })
   }
@@ -337,7 +341,10 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
   const selectType = (type: BulkType, sub = '') => {
     setBulkType(type)
     setFixedSub(sub)
-    setRows(Array.from({ length: 10 }, () => ({ ...emptyRow(), subCategory: sub })))
+    const makeRow = type === 'CHARGER'
+      ? () => ({ ...emptyRow(), subCategory: 'EL', thirdLevel: 'CH' })
+      : () => ({ ...emptyRow(), subCategory: sub })
+    setRows(Array.from({ length: 10 }, makeRow))
     setSelectedKeys(new Set())
   }
 
@@ -365,6 +372,18 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
         ...elecSpecs,
         error: undefined,
       }
+    }))
+
+  const updChargerField = (key: string, field: 'seriesCount' | 'chargeCutoffVoltage' | 'continuousChargeCurrent', val: string) =>
+    setRows(prev => prev.map(r => {
+      if (r._key !== key) return r
+      const newS = field === 'seriesCount' ? val : r.seriesCount
+      const newV = field === 'chargeCutoffVoltage' ? val : r.chargeCutoffVoltage
+      const newA = field === 'continuousChargeCurrent' ? val : r.continuousChargeCurrent
+      const parts = [newS && `${newS}S`, newV && `${newV}V`, newA && `${newA}A`].filter(Boolean)
+      const autoName = parts.length > 0 ? `충전기 ${parts.join(' ')}` : ''
+      const nameIsAuto = !r.itemName || /^충전기(\s+[\d.]+[SVA])+$/.test(r.itemName)
+      return { ...r, [field]: val, itemName: nameIsAuto && autoName ? autoName : r.itemName, error: undefined }
     }))
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, idx: number) => {
@@ -480,6 +499,9 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
         case 'COMPONENT_OTHER':
           code1 = buildComponentCode({ category, subCategory: sub, formFactor: row.thirdLevel || undefined, revisionNumber: 1 })
           break
+        case 'CHARGER':
+          code1 = buildComponentCode({ category, subCategory: 'EL', formFactor: 'CH', revisionNumber: 1 })
+          break
         default:
           code1 = buildSimpleCode({ category, subCategory: sub, revisionNumber: 1 })
       }
@@ -532,6 +554,9 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
             break
           case 'COMPONENT_OTHER':
             itemCode = buildComponentCode({ category, subCategory: sub, formFactor: row.thirdLevel || undefined, revisionNumber })
+            break
+          case 'CHARGER':
+            itemCode = buildComponentCode({ category, subCategory: 'EL', formFactor: 'CH', revisionNumber })
             break
           default:
             itemCode = buildSimpleCode({ category, subCategory: sub, revisionNumber })
@@ -597,6 +622,14 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
           })
           break
         }
+        case 'CHARGER':
+          Object.assign(payload, {
+            formFactor: 'CH',
+            seriesCount: ni(row.seriesCount),
+            chargeCutoffVoltage: n(row.chargeCutoffVoltage),
+            continuousChargeCurrent: n(row.continuousChargeCurrent),
+          })
+          break
       }
 
       try {
@@ -741,6 +774,10 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                       {label}
                     </button>
                   ))}
+                  <button onClick={() => selectType('CHARGER')}
+                    className="w-28 py-4 rounded-xl border-2 border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700 hover:shadow-md transition-all text-sm font-bold">
+                    충전기
+                  </button>
                 </div>
               </div>
             </div>
@@ -835,6 +872,11 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     {bulkType === 'COMPONENT_OTHER' && <th className={thSm} style={{ width: 90 }}>색상</th>}
                     {bulkType === 'COMPONENT_OTHER' && <th className={thSm} style={{ width: 70 }}>정격전류(A)</th>}
 
+                    {/* CHARGER 전용 */}
+                    {bulkType === 'CHARGER' && <th className={thSm} style={{ width: 70 }}>직렬 수(S)</th>}
+                    {bulkType === 'CHARGER' && <th className={thSm} style={{ width: 90 }}>충전종료전압(V)</th>}
+                    {bulkType === 'CHARGER' && <th className={thSm} style={{ width: 80 }}>충전전류(A)</th>}
+
                     {/* 공통 */}
                     <th className={thL} style={{ width: 80 }}>단위 <span className="text-red-400">*</span></th>
                     {(bulkType === 'BATTERY' || bulkType === 'BMS') && <th className={thSm} style={{ width: 130 }}>특수옵션</th>}
@@ -928,11 +970,16 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                         </td>
 
                         {/* 중분류 */}
-                        {bulkType !== 'CELL' && (
+                        {bulkType !== 'CELL' && bulkType !== 'CHARGER' && (
                           <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: subColW }}>
                             <TagSelect value={row.subCategory} onChange={v => updSub(row._key, v)} options={subOpts}
                               onAdd={() => {}} placeholder="선택" portal size="sm"
                               minDropdownWidth={bulkType === 'ASSEMBLY_OTHER' ? 240 : 180} />
+                          </td>
+                        )}
+                        {bulkType === 'CHARGER' && (
+                          <td className="px-1.5 py-1" style={{ width: subColW }}>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-emerald-100 text-emerald-700">전장(EL)</span>
                           </td>
                         )}
                         {bulkType === 'CELL' && (
@@ -1133,6 +1180,29 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                         {bulkType === 'COMPONENT_OTHER' && ts(90, row.color, v => upd(row._key, 'color', v), opts.color ?? [], 'color', '색상')}
                         {bulkType === 'COMPONENT_OTHER' && num(70, 'ratedCurrent', '0.00')}
 
+                        {/* ── CHARGER 전용 ── */}
+                        {bulkType === 'CHARGER' && (
+                          <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 70 }}>
+                            <input type="number" step="any" value={row.seriesCount}
+                              onChange={e => updChargerField(row._key, 'seriesCount', e.target.value)}
+                              onWheel={e => e.currentTarget.blur()} placeholder="S" className={cellCls + ' text-right'} />
+                          </td>
+                        )}
+                        {bulkType === 'CHARGER' && (
+                          <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 90 }}>
+                            <input type="number" step="any" value={row.chargeCutoffVoltage}
+                              onChange={e => updChargerField(row._key, 'chargeCutoffVoltage', e.target.value)}
+                              onWheel={e => e.currentTarget.blur()} placeholder="0.00" className={cellCls + ' text-right'} />
+                          </td>
+                        )}
+                        {bulkType === 'CHARGER' && (
+                          <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 80 }}>
+                            <input type="number" step="any" value={row.continuousChargeCurrent}
+                              onChange={e => updChargerField(row._key, 'continuousChargeCurrent', e.target.value)}
+                              onWheel={e => e.currentTarget.blur()} placeholder="0.00" className={cellCls + ' text-right'} />
+                          </td>
+                        )}
+
                         {/* 단위 (공통) */}
                         <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 80 }}>
                           <TagSelect value={row.unit} onChange={v => upd(row._key, 'unit', v)} options={opts.unit ?? []}
@@ -1156,8 +1226,8 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                           </td>
                         )}
 
-                        {/* 고객사 (COMPONENT_OTHER, CELL 제외) */}
-                        {bulkType !== 'COMPONENT_OTHER' && bulkType !== 'CELL' && tms(130, row.vendors, v => upd(row._key, 'vendors', v), opts.vendor ?? [], 'vendor', '고객사')}
+                        {/* 고객사 (COMPONENT_OTHER, CELL, CHARGER 제외) */}
+                        {bulkType !== 'COMPONENT_OTHER' && bulkType !== 'CELL' && bulkType !== 'CHARGER' && tms(130, row.vendors, v => upd(row._key, 'vendors', v), opts.vendor ?? [], 'vendor', '고객사')}
 
                         {/* 비고 */}
                         <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 120 }}>
