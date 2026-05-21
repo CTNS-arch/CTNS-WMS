@@ -973,8 +973,8 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
       return
     }
     if (isCharger) {
-      if (!form.seriesCount || !form.chargeCutoffVoltage || !form.continuousChargeCurrent) {
-        toast.error('충전기 품목은 직렬 수(S), 충전종료전압(V), 충전전류(A)를 입력해야 합니다.')
+      if (!form.chemistryType || !form.seriesCount || !form.chargeCutoffVoltage || !form.continuousChargeCurrent) {
+        toast.error('충전기 품목은 화학계, 직렬 수(S), 충전종료전압(V), 충전전류(A)를 모두 입력해야 합니다.')
         return
       }
     }
@@ -1180,7 +1180,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
                 <Input type="number" step="0.01" value={form.ratedCurrent} onChange={e => set('ratedCurrent', e.target.value)} placeholder="0.00" />
               </Field>}
               {isCharger && (<>
-                <Field label="화학계">
+                <Field label="화학계" required>
                   <TagSelect value={form.chemistryType} onChange={v => set('chemistryType', v)} options={opts.chemistryType ?? []} onAdd={addOpt('chemistryType')} placeholder="예) NMC" />
                 </Field>
                 <Field label="직렬 수 (S)" required>

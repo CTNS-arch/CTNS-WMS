@@ -470,12 +470,18 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
     if (!bulkType) return
     if (filledRows.length === 0) { toast.error('등록할 품목이 없습니다.'); return }
     const needSub = bulkType !== 'CELL' && bulkType !== 'CHARGER'
-    const invalid = filledRows.filter(r => !r.unit || (needSub && !r.subCategory))
+    const invalid = filledRows.filter(r =>
+      !r.unit ||
+      (needSub && !r.subCategory) ||
+      (bulkType === 'CHARGER' && (!r.chemistryType || !r.seriesCount || !r.chargeCutoffVoltage || !r.continuousChargeCurrent))
+    )
     if (invalid.length > 0) {
       setRows(prev => prev.map(r => {
         if (!r.itemName.trim()) return r
         if (needSub && !r.subCategory) return { ...r, error: '중분류 필수' }
         if (!r.unit) return { ...r, error: '단위 필수' }
+        if (bulkType === 'CHARGER' && (!r.chemistryType || !r.seriesCount || !r.chargeCutoffVoltage || !r.continuousChargeCurrent))
+          return { ...r, error: '화학계·직렬 수·충전종료전압·충전전류 필수' }
         return r
       }))
       toast.error('필수 항목을 입력해주세요.')
@@ -878,10 +884,10 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     {bulkType === 'COMPONENT_OTHER' && <th className={thSm} style={{ width: 70 }}>정격전류(A)</th>}
 
                     {/* CHARGER 전용 */}
-                    {bulkType === 'CHARGER' && <th className={thSm} style={{ width: 110 }}>화학계</th>}
-                    {bulkType === 'CHARGER' && <th className={thSm} style={{ width: 70 }}>직렬 수(S)</th>}
-                    {bulkType === 'CHARGER' && <th className={thSm} style={{ width: 90 }}>충전종료전압(V)</th>}
-                    {bulkType === 'CHARGER' && <th className={thSm} style={{ width: 80 }}>충전전류(A)</th>}
+                    {bulkType === 'CHARGER' && <th className={thSm} style={{ width: 110 }}>화학계 <span className="text-red-400">*</span></th>}
+                    {bulkType === 'CHARGER' && <th className={thSm} style={{ width: 70 }}>직렬 수(S) <span className="text-red-400">*</span></th>}
+                    {bulkType === 'CHARGER' && <th className={thSm} style={{ width: 90 }}>충전종료전압(V) <span className="text-red-400">*</span></th>}
+                    {bulkType === 'CHARGER' && <th className={thSm} style={{ width: 80 }}>충전전류(A) <span className="text-red-400">*</span></th>}
 
                     {/* 공통 */}
                     <th className={thL} style={{ width: 80 }}>단위 <span className="text-red-400">*</span></th>
