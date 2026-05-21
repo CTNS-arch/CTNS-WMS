@@ -981,7 +981,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
 
                         {/* 품목코드 미리보기 */}
                         <td className="px-2 py-1 border-r border-gray-100" style={{ width: codeColW }}>
-                          <span className={`font-mono text-[10px] break-all ${codeGrey ? 'text-gray-300' : 'text-gray-600'}`}>{code}</span>
+                          <span className={`font-mono text-[10px] block truncate ${codeGrey ? 'text-gray-300' : 'text-gray-600'}`}>{code}</span>
                         </td>
 
                         {/* 대분류 static badge */}
