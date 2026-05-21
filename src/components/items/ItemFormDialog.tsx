@@ -182,7 +182,7 @@ function CellModelPicker({
 function ClassificationTree({
   category, subCategory, thirdValue, opts,
   cellModel, seriesCount, parallelCount, circuit,
-  isBP, isCL, isBms, isCharger,
+  isBP, isCL, isBms,
   manufacturer, maxSeriesCount, continuousDischargeCurrent,
   cellModelGroups, onAddCellModelGroup, onAddCellModelEntry,
   onCategory, onSub, onThird, onAddOpt, onSet,
@@ -192,7 +192,7 @@ function ClassificationTree({
   category: string; subCategory: string; thirdValue: string
   opts: Record<string, SelectOption[]>
   cellModel: string; seriesCount: string; parallelCount: string; circuit: string
-  isBP: boolean; isCL: boolean; isBms: boolean; isCharger: boolean
+  isBP: boolean; isCL: boolean; isBms: boolean
   manufacturer: string; maxSeriesCount: string; continuousDischargeCurrent: string
   cellModelGroups: CellModelGroup[]
   onAddCellModelGroup: (mfr: string) => void
@@ -365,7 +365,7 @@ function ClassificationTree({
         {row('2분류', subLabel)}
         {third && row(third.label, thirdLabel)}
         {(isBP || isCL) && cellModel && row('셀 모델', cellModel)}
-        {(isBP || isCharger) && seriesCount && row('직렬(S)', `${seriesCount}S`)}
+        {isBP && seriesCount && row('직렬(S)', `${seriesCount}S`)}
         {isBP && parallelCount && row('병렬(P)', `${parallelCount}P`)}
         {isBP && circuit && row('회로', circuitLabel)}
         {isBms && manufacturer && row('제조사', mfrLabel)}
@@ -394,7 +394,7 @@ function ClassificationTree({
             )}
           </LevelRow>
 
-          {subCategory && (third || isBP || isCL || isBms || isCharger) && (
+          {subCategory && (third || isBP || isCL || isBms) && (
             <Branch>
               {third && !(isBP && onSelectCLItem) && (
                 <LevelRow label={third.label}>
@@ -545,11 +545,6 @@ function ClassificationTree({
                     )}
                   </LevelRow>
                 </>
-              )}
-              {isCharger && (
-                <LevelRow label="직렬 수(S)">
-                  <Input type="number" value={seriesCount} onChange={e => onSet('seriesCount', e.target.value)} placeholder="예) 12" />
-                </LevelRow>
               )}
               {isBms && (
                 <>
@@ -865,7 +860,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
 
   const isBP = isBatteryPack(form.category, form.subCategory)
   const isCL = form.category === 'COMPONENT' && form.subCategory === 'CL'
-  const isCharger = form.category === 'ASSEMBLY' && form.subCategory === 'CHG'
+  const isCharger = form.category === 'COMPONENT' && form.subCategory === 'EL' && form.formFactor === 'CH'
   const codeType = getItemCodeType(form.category, form.subCategory)
 
   const codeParts = useMemo(() => buildCodeParts(form), [
@@ -963,8 +958,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
       return
     }
     if (isCharger) {
-      const chargerRequired = ['seriesCount', 'chargeCutoffVoltage', 'continuousChargeCurrent']
-      if (chargerRequired.some(k => !form[k])) {
+      if (!form.seriesCount || !form.chargeCutoffVoltage || !form.continuousChargeCurrent) {
         toast.error('충전기 품목은 직렬 수(S), 충전종료전압(V), 충전전류(A)를 입력해야 합니다.')
         return
       }
@@ -1069,7 +1063,6 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
               isBP={isBP}
               isCL={isCL}
               isBms={bms}
-              isCharger={isCharger}
               manufacturer={form.manufacturer}
               maxSeriesCount={form.maxSeriesCount}
               continuousDischargeCurrent={form.continuousDischargeCurrent}
@@ -1171,6 +1164,17 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
               <Field label="정격전류 (A)">
                 <Input type="number" step="0.01" value={form.ratedCurrent} onChange={e => set('ratedCurrent', e.target.value)} placeholder="0.00" />
               </Field>
+              {isCharger && (<>
+                <Field label="직렬 수 (S)" required>
+                  <Input type="number" value={form.seriesCount} onChange={e => set('seriesCount', e.target.value)} placeholder="예) 12" />
+                </Field>
+                <Field label="충전종료전압 (V)" required>
+                  <Input type="number" step="0.01" value={form.chargeCutoffVoltage} onChange={e => set('chargeCutoffVoltage', e.target.value)} placeholder="0.00" />
+                </Field>
+                <Field label="충전전류 (A)" required>
+                  <Input type="number" step="0.01" value={form.continuousChargeCurrent} onChange={e => set('continuousChargeCurrent', e.target.value)} placeholder="0.00" />
+                </Field>
+              </>)}
             </div>
           )}
 
@@ -1196,7 +1200,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
                 ['chargeCRate', '충전 C-rate'],
                 ['dischargeCRate', '방전 C-rate'],
               ] as [string, string][]).map(([k, lb]) => (
-                <Field key={k} label={lb} required={isCL || (isCharger && ['chargeCutoffVoltage', 'continuousChargeCurrent'].includes(k))}>
+                <Field key={k} label={lb} required={isCL}>
                   <Input type="number" step="0.01" value={form[k]} onChange={e => set(k, e.target.value)} placeholder="0.00" />
                 </Field>
               ))}

@@ -22,7 +22,6 @@ export const SUB_OPTIONS: Record<string, SelectOption[]> = {
     { value: 'CMB', label: 'Communication Board',    colorIndex: 6, code: 'CMB' },
     { value: 'JTB', label: 'Junction Box',           colorIndex: 7, code: 'JTB' },
     { value: 'HRN', label: 'Harness',                colorIndex: 8, code: 'HRN' },
-    { value: 'CHG', label: '충전기',                  colorIndex: 5, code: 'CHG' },
   ],
   COMPONENT: [
     { value: 'CL', label: '셀',           colorIndex: 1, code: 'CL' },
@@ -78,7 +77,7 @@ export const THIRD_LEVEL: Record<string, ThirdLevelDef | null> = {
   BM: null, // BMS: 3분류 없음 (제조사·직렬·용량으로 코드 생성)
   PC: null, // PCM: 동일
   CAS: null, PRA: null, DST: null, SWB: null, DRV: null,
-  CMB: null, JTB: null, HRN: null, CHG: null, ETC: null,
+  CMB: null, JTB: null, HRN: null, ETC: null,
   // COMPONENT
   CL: { field: 'chemistryType', label: '화학계',    optKey: 'chemistryType' },
   EL: { field: 'formFactor',    label: '부품 유형', optKey: 'elComponentType' },
@@ -91,7 +90,7 @@ export const THIRD_LEVEL: Record<string, ThirdLevelDef | null> = {
 }
 
 export function showElec(sub: string) {
-  return ['BP', 'BM', 'PC', 'CL', 'PO', 'CHG'].includes(sub)
+  return ['BP', 'BM', 'PC', 'CL', 'PO'].includes(sub)
 }
 export function showBms(sub: string) {
   return ['BM', 'PC'].includes(sub)
