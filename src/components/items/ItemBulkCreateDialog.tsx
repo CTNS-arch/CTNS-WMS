@@ -692,6 +692,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                   : bulkType === 'BMS'      ? 140
                   : bulkType === 'CELL'     ? 130
                   : bulkType === 'COMPONENT_OTHER' ? 100
+                  : bulkType === 'CHARGER'  ? 120
                   : 90 // ASSEMBLY_OTHER
   // ASSEMBLY_OTHER: 영문 긴 라벨(Power Relay Assembly 등) 대응
   // COMPONENT_OTHER: 한글 라벨 + 소분류까지 고려 (코드 포함 표시로 길어짐)
