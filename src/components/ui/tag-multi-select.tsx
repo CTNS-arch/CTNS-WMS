@@ -130,7 +130,7 @@ export function TagMultiSelect({
             const c = PALETTE[opt.colorIndex % PALETTE.length]
             return (
               <span key={v} className={`px-2 py-0.5 rounded text-xs font-medium ${c.bg} ${c.text}`}>
-                {opt.code ? `${opt.label}(${opt.code})` : opt.label}
+                {opt.code && opt.code !== opt.label ? `${opt.label}(${opt.code})` : opt.label}
               </span>
             )
           })
