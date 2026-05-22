@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ItemCategory, ItemStatus, Prisma } from '@prisma/client'
 import { isSameItem } from '@/lib/item-duplicate-check'
+import { notifyErpWebhook } from '@/lib/erp-webhook'
 
 export async function GET(req: NextRequest) {
   try {
@@ -232,6 +233,7 @@ export async function POST(req: NextRequest) {
       })
     } catch {}
 
+    notifyErpWebhook('upsert', item)
     return NextResponse.json({ success: true, data: item }, { status: 201 })
   } catch (err: any) {
     if (err.code === 'P2002')
