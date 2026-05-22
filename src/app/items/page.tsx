@@ -221,7 +221,7 @@ export default function ItemsPage() {
 
   // 뷰별 총 컬럼 수 (colSpan 계산용) — BOM 컬럼은 isComp 제외
   const hasBomCol = !isComp
-  const colCount = isAll ? 11 : (isProd || isPO) ? 24 : isBmsPcm ? 15 : isAsmGeneric ? 19 : isCell ? 26 : isElCharger ? 26 : isElComp ? 23 : isCompOther ? 22 : 17
+  const colCount = isAll ? 11 : (isProd || isPO) ? 24 : isBmsPcm ? 15 : isAsmGeneric ? 19 : isCell ? 26 : isElCharger ? 17 : isElComp ? 23 : isCompOther ? 22 : 17
 
   const fetchItems = useCallback(async () => {
     setLoading(true)
@@ -477,7 +477,7 @@ export default function ItemsPage() {
     .forEach(key => getOptions(key).forEach((o: SelectOption) => { formFactorLabelMap[o.value] = o.label }))
 
   // 뷰별 테이블 너비
-  const tableWidth = isAll ? 1385 : (isProd || isPO) ? 2410 : isBmsPcm ? 1740 : isAsmGeneric ? 1980 : isCell ? 2750 : isElCharger ? 2580 : isElComp ? 2310 : isCompOther ? 2240 : 1820
+  const tableWidth = isAll ? 1385 : (isProd || isPO) ? 2410 : isBmsPcm ? 1740 : isAsmGeneric ? 1980 : isCell ? 2750 : isElCharger ? 1850 : isElComp ? 2310 : isCompOther ? 2240 : 1820
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -546,8 +546,8 @@ export default function ItemsPage() {
               />
             </FilterSection>
 
-            {/* 완제품/소프트팩/셀 공통 필터 */}
-            {(isAll || isProd || isPO || isCell) && chemistryOpts.length > 0 && (
+            {/* 완제품/소프트팩/셀/충전기 공통 필터 */}
+            {(isAll || isProd || isPO || isCell || isElCharger) && chemistryOpts.length > 0 && (
               <FilterSection label="화학계">
                 <SearchableMultiSelect
                   value={filterChemistry}
@@ -602,15 +602,17 @@ export default function ItemsPage() {
               </FilterSection>
             )}
 
+            {(isAll || isProd || isPO || isElCharger) && (
+              <FilterSection label="직렬 수 (S)">
+                <input type="number" min="1" value={filterSeriesCount}
+                  onChange={e => debounce(setFilterSeriesCount)(e.target.value)}
+                  placeholder="예) 12"
+                  onWheel={e => e.currentTarget.blur()} className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                />
+              </FilterSection>
+            )}
             {(isAll || isProd || isPO) && (
               <>
-                <FilterSection label="직렬 수 (S)">
-                  <input type="number" min="1" value={filterSeriesCount}
-                    onChange={e => debounce(setFilterSeriesCount)(e.target.value)}
-                    placeholder="예) 12"
-                    onWheel={e => e.currentTarget.blur()} className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
-                  />
-                </FilterSection>
                 <FilterSection label="병렬 수 (P)">
                   <input type="number" min="1" value={filterParallelCount}
                     onChange={e => debounce(setFilterParallelCount)(e.target.value)}
@@ -627,9 +629,27 @@ export default function ItemsPage() {
                 </FilterSection>
               </>
             )}
+            {isElCharger && (
+              <>
+                <FilterSection label="충전종료전압 이상(V)">
+                  <input type="number" min="0" step="any" value={filterChargeCutoffMin}
+                    onChange={e => debounce(setFilterChargeCutoffMin)(e.target.value)}
+                    onWheel={e => e.currentTarget.blur()} placeholder="예) 67.2"
+                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  />
+                </FilterSection>
+                <FilterSection label="충전전류 이상(A)">
+                  <input type="number" min="0" step="any" value={filterContinuousChargeCurrentMin}
+                    onChange={e => debounce(setFilterContinuousChargeCurrentMin)(e.target.value)}
+                    onWheel={e => e.currentTarget.blur()} placeholder="예) 20"
+                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  />
+                </FilterSection>
+              </>
+            )}
 
-            {/* 일반반제품/자재(셀 제외) 물리규격 필터 */}
-            {(isAsmGeneric || (isComp && !isCell)) && (
+            {/* 일반반제품/자재(셀·충전기 제외) 물리규격 필터 */}
+            {(isAsmGeneric || (isComp && !isCell && !isElCharger)) && (
               <>
                 <FilterSection label="길이 이상(mm)">
                   <input type="number" min="0" value={filterLengthMin}
@@ -699,8 +719,8 @@ export default function ItemsPage() {
               ))
             })()}
 
-            {/* 자재(셀 제외): 재질 */}
-            {materialOpts.length > 0 && (isAll || (isComp && !isCell)) && (
+            {/* 자재(셀·충전기 제외): 재질 */}
+            {materialOpts.length > 0 && (isAll || (isComp && !isCell && !isElCharger)) && (
               <FilterSection label="재질">
                 <SearchableMultiSelect
                   value={filterMaterial}
@@ -735,8 +755,8 @@ export default function ItemsPage() {
               </FilterSection>
             )}
 
-            {/* 고객사: 자재·BMS/PCM 제외 */}
-            {vendorOpts.length > 0 && !isComp && !isBmsPcm && (
+            {/* 고객사: 자재(충전기 제외)·BMS/PCM 제외 */}
+            {vendorOpts.length > 0 && (!isComp || isElCharger) && !isBmsPcm && (
               <FilterSection label="고객사">
                 <SearchableMultiSelect
                   value={filterVendor}
@@ -842,20 +862,20 @@ export default function ItemsPage() {
                 {isAsmGeneric && <><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /></>}
                 {/* 셀: 화학계, 셀모델, 직경, 높이, 전기사양 11개, 스펙시트 */}
                 {isCell && <><col style={{ width: 85 }} /><col style={{ width: 120 }} /><col style={{ width: 75 }} /><col style={{ width: 75 }} /><col style={{ width: 105 }} /><col style={{ width: 85 }} /><col style={{ width: 105 }} /><col style={{ width: 90 }} /><col style={{ width: 80 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 85 }} /><col style={{ width: 85 }} /><col style={{ width: 80 }} /></>}
-                {/* 셀이외자재: 가로, 세로, 높이, 내경가로, 내경세로, 내경높이, 직경, 두께, 무게 */}
-                {isCompOther && <><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 80 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /></>}
-                {/* 재질: 일반반제품·셀이외자재 */}
-                {(isAsmGeneric || isCompOther) && <col style={{ width: 85 }} />}
-                {/* 색상: 셀이외자재 */}
-                {isCompOther && <col style={{ width: 85 }} />}
-                {/* 정격전류: EL 컴포넌트 */}
-                {isElComp && <col style={{ width: 80 }} />}
-                {/* 충전기(EL+CH): 직렬 수, 충전종료전압, 충전전류 */}
-                {isElCharger && <><col style={{ width: 65 }} /><col style={{ width: 105 }} /><col style={{ width: 100 }} /></>}
+                {/* 셀이외자재(충전기 제외): 가로, 세로, 높이, 내경가로, 내경세로, 내경높이, 직경, 두께, 무게 */}
+                {(isCompOther && !isElCharger) && <><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 100 }} /><col style={{ width: 80 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /></>}
+                {/* 재질: 일반반제품·셀이외자재(충전기 제외) */}
+                {(isAsmGeneric || (isCompOther && !isElCharger)) && <col style={{ width: 85 }} />}
+                {/* 색상: 셀이외자재(충전기 제외) */}
+                {(isCompOther && !isElCharger) && <col style={{ width: 85 }} />}
+                {/* 정격전류: EL 컴포넌트(충전기 제외) */}
+                {(isElComp && !isElCharger) && <col style={{ width: 80 }} />}
+                {/* 충전기(EL+CH): 화학계, 직렬 수, 충전종료전압, 충전전류 */}
+                {isElCharger && <><col style={{ width: 90 }} /><col style={{ width: 65 }} /><col style={{ width: 105 }} /><col style={{ width: 100 }} /></>}
                 {/* 이미지 */}
                 {(isAsmGeneric || isComp || isBmsPcm) && <col style={{ width: 100 }} />}
-                {/* 일반반제품: 고객사 */}
-                {isAsmGeneric && <col style={{ width: 80 }} />}
+                {/* 일반반제품·충전기: 고객사 */}
+                {(isAsmGeneric || isElCharger) && <col style={{ width: 90 }} />}
                 {/* 완제품/소프트팩: 특수옵션, 인증, 도면, 이미지 */}
                 {(isProd || isPO) && <><col style={{ width: 80 }} /><col style={{ width: 80 }} /><col style={{ width: 80 }} /><col style={{ width: 100 }} /></>}
                 {/* BMS/PCM: 특수옵션 */}
@@ -926,7 +946,7 @@ export default function ItemsPage() {
                     <TableHead className="whitespace-nowrap text-xs">방전 C-rate</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">스펙시트</TableHead>
                   </>}
-                  {isCompOther && <>
+                  {(isCompOther && !isElCharger) && <>
                     <TableHead className="whitespace-nowrap text-xs">가로(mm)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">세로(mm)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">높이(mm)</TableHead>
@@ -937,16 +957,17 @@ export default function ItemsPage() {
                     <TableHead className="whitespace-nowrap text-xs">두께(mm)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">무게(g)</TableHead>
                   </>}
-                  {(isAsmGeneric || isCompOther) && <TableHead className="whitespace-nowrap text-xs">재질</TableHead>}
-                  {isCompOther && <TableHead className="whitespace-nowrap text-xs">색상</TableHead>}
-                  {isElComp && <TableHead className="whitespace-nowrap text-xs">정격전류(A)</TableHead>}
+                  {(isAsmGeneric || (isCompOther && !isElCharger)) && <TableHead className="whitespace-nowrap text-xs">재질</TableHead>}
+                  {(isCompOther && !isElCharger) && <TableHead className="whitespace-nowrap text-xs">색상</TableHead>}
+                  {(isElComp && !isElCharger) && <TableHead className="whitespace-nowrap text-xs">정격전류(A)</TableHead>}
                   {isElCharger && <>
+                    <TableHead className="whitespace-nowrap text-xs">화학계</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">직렬 수(S)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">충전종료전압(V)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">충전전류(A)</TableHead>
                   </>}
                   {(isAsmGeneric || isComp || isBmsPcm) && <TableHead className="whitespace-nowrap text-xs">이미지</TableHead>}
-                  {isAsmGeneric && <TableHead className="whitespace-nowrap text-xs">고객사</TableHead>}
+                  {(isAsmGeneric || isElCharger) && <TableHead className="whitespace-nowrap text-xs">고객사</TableHead>}
                   {(isProd || isPO) && <>
                     <TableHead className="whitespace-nowrap text-xs">특수옵션</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">인증</TableHead>
@@ -1036,7 +1057,7 @@ export default function ItemsPage() {
                         <TableCell className="text-xs text-center text-gray-900">{item.dischargeCRate != null ? Number(item.dischargeCRate) : '-'}</TableCell>
                         <TableCell><DrawingsCell urls={(item as any).specSheets ?? []} /></TableCell>
                       </>}
-                      {isCompOther && <>
+                      {(isCompOther && !isElCharger) && <>
                         <TableCell className="text-xs text-center text-gray-900">{item.length != null ? Number(item.length) : '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.width != null ? Number(item.width) : '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.height != null ? Number(item.height) : '-'}</TableCell>
@@ -1047,16 +1068,17 @@ export default function ItemsPage() {
                         <TableCell className="text-xs text-center text-gray-900">{item.thickness != null ? Number(item.thickness) : '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.weight != null ? Number(item.weight) : '-'}</TableCell>
                       </>}
-                      {(isAsmGeneric || isCompOther) && <TableCell><TooltipCell value={item.material} /></TableCell>}
-                      {isCompOther && <TableCell><TooltipCell value={item.color} /></TableCell>}
-                      {isElComp && <TableCell className="text-xs text-center text-gray-900">{item.ratedCurrent != null ? Number(item.ratedCurrent) : '-'}</TableCell>}
+                      {(isAsmGeneric || (isCompOther && !isElCharger)) && <TableCell><TooltipCell value={item.material} /></TableCell>}
+                      {(isCompOther && !isElCharger) && <TableCell><TooltipCell value={item.color} /></TableCell>}
+                      {(isElComp && !isElCharger) && <TableCell className="text-xs text-center text-gray-900">{item.ratedCurrent != null ? Number(item.ratedCurrent) : '-'}</TableCell>}
                       {isElCharger && <>
+                        <TableCell className="text-xs text-center text-gray-900">{item.chemistryType ?? '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.seriesCount ?? '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.chargeCutoffVoltage != null ? Number(item.chargeCutoffVoltage) : '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.continuousChargeCurrent != null ? Number(item.continuousChargeCurrent) : '-'}</TableCell>
                       </>}
                       {(isAsmGeneric || isComp || isBmsPcm) && <TableCell><ImageCell urls={item.images ?? []} /></TableCell>}
-                      {isAsmGeneric && <TableCell><TagListCell values={item.vendors ?? []} /></TableCell>}
+                      {(isAsmGeneric || isElCharger) && <TableCell><TagListCell values={item.vendors ?? []} /></TableCell>}
                       {(isProd || isPO) && <>
                         <TableCell><TagListCell values={item.specialOptions ?? []} /></TableCell>
                         <TableCell><TagListCell values={item.certifications ?? []} /></TableCell>
