@@ -183,7 +183,7 @@ function ClassificationTree({
   category, subCategory, thirdValue, opts,
   cellModel, seriesCount, parallelCount, circuit,
   isBP, isCL, isBms,
-  manufacturer, maxSeriesCount, continuousDischargeCurrent,
+  manufacturer, maxSeriesCount, ratedCurrent,
   cellModelGroups, onAddCellModelGroup, onAddCellModelEntry,
   onCategory, onSub, onThird, onAddOpt, onSet,
   onSelectCLItem, onSelectBMSItem,
@@ -193,7 +193,7 @@ function ClassificationTree({
   opts: Record<string, SelectOption[]>
   cellModel: string; seriesCount: string; parallelCount: string; circuit: string
   isBP: boolean; isCL: boolean; isBms: boolean
-  manufacturer: string; maxSeriesCount: string; continuousDischargeCurrent: string
+  manufacturer: string; maxSeriesCount: string; ratedCurrent: string
   cellModelGroups: CellModelGroup[]
   onAddCellModelGroup: (mfr: string) => void
   onAddCellModelEntry: (mfr: string, label: string, code: string) => void
@@ -370,7 +370,7 @@ function ClassificationTree({
         {isBP && circuit && row('회로', circuitLabel)}
         {isBms && manufacturer && row('제조사', mfrLabel)}
         {isBms && maxSeriesCount && row('최대직렬(S)', `${maxSeriesCount}S`)}
-        {isBms && continuousDischargeCurrent && row('연속방전(A)', `${continuousDischargeCurrent}A`)}
+        {isBms && ratedCurrent && row('정격전류(A)', `${ratedCurrent}A`)}
       </div>
     )
   }
@@ -554,8 +554,8 @@ function ClassificationTree({
                   <LevelRow label="최대직렬(S)">
                     <Input type="number" value={maxSeriesCount} onChange={e => onSet('maxSeriesCount', e.target.value)} placeholder="예) 16" />
                   </LevelRow>
-                  <LevelRow label="연속방전(A)">
-                    <Input type="number" step="0.01" value={continuousDischargeCurrent} onChange={e => onSet('continuousDischargeCurrent', e.target.value)} placeholder="예) 100" />
+                  <LevelRow label="정격전류(A)">
+                    <Input type="number" step="0.01" value={ratedCurrent} onChange={e => onSet('ratedCurrent', e.target.value)} placeholder="예) 100" />
                   </LevelRow>
                 </>
               )}
@@ -668,7 +668,7 @@ function ImagePreviewModal({ url, onClose }: { url: string; onClose: () => void 
 
 const CODE_LABELS: Record<ItemCodeType, string[]> = {
   bp:        ['1분류', '2분류', '화학계', '셀모델', '직병렬', '회로', '버전'],
-  bms:       ['1분류', '2분류', '제조사', '최대직렬', '연속방전', '버전'],
+  bms:       ['1분류', '2분류', '제조사', '최대직렬', '정격전류', '버전'],
   cell:      ['1분류', '2분류', '화학계', '셀모델'],
   component: ['1분류', '2분류', '3분류', '일련번호'],
   simple:    [],
@@ -845,7 +845,9 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
           certifications: item.certifications ?? [],
           drawings: item.drawings ?? [],
           specSheets: item.specSheets ?? [],
-          images: item.images ?? [] }
+          images: item.images ?? [],
+          // 기존 BMS/PCM: ratedCurrent 미입력 시 continuousDischargeCurrent 값으로 폴백
+          ratedCurrent: item.ratedCurrent ?? item.continuousDischargeCurrent ?? '' }
       : { ...EMPTY, ...(initialValues ?? {}) }
     )
     ensureServerSync().then(reload)
@@ -885,7 +887,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
   }, [
     codeType, codeParts,
     form.category, form.subCategory, form.revisionNumber,
-    form.manufacturer, form.maxSeriesCount, form.continuousDischargeCurrent,
+    form.manufacturer, form.maxSeriesCount, form.ratedCurrent,
     form.chemistryType, form.cellModel, form.formFactor,
   ])
 
@@ -1080,7 +1082,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
               isBms={bms}
               manufacturer={form.manufacturer}
               maxSeriesCount={form.maxSeriesCount}
-              continuousDischargeCurrent={form.continuousDischargeCurrent}
+              ratedCurrent={form.ratedCurrent}
               cellModelGroups={cellModelGroups}
               onAddCellModelGroup={mfr => { addCellModelGroup(mfr); setCellModelGroups([...getCellModelGroups()]); saveToServer() }}
               onAddCellModelEntry={(mfr, label, code) => { addCellModelEntry(mfr, label, code); setCellModelGroups([...getCellModelGroups()]); setOpts(prev => ({ ...prev, cellModel: getOptions('cellModel') })); saveToServer() }}
@@ -1229,6 +1231,9 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
           {bms && (
             <div className="space-y-3">
               <SectionHeader title="회로 정보" />
+              <Field label="화학계">
+                <TagSelect value={form.chemistryType} onChange={v => set('chemistryType', v)} options={opts.chemistryType ?? []} onAdd={addOpt('chemistryType')} placeholder="예) NMC" />
+              </Field>
               <Field label="정격전압 (V)">
                 <Input type="number" step="0.01" value={form.ratedVoltage} onChange={e => set('ratedVoltage', e.target.value)} placeholder="0.00" />
               </Field>

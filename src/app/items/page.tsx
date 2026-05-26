@@ -221,7 +221,7 @@ export default function ItemsPage() {
 
   // 뷰별 총 컬럼 수 (colSpan 계산용) — BOM 컬럼은 isComp 제외
   const hasBomCol = !isComp
-  const colCount = isAll ? 11 : (isProd || isPO) ? 24 : isBmsPcm ? 15 : isAsmGeneric ? 19 : isCell ? 26 : isElCharger ? 17 : isElComp ? 23 : isCompOther ? 22 : 17
+  const colCount = isAll ? 11 : (isProd || isPO) ? 24 : isBmsPcm ? 16 : isAsmGeneric ? 19 : isCell ? 26 : isElCharger ? 17 : isElComp ? 23 : isCompOther ? 22 : 17
 
   const fetchItems = useCallback(async () => {
     setLoading(true)
@@ -477,7 +477,7 @@ export default function ItemsPage() {
     .forEach(key => getOptions(key).forEach((o: SelectOption) => { formFactorLabelMap[o.value] = o.label }))
 
   // 뷰별 테이블 너비
-  const tableWidth = isAll ? 1385 : (isProd || isPO) ? 2410 : isBmsPcm ? 1740 : isAsmGeneric ? 1980 : isCell ? 2750 : isElCharger ? 1850 : isElComp ? 2310 : isCompOther ? 2240 : 1820
+  const tableWidth = isAll ? 1385 : (isProd || isPO) ? 2410 : isBmsPcm ? 1830 : isAsmGeneric ? 1980 : isCell ? 2750 : isElCharger ? 1850 : isElComp ? 2310 : isCompOther ? 2240 : 1820
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -546,8 +546,8 @@ export default function ItemsPage() {
               />
             </FilterSection>
 
-            {/* 완제품/소프트팩/셀/충전기 공통 필터 */}
-            {(isAll || isProd || isPO || isCell || isElCharger) && chemistryOpts.length > 0 && (
+            {/* 완제품/소프트팩/셀/충전기/BMS·PCM 공통 필터 */}
+            {(isAll || isProd || isPO || isCell || isElCharger || isBmsPcm) && chemistryOpts.length > 0 && (
               <FilterSection label="화학계">
                 <SearchableMultiSelect
                   value={filterChemistry}
@@ -850,8 +850,8 @@ export default function ItemsPage() {
                 {isCompOther && <col style={{ width: 90 }} />}
                 {/* 완제품/소프트팩: 화학계, 셀모델, 회로, 팩타입 */}
                 {(isProd || isPO) && <><col style={{ width: 80 }} /><col style={{ width: 110 }} /><col style={{ width: 80 }} /><col style={{ width: 80 }} /></>}
-                {/* BMS/PCM: 제조사, 최대직렬, 연속방전 */}
-                {isBmsPcm && <><col style={{ width: 100 }} /><col style={{ width: 70 }} /><col style={{ width: 80 }} /></>}
+                {/* BMS/PCM: 화학계, 제조사, 최대직렬, 연속방전 */}
+                {isBmsPcm && <><col style={{ width: 90 }} /><col style={{ width: 100 }} /><col style={{ width: 70 }} /><col style={{ width: 80 }} /></>}
                 {/* 단위: BMS/PCM 제외 */}
                 {!isBmsPcm && <col style={{ width: 55 }} />}
                 {/* 이미지: 전체보기에서 단위 다음 */}
@@ -910,9 +910,10 @@ export default function ItemsPage() {
                     <TableHead className="whitespace-nowrap text-xs">팩타입</TableHead>
                   </>}
                   {isBmsPcm && <>
+                    <TableHead className="whitespace-nowrap text-xs">화학계</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">제조사</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">최대직렬(S)</TableHead>
-                    <TableHead className="whitespace-nowrap text-xs">연속방전(A)</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">정격전류(A)</TableHead>
                   </>}
                   {!isBmsPcm && <TableHead className="whitespace-nowrap text-xs">단위</TableHead>}
                   {isAll && <TableHead className="whitespace-nowrap text-xs">이미지</TableHead>}
@@ -1021,9 +1022,10 @@ export default function ItemsPage() {
                         <TableCell><TooltipCell value={item.packType} /></TableCell>
                       </>}
                       {isBmsPcm && <>
+                        <TableCell className="text-xs text-center text-gray-900">{item.chemistryType ?? '-'}</TableCell>
                         <TableCell><TooltipCell value={item.manufacturer} /></TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.maxSeriesCount ?? '-'}</TableCell>
-                        <TableCell className="text-xs text-center text-gray-900">{item.continuousDischargeCurrent != null ? Number(item.continuousDischargeCurrent) : '-'}</TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.ratedCurrent != null ? Number(item.ratedCurrent) : item.continuousDischargeCurrent != null ? Number(item.continuousDischargeCurrent) : '-'}</TableCell>
                       </>}
                       {!isBmsPcm && <TableCell><TooltipCell value={item.unit} /></TableCell>}
                       {isAll && <TableCell><ImageCell urls={item.images ?? []} /></TableCell>}

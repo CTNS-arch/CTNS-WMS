@@ -180,7 +180,7 @@ function previewCode(row: BulkRow, type: BulkType, revisionNumber = 1): string {
         category, subCategory: sub,
         manufacturer: row.manufacturer || undefined,
         maxSeriesCount: row.maxSeriesCount ? Number(row.maxSeriesCount) : undefined,
-        continuousDischargeCurrent: row.continuousDischargeCurrent ? Number(row.continuousDischargeCurrent) : undefined,
+        ratedCurrent: row.ratedCurrent ? Number(row.ratedCurrent) : undefined,
         revisionNumber,
       })
     case 'CELL':
@@ -506,7 +506,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
           code1 = buildItemCode(buildCodeParts({ category, subCategory: sub, chemistryType: row.chemistryType || undefined, cellModel: row.cellModel || undefined, seriesCount: row.seriesCount ? Number(row.seriesCount) : undefined, parallelCount: row.parallelCount ? Number(row.parallelCount) : undefined, circuit: row.circuit || undefined, revisionNumber: 1 }))
           break
         case 'BMS':
-          code1 = buildBmsCode({ category, subCategory: sub, manufacturer: row.manufacturer || undefined, maxSeriesCount: row.maxSeriesCount ? Number(row.maxSeriesCount) : undefined, continuousDischargeCurrent: row.continuousDischargeCurrent ? Number(row.continuousDischargeCurrent) : undefined, revisionNumber: 1 })
+          code1 = buildBmsCode({ category, subCategory: sub, manufacturer: row.manufacturer || undefined, maxSeriesCount: row.maxSeriesCount ? Number(row.maxSeriesCount) : undefined, ratedCurrent: row.ratedCurrent ? Number(row.ratedCurrent) : undefined, revisionNumber: 1 })
           break
         case 'CELL':
           code1 = buildCellCode({ category, chemistryType: row.chemistryType || undefined, cellModel: row.cellModel || undefined })
@@ -566,7 +566,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
             itemCode = buildItemCode(buildCodeParts({ category, subCategory: sub, chemistryType: row.chemistryType || undefined, cellModel: row.cellModel || undefined, seriesCount: row.seriesCount ? Number(row.seriesCount) : undefined, parallelCount: row.parallelCount ? Number(row.parallelCount) : undefined, circuit: row.circuit || undefined, revisionNumber }))
             break
           case 'BMS':
-            itemCode = buildBmsCode({ category, subCategory: sub, manufacturer: row.manufacturer || undefined, maxSeriesCount: row.maxSeriesCount ? Number(row.maxSeriesCount) : undefined, continuousDischargeCurrent: row.continuousDischargeCurrent ? Number(row.continuousDischargeCurrent) : undefined, revisionNumber })
+            itemCode = buildBmsCode({ category, subCategory: sub, manufacturer: row.manufacturer || undefined, maxSeriesCount: row.maxSeriesCount ? Number(row.maxSeriesCount) : undefined, ratedCurrent: row.ratedCurrent ? Number(row.ratedCurrent) : undefined, revisionNumber })
             break
           case 'COMPONENT_OTHER':
             itemCode = buildComponentCode({ category, subCategory: sub, formFactor: row.thirdLevel || undefined, revisionNumber })
@@ -854,9 +854,10 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     {isBatteryLike && <th className={thSm} style={{ width: 90 }}>회로</th>}
 
                     {/* BMS 전용 */}
+                    {bulkType === 'BMS' && <th className={thSm} style={{ width: 90 }}>화학계</th>}
                     {bulkType === 'BMS' && <th className={thSm} style={{ width: 110 }}>제조사</th>}
                     {bulkType === 'BMS' && <th className={thSm} style={{ width: 74 }}>최대직렬(S)</th>}
-                    {bulkType === 'BMS' && <th className={thSm} style={{ width: 80 }}>연속방전(A)</th>}
+                    {bulkType === 'BMS' && <th className={thSm} style={{ width: 80 }}>정격전류(A)</th>}
 
                     {/* CELL 전용 */}
                     {bulkType === 'CELL' && <th className={thSm} style={{ width: 110 }}>화학계</th>}
@@ -1135,9 +1136,10 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                         {isBatteryLike && ts(90, row.circuit, v => upd(row._key, 'circuit', v), opts.circuit ?? [], 'circuit', '회로')}
 
                         {/* ── BMS 전용 ── */}
+                        {bulkType === 'BMS' && ts(90, row.chemistryType, v => upd(row._key, 'chemistryType', v), opts.chemistryType ?? [], 'chemistryType', '화학계')}
                         {bulkType === 'BMS' && ts(110, row.manufacturer, v => upd(row._key, 'manufacturer', v), opts.manufacturer ?? [], 'manufacturer', '제조사')}
                         {bulkType === 'BMS' && num(74, 'maxSeriesCount', 'S')}
-                        {bulkType === 'BMS' && num(80, 'continuousDischargeCurrent', 'A')}
+                        {bulkType === 'BMS' && num(80, 'ratedCurrent', 'A')}
 
                         {/* ── CELL 전용 ── */}
                         {bulkType === 'CELL' && ts(110, row.chemistryType, v => upd(row._key, 'chemistryType', v), opts.chemistryType ?? [], 'chemistryType', '화학계')}
