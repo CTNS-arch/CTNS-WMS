@@ -299,36 +299,122 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
   }
 
   const handlePrint = async () => {
-    const w = window.open('', '_blank', 'width=960,height=700')
+    const w = window.open('', '_blank', 'width=1100,height=700')
     if (!w) return
-    const rootItems: PrintRow[] = rows.filter(r => r.child).map(r => ({
-      child: r.child!, childId: r.childId!, quantity: r.quantity, unit: r.unit, memo: r.memo, level: 1,
-    }))
-    const allRows = await buildLeveledRows(rootItems, 1, new Set([item?.id ?? '']))
-    const LEVEL_COLORS = ['', '#f0f4ff', '#f5f0ff', '#f0fff4', '#fff8f0']
-    const rowsHtml = allRows.map((r, i) => {
-      const bg = r.level > 1 ? (LEVEL_COLORS[r.level] ?? '#f9f9f9') : ''
-      const indent = r.level > 1 ? `${'　'.repeat(r.level - 1)}└ ` : ''
-      return `<tr style="background:${bg}">
-        <td style="text-align:center">${i + 1}</td>
-        <td style="text-align:center;color:#888;font-size:10px">${r.level}</td>
-        <td>${indent}<span style="font-family:monospace">${r.child?.itemCode ?? ''}</span></td>
-        <td>${r.child?.itemName ?? ''}</td>
-        <td>${CAT_LABEL[r.child?.category ?? ''] ?? ''}</td>
-        <td>${r.child?.subCategory ? (SUB_LABEL[r.child.subCategory] ?? r.child.subCategory) : ''}</td>
-        <td style="text-align:right">${r.quantity}</td>
-        <td>${r.unit}</td>
-        <td>${r.memo}</td>
+
+    // 루트 BOM 직접 항목: 반제품 먼저, 직접 자재는 마지막
+    const directItems = rows.filter(r => r.child)
+    const assemblies = directItems.filter(r => r.child!.category === 'ASSEMBLY')
+    const directComponents = directItems.filter(r => r.child!.category !== 'ASSEMBLY')
+
+    // 각 반제품의 하위 BOM 가져오기
+    const visited = new Set<string>([item?.id ?? ''])
+    type SubItem = { child: any; quantity: string; unit: string; memo: string }
+    const asmGroups: Array<{ asm: BomRow; subItems: SubItem[] }> = []
+
+    for (const asmRow of assemblies) {
+      const subItems: SubItem[] = []
+      if (asmRow.childId && !visited.has(asmRow.childId)) {
+        visited.add(asmRow.childId)
+        try {
+          const res = await fetch(`/api/items/${asmRow.childId}/bom`)
+          const json = await res.json()
+          if (json.success) {
+            for (const l of json.data) {
+              subItems.push({ child: l.child, quantity: String(l.quantity), unit: l.unit ?? '', memo: l.memo ?? '' })
+            }
+          }
+        } catch {}
+      }
+      asmGroups.push({ asm: asmRow, subItems })
+    }
+
+    const CAT_BG: Record<string, string> = { PRODUCT: '#FFD966', ASSEMBLY: '#C6EFCE', COMPONENT: '#BDD7EE' }
+    const CAT_TEXT: Record<string, string> = { PRODUCT: '#7D5A00', ASSEMBLY: '#375623', COMPONENT: '#1F4E79' }
+    const cell = (content: string, extra = '') =>
+      `<td style="border:1px solid #aaa;padding:5px 8px;${extra}">${content}</td>`
+
+    const makeRow = (cat: string, lv1: string, lv2: string, lv3: string,
+                     itemCode: string, itemName: string, qty: string, unit: string, memo: string) => {
+      const bg = CAT_BG[cat] ?? '#fff'
+      const tc = CAT_TEXT[cat] ?? '#111'
+      return `<tr style="background:${bg};color:${tc}">
+        ${cell(lv1, 'text-align:center;font-weight:700')}
+        ${cell(lv2, 'text-align:center;font-weight:700')}
+        ${cell(lv3, 'text-align:center;font-weight:700')}
+        ${cell(itemCode, 'font-family:monospace;font-size:10px')}
+        ${cell(itemName)}
+        ${cell(qty || '-', 'text-align:center')}
+        ${cell(unit || '-', 'text-align:center')}
+        ${cell(memo)}
       </tr>`
-    }).join('')
+    }
+
+    let rowsHtml = ''
+
+    // 완제품 (루트)
+    if (item) {
+      rowsHtml += makeRow(item.category ?? 'PRODUCT', '1', '', '', item.itemCode ?? '', item.itemName ?? '', '-', '-', '')
+    }
+
+    // 반제품 → 반제품별 하위 자재 (자재 번호 반제품마다 재시작)
+    let asmCounter = 0
+    for (const { asm, subItems } of asmGroups) {
+      asmCounter++
+      let subCounter = 0
+      rowsHtml += makeRow('ASSEMBLY', '', String(asmCounter), '', asm.child?.itemCode ?? '', asm.child?.itemName ?? '', asm.quantity, asm.unit, asm.memo)
+      for (const sub of subItems) {
+        subCounter++
+        rowsHtml += makeRow(sub.child?.category ?? 'COMPONENT', '', '', String(subCounter), sub.child?.itemCode ?? '', sub.child?.itemName ?? '', sub.quantity, sub.unit, sub.memo)
+      }
+    }
+
+    // 직접 자재 (루트에 직접 연결된 자재, 번호 재시작)
+    let directCounter = 0
+    for (const comp of directComponents) {
+      directCounter++
+      rowsHtml += makeRow(comp.child?.category ?? 'COMPONENT', '', '', String(directCounter), comp.child?.itemCode ?? '', comp.child?.itemName ?? '', comp.quantity, comp.unit, comp.memo)
+    }
+
+    const totalCount = asmGroups.reduce((s, g) => s + 1 + g.subItems.length, 0) + directComponents.length
+
     w.document.write(`<!DOCTYPE html><html><head>
       <title>BOM - ${item?.itemCode ?? ''}</title>
-      <style>body{font-family:sans-serif;font-size:12px;padding:24px;color:#111}h2{font-size:15px;margin:0 0 4px}.sub{font-size:11px;color:#666;margin-bottom:18px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:6px 10px;text-align:left;font-size:11px}th{background:#f5f5f5;font-weight:600}@media print{body{padding:12px}}</style>
+      <style>
+        body{font-family:'Malgun Gothic',sans-serif;font-size:12px;padding:20px;color:#111}
+        .bom-title{background:#4472C4;color:white;text-align:center;font-size:13px;font-weight:700;padding:8px;border:1px solid #2F5496}
+        .bom-sub{font-size:11px;color:#555;margin:6px 0 14px;text-align:center}
+        table{border-collapse:collapse;width:100%}
+        th{background:#4472C4;color:white;font-weight:600;text-align:center;padding:5px 8px;border:1px solid #2F5496;font-size:11px}
+        td{font-size:11px}
+        @media print{body{padding:10px}}
+      </style>
     </head><body>
-      <h2>BOM 구성 관리</h2>
-      <div class="sub">${item?.itemCode ?? ''} — ${item?.itemName ?? ''} &nbsp;|&nbsp; 총 ${allRows.length}개 구성 품목</div>
-      <table><thead><tr><th>#</th><th>레벨</th><th>품번</th><th>품명</th><th>대분류</th><th>중분류</th><th>수량</th><th>단위</th><th>비고</th></tr></thead>
-      <tbody>${rowsHtml}</tbody></table>
+      <div class="bom-title">BOM(MASS PRODUCTION)</div>
+      <div class="bom-sub">${item?.itemCode ?? ''} &nbsp;—&nbsp; ${item?.itemName ?? ''} &nbsp;|&nbsp; 총 ${totalCount}개 구성 품목</div>
+      <table>
+        <colgroup>
+          <col style="width:54px"><col style="width:54px"><col style="width:54px">
+          <col style="width:130px"><col style="width:180px">
+          <col style="width:52px"><col style="width:52px"><col style="width:150px">
+        </colgroup>
+        <thead>
+          <tr>
+            <th colspan="3">Level</th>
+            <th rowspan="2">PART NO.</th>
+            <th rowspan="2">PART NAME</th>
+            <th rowspan="2">QTY</th>
+            <th rowspan="2">단위</th>
+            <th rowspan="2">비고</th>
+          </tr>
+          <tr>
+            <th style="background:#FFD966;color:#7D5A00;font-size:9px;padding:3px 2px">완제품</th>
+            <th style="background:#C6EFCE;color:#375623;font-size:9px;padding:3px 2px">반제품</th>
+            <th style="background:#BDD7EE;color:#1F4E79;font-size:9px;padding:3px 2px">자재</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
     </body></html>`)
     w.document.close(); w.print()
   }
