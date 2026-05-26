@@ -55,6 +55,12 @@ const FILTER_PILLS_MISC: { value: string; label: string }[] = [
   { value: 'RECEIVED', label: '입고완료' },
   { value: 'REJECTED', label: '반려' },
 ]
+const FILTER_PILLS_EXTERNAL: { value: string; label: string }[] = [
+  { value: '', label: '전체' },
+  { value: 'APPROVED', label: '검토중' },
+  { value: 'ORDERED', label: '주문완료' },
+  { value: 'RECEIVED', label: '입고완료' },
+]
 const FILTER_PILLS_DEPT: { value: string; label: string }[] = [
   { value: '', label: '전체' },
   { value: 'PENDING', label: '요청' },
@@ -203,6 +209,7 @@ type UserItem = { id: string; name: string | null; email: string }
 export default function PurchasesPage() {
   const { data: session } = useSession()
   const sessionName = session?.user?.name ?? ''
+  const isExternal  = session?.user?.isExternal ?? false
   const isProdStock = session?.user?.roles?.includes('PROD_STOCK') ?? false
   const isLabStock  = session?.user?.roles?.includes('LAB_STOCK')  ?? false
   const isOwn = (req: any) => {
@@ -279,8 +286,14 @@ export default function PurchasesPage() {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      if (status) params.set('status', status)
-      if (dept) params.set('department', dept)
+      if (isExternal) {
+        // 외부 거래처: 서버에 externalView 플래그 전달 (상태·부서 서버에서 고정)
+        params.set('externalView', '1')
+        if (status) params.set('status', status)
+      } else {
+        if (status) params.set('status', status)
+        if (dept) params.set('department', dept)
+      }
       if (q.trim()) params.set('search', q.trim())
       params.set('page', String(p))
       params.set('limit', String(LIMIT))
@@ -294,9 +307,19 @@ export default function PurchasesPage() {
       } else toast.error('데이터를 불러오지 못했습니다.')
     } catch { toast.error('서버 오류가 발생했습니다.') }
     finally { setLoading(false) }
-  }, [])
+  }, [isExternal])
 
   useEffect(() => { fetchRequests(page, filterStatus, search, deptTab) }, [fetchRequests, page, filterStatus, search, deptTab])
+
+  // 세션 로딩 후 외부 계정 여부가 확정되면 1페이지부터 다시 로드
+  useEffect(() => {
+    if (isExternal) {
+      setPage(1)
+      setFilterStatus('')
+      fetchRequests(1, '', search, deptTab)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isExternal])
 
   useEffect(() => {
     fetch('/api/users').then(r => r.json()).then(j => { if (j.success) setUsers(j.data) }).catch(() => {})
@@ -614,7 +637,7 @@ export default function PurchasesPage() {
             </svg>
             비즈플레이
           </a>
-          {deptTab === '연구비' ? (
+          {!isExternal && (deptTab === '연구비' ? (
             <Button onClick={() => { setMiscEditReq(null); setMiscOpen(true) }} size="sm"
               className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
               일괄 구매 요청
@@ -624,13 +647,13 @@ export default function PurchasesPage() {
               className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white shadow-sm">
               + 구매 요청
             </Button>
-          )}
+          ))}
         </div>
       </div>
 
       {/* ── 부서 탭 ──────────────────────────────────────── */}
       <div className="bg-white border-b shrink-0 flex">
-        {DEPT_TABS.map(tab => (
+        {(isExternal ? DEPT_TABS.filter(t => t.value === '생산구매팀') : DEPT_TABS).map(tab => (
           <button key={tab.value}
             onClick={() => { setDeptTab(tab.value); setPage(1); setFilterStatus('') }}
             className={`px-5 py-2.5 text-xs font-medium border-b-2 transition-all whitespace-nowrap ${
@@ -647,7 +670,7 @@ export default function PurchasesPage() {
       {/* ── 필터 바 ──────────────────────────────────────── */}
       <div className="px-4 pt-2.5 pb-2 border-b bg-white flex flex-col gap-2 shrink-0">
         <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
-          {(deptTab === '연구비' ? FILTER_PILLS_MISC : FILTER_PILLS_DEPT).map(pill => {
+          {(isExternal ? FILTER_PILLS_EXTERNAL : deptTab === '연구비' ? FILTER_PILLS_MISC : FILTER_PILLS_DEPT).map(pill => {
             const cnt = pill.value ? (statusCounts[pill.value] ?? 0) : Object.values(statusCounts).reduce((s, n) => s + n, 0)
             const active = filterStatus === pill.value
             return (
@@ -761,8 +784,8 @@ export default function PurchasesPage() {
                     </td>
                     <td className="px-3 py-2 align-middle">
                       <div className="flex items-center gap-1">
-                        {/* 구매 요청자 전용 버튼 */}
-                        {isOwn(req) && (
+                        {/* 보기: 모두 / 수정: 작성자만 */}
+                        {isOwn(req) ? (
                           req.status === 'PENDING' ? (
                             <button
                               onClick={() => { setMiscReadOnly(false); setMiscEditReq(req); setMiscOpen(true) }}
@@ -778,7 +801,15 @@ export default function PurchasesPage() {
                               보기
                             </button>
                           )
+                        ) : (
+                          <button
+                            onClick={() => { setMiscReadOnly(true); setMiscEditReq(req); setMiscOpen(true) }}
+                            className="h-7 px-2.5 rounded text-xs font-medium border border-gray-200 text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors whitespace-nowrap"
+                          >
+                            보기
+                          </button>
                         )}
+                        {/* 입고 처리: 작성자만 */}
                         {isOwn(req) && (
                           <button
                             onClick={() => { setMiscReceiveRequest(req); setMiscReceiveOpen(true) }}
@@ -787,7 +818,7 @@ export default function PurchasesPage() {
                             입고 처리
                           </button>
                         )}
-                        {/* 관리자 전용 버튼 */}
+                        {/* 구매 처리: 연구소 재고권한 user만 */}
                         {isAdmin && (
                           <button
                             onClick={() => { setMiscBuyerRequest(req); setMiscBuyerOpen(true) }}
@@ -796,6 +827,7 @@ export default function PurchasesPage() {
                             구매 처리
                           </button>
                         )}
+                        {/* 입고 확인: 연구소 재고권한 user만 */}
                         {isAdmin && (
                           <button
                             onClick={() => { setMiscReceiveViewReq(req); setMiscReceiveViewOpen(true) }}
@@ -804,7 +836,8 @@ export default function PurchasesPage() {
                             입고 확인
                           </button>
                         )}
-                        {(isAdmin || isOwn(req)) && req.status === 'PENDING' && (
+                        {/* 삭제: 작성자 또는 연구소 재고권한 user */}
+                        {(isOwn(req) || isAdmin) && req.status === 'PENDING' && (
                           <button
                             onClick={() => setDeleteId(req.id)}
                             className="h-7 px-2.5 rounded text-xs font-medium border border-red-200 text-red-500 bg-red-50 hover:bg-red-100 transition-colors whitespace-nowrap"
@@ -944,7 +977,8 @@ export default function PurchasesPage() {
                       {isFirst && (
                         <td rowSpan={groupSize} className="px-3 py-2 align-middle">
                           <div className="flex items-center gap-1">
-                            {isOwn(req) && (
+                            {/* 보기: 모두 / 수정: 작성자만 */}
+                            {isOwn(req) ? (
                               req.status === 'PENDING' ? (
                                 <button
                                   onClick={() => openEdit(req, false)}
@@ -960,8 +994,16 @@ export default function PurchasesPage() {
                                   보기
                                 </button>
                               )
+                            ) : (
+                              <button
+                                onClick={() => openEdit(req, true)}
+                                className="h-7 px-2.5 rounded text-xs font-medium border border-gray-200 text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors whitespace-nowrap"
+                              >
+                                보기
+                              </button>
                             )}
-                            {isAdmin && (
+                            {/* 구매 처리: 해당 탭 재고권한 user 또는 거래처(VENDOR) 권한 */}
+                            {(isAdmin || (isExternal && deptTab === '생산구매팀')) && (
                               <button
                                 onClick={() => openBuyer(req)}
                                 className="h-7 px-2.5 rounded text-xs font-medium border border-purple-200 text-purple-600 bg-purple-50 hover:bg-purple-100 transition-colors whitespace-nowrap"
@@ -969,7 +1011,8 @@ export default function PurchasesPage() {
                                 구매 처리
                               </button>
                             )}
-                            {isAdmin && req.status === 'PENDING' && (
+                            {/* 삭제: 작성자 또는 해당 탭 재고권한 user */}
+                            {(isOwn(req) || isAdmin) && req.status === 'PENDING' && (
                               <button
                                 onClick={() => setDeleteId(req.id)}
                                 className="h-7 px-2.5 rounded text-xs font-medium border border-red-200 text-red-500 bg-red-50 hover:bg-red-100 transition-colors whitespace-nowrap"

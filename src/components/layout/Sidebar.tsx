@@ -3,7 +3,10 @@
 import { usePathname } from 'next/navigation'
 import { signOut, useSession } from 'next-auth/react'
 
-const NAV_GROUPS = [
+const NAV_GROUPS: {
+  label: string
+  items: { href: string; label: string; icon: React.ReactNode; masterOnly?: boolean; requiredRoles?: string[] }[]
+}[] = [
   {
     label: '품목',
     items: [
@@ -98,6 +101,7 @@ const NAV_GROUPS = [
       {
         href: '/options',
         label: '옵션 관리',
+        requiredRoles: ['MASTER_ADMIN', 'ITEM_WRITE', 'ITEM_DELETE'],
         icon: (
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -113,10 +117,17 @@ export default function Sidebar() {
   const pathname = usePathname()
   const { data: session } = useSession()
 
-  const isMasterAdmin = session?.user?.roles?.includes('MASTER_ADMIN') ?? false
+  const roles         = session?.user?.roles ?? []
+  const isMasterAdmin = roles.includes('MASTER_ADMIN')
+  const isExternal    = session?.user?.isExternal ?? false
 
   const isActive = (href: string) =>
     href === '/' ? pathname === '/' : pathname.startsWith(href)
+
+  // 외부 거래처 계정: 구매 요청만 표시
+  const visibleGroups = isExternal
+    ? [{ label: '구매', items: NAV_GROUPS.find(g => g.label === '구매')!.items.filter(i => i.href === '/purchases') }]
+    : NAV_GROUPS
 
   return (
     <aside className="w-56 shrink-0 flex flex-col" style={{ backgroundColor: '#0f172a' }}>
@@ -138,13 +149,17 @@ export default function Sidebar() {
 
       {/* 네비게이션 */}
       <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-5">
-        {NAV_GROUPS.map(group => (
+        {visibleGroups.map(group => (
           <div key={group.label}>
             <p className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-widest" style={{ color: '#475569' }}>
               {group.label}
             </p>
             <div className="space-y-0.5">
-              {group.items.filter(item => !item.masterOnly || isMasterAdmin).map(item => (
+              {group.items.filter(item => {
+                if ('masterOnly' in item && item.masterOnly && !isMasterAdmin) return false
+                if (item.requiredRoles && !item.requiredRoles.some(r => roles.includes(r as any))) return false
+                return true
+              }).map(item => (
                 <a
                   key={item.href}
                   href={item.href}

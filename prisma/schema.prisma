@@ -15,6 +15,7 @@ enum UserRole {
   PROD_STOCK      // 생산구매팀 재고 관리
   MASTER_ADMIN    // 마스터 관리자
   ACCESS_BLOCKED  // 로그인 차단
+  VENDOR          // 거래처 (구매요청 제한 접근)
 }
 
 model User {
@@ -451,6 +452,19 @@ model ItemCreateRequest {
   updatedAt     DateTime          @updatedAt
 
   requester User? @relation(fields: [requesterId], references: [id])
+}
+
+// ── 외부 거래처 계정 ────────────────────────────────────────
+
+model ExternalUser {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  passwordHash String
+  name         String
+  roles        UserRole[] @default([])
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 }
 
 // ── 공급처 관리 ────────────────────────────────────────────

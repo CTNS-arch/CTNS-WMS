@@ -7,42 +7,58 @@ import Image from 'next/image'
 import iconPng from '../icon.png'
 
 const ERROR_MESSAGES: Record<string, string> = {
-  Configuration:    '서버 설정 오류입니다. 관리자에게 문의하세요.',
-  AccessDenied:     '접근이 거부되었습니다. 조직 계정으로 시도해 주세요.',
-  OAuthCallback:    'Microsoft 인증 중 오류가 발생했습니다. 다시 시도해 주세요.',
+  Configuration:      '서버 설정 오류입니다. 관리자에게 문의하세요.',
+  AccessDenied:       '접근이 거부되었습니다. 조직 계정으로 시도해 주세요.',
+  OAuthCallback:      'Microsoft 인증 중 오류가 발생했습니다. 다시 시도해 주세요.',
   OAuthCreateAccount: '계정 생성에 실패했습니다. 관리자에게 문의하세요.',
-  Default:          '로그인 중 오류가 발생했습니다. 다시 시도해 주세요.',
+  CredentialsSignin:  '아이디 또는 비밀번호가 올바르지 않습니다.',
+  Default:            '로그인 중 오류가 발생했습니다. 다시 시도해 주세요.',
 }
 
 function LoginPage() {
+  const [tab, setTab]         = useState<'ms' | 'local'>('ms')
   const [loading, setLoading] = useState(false)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [localError, setLocalError] = useState('')
   const searchParams = useSearchParams()
   const errorCode = searchParams.get('error')
-  const errorMsg = errorCode ? (ERROR_MESSAGES[errorCode] ?? ERROR_MESSAGES.Default) : null
+  const errorMsg  = errorCode ? (ERROR_MESSAGES[errorCode] ?? ERROR_MESSAGES.Default) : null
 
-  // Configuration 오류 시 자동 1회 재시도 (Vercel/Neon 콜드 스타트 대응)
+  // Configuration 오류 시 자동 1회 재시도
   useEffect(() => {
     if (errorCode !== 'Configuration') return
     const retried = sessionStorage.getItem('ctns_auth_retried')
-    if (retried) {
-      sessionStorage.removeItem('ctns_auth_retried')
-      return
-    }
+    if (retried) { sessionStorage.removeItem('ctns_auth_retried'); return }
     sessionStorage.setItem('ctns_auth_retried', '1')
     setLoading(true)
     const t = setTimeout(() => signIn('microsoft-entra-id', { callbackUrl: '/items' }), 1200)
     return () => clearTimeout(t)
   }, [errorCode])
 
-  const handleLogin = async () => {
+  const handleMsLogin = async () => {
     sessionStorage.removeItem('ctns_auth_retried')
     setLoading(true)
     await signIn('microsoft-entra-id', { callbackUrl: '/items' })
   }
 
+  const handleLocalLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!username || !password) { setLocalError('아이디와 비밀번호를 입력하세요.'); return }
+    setLoading(true)
+    setLocalError('')
+    const res = await signIn('external', { username, password, callbackUrl: '/items', redirect: false })
+    if (res?.error) {
+      setLocalError('아이디 또는 비밀번호가 올바르지 않습니다.')
+      setLoading(false)
+    } else if (res?.url) {
+      window.location.href = res.url
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-blue-50">
-      <div className="w-full max-w-[360px] px-4 flex flex-col items-center gap-8">
+      <div className="w-full max-w-[380px] px-4 flex flex-col items-center gap-8">
 
         {/* 로고 */}
         <div className="flex flex-col items-center gap-3">
@@ -54,71 +70,141 @@ function LoginPage() {
         </div>
 
         {/* 카드 */}
-        <div className="w-full bg-white rounded-2xl shadow-md border border-gray-100 p-8 flex flex-col gap-6">
-          {errorMsg && (
-            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
-              <svg className="w-4 h-4 text-red-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"/>
-              </svg>
-              <p className="text-xs text-red-600">{errorMsg}</p>
-            </div>
-          )}
-          <div className="text-center">
-            <p className="text-sm font-medium text-gray-700">조직 계정으로 로그인</p>
-            <p className="text-xs text-gray-400 mt-1">myctns.com 구성원만 접속 가능합니다</p>
+        <div className="w-full bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
+
+          {/* 탭 */}
+          <div className="flex border-b">
+            <button
+              onClick={() => { setTab('ms'); setLocalError('') }}
+              className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                tab === 'ms'
+                  ? 'text-blue-700 border-b-2 border-blue-600 bg-blue-50/40'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              MS 계정
+            </button>
+            <button
+              onClick={() => { setTab('local'); setLocalError('') }}
+              className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                tab === 'local'
+                  ? 'text-blue-700 border-b-2 border-blue-600 bg-blue-50/40'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              일반 로그인
+            </button>
           </div>
 
-          <button
-            onClick={handleLogin}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-3 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-xl transition-colors text-sm"
-          >
-            {loading ? (
-              <>
-                <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          <div className="p-8">
+            {errorMsg && (
+              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 mb-5">
+                <svg className="w-4 h-4 text-red-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"/>
                 </svg>
-                로그인 중...
-              </>
-            ) : (
-              <>
-                <svg width="20" height="20" viewBox="0 0 22 22" fill="none" aria-hidden="true">
-                  <rect x="0" y="0" width="10" height="10" fill="#F25022"/>
-                  <rect x="12" y="0" width="10" height="10" fill="#7FBA00"/>
-                  <rect x="0" y="12" width="10" height="10" fill="#00A4EF"/>
-                  <rect x="12" y="12" width="10" height="10" fill="#FFB900"/>
-                </svg>
-                Microsoft 계정으로 로그인
-              </>
+                <p className="text-xs text-red-600">{errorMsg}</p>
+              </div>
             )}
-          </button>
 
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-px bg-gray-100"/>
-            <span className="text-[11px] text-gray-400">Microsoft Entra ID</span>
-            <div className="flex-1 h-px bg-gray-100"/>
-          </div>
+            {/* MS 계정 탭 */}
+            {tab === 'ms' && (
+              <div className="flex flex-col gap-5">
+                <div className="text-center">
+                  <p className="text-sm font-medium text-gray-700">Microsoft 계정으로 로그인</p>
+                  <p className="text-xs text-gray-400 mt-1">myctns.com 구성원만 접속 가능합니다</p>
+                </div>
 
-          <div className="flex flex-col gap-1.5 text-[11px] text-gray-400">
-            <div className="flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
-              </svg>
-              조직 계정 SSO 로그인
-            </div>
-            <div className="flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
-              </svg>
-              최초 로그인 시 자동 계정 생성
-            </div>
-            <div className="flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
-              </svg>
-              별도 비밀번호 불필요
-            </div>
+                <button
+                  onClick={handleMsLogin}
+                  disabled={loading}
+                  className="w-full flex items-center justify-center gap-3 bg-gray-900 hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-xl transition-colors text-sm"
+                >
+                  {loading ? (
+                    <>
+                      <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                      </svg>
+                      로그인 중...
+                    </>
+                  ) : (
+                    <>
+                      <svg width="20" height="20" viewBox="0 0 22 22" fill="none" aria-hidden="true">
+                        <rect x="0"  y="0"  width="10" height="10" fill="#F25022"/>
+                        <rect x="12" y="0"  width="10" height="10" fill="#7FBA00"/>
+                        <rect x="0"  y="12" width="10" height="10" fill="#00A4EF"/>
+                        <rect x="12" y="12" width="10" height="10" fill="#FFB900"/>
+                      </svg>
+                      Microsoft 계정으로 로그인
+                    </>
+                  )}
+                </button>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-gray-100"/>
+                  <span className="text-[11px] text-gray-400">Microsoft Entra ID</span>
+                  <div className="flex-1 h-px bg-gray-100"/>
+                </div>
+
+                <div className="flex flex-col gap-1.5 text-[11px] text-gray-400">
+                  {['조직 계정 SSO 로그인', '최초 로그인 시 자동 계정 생성', '별도 비밀번호 불필요'].map(text => (
+                    <div key={text} className="flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5 text-green-500 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+                      </svg>
+                      {text}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 일반 로그인 탭 */}
+            {tab === 'local' && (
+              <div className="flex flex-col gap-5">
+                <div className="text-center">
+                  <p className="text-sm font-medium text-gray-700">일반 계정으로 로그인</p>
+                  <p className="text-xs text-gray-400 mt-1">발급받은 아이디/비밀번호로 접속하세요</p>
+                </div>
+
+                <form onSubmit={handleLocalLogin} className="flex flex-col gap-3">
+                  <input
+                    type="text"
+                    placeholder="아이디"
+                    value={username}
+                    onChange={e => setUsername(e.target.value)}
+                    autoComplete="username"
+                    disabled={loading}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+                  />
+                  <input
+                    type="password"
+                    placeholder="비밀번호"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    disabled={loading}
+                    className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+                  />
+                  {localError && <p className="text-xs text-red-500 px-1">{localError}</p>}
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed text-white font-medium py-2.5 px-4 rounded-xl transition-colors text-sm"
+                  >
+                    {loading ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                        로그인 중...
+                      </>
+                    ) : '로그인'}
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
         </div>
 

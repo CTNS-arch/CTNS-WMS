@@ -1,8 +1,10 @@
 import NextAuth from "next-auth"
 import MicrosoftEntraId from "next-auth/providers/microsoft-entra-id"
+import Credentials from "next-auth/providers/credentials"
 import { PrismaAdapter } from "@auth/prisma-adapter"
 import { prisma } from "@/lib/prisma"
 import { listActiveOrgUsers, isOrgUserActive } from "@/lib/ms-graph"
+import bcrypt from "bcryptjs"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
@@ -14,6 +16,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientSecret: process.env.AZURE_AD_CLIENT_SECRET ?? '',
       issuer: `https://login.microsoftonline.com/${process.env.AZURE_AD_TENANT_ID}/v2.0`,
     }),
+    Credentials({
+      id: 'external',
+      name: '외부 거래처',
+      credentials: {
+        username: { label: '아이디', type: 'text' },
+        password: { label: '비밀번호', type: 'password' },
+      },
+      async authorize(credentials) {
+        const username = credentials?.username as string | undefined
+        const password = credentials?.password as string | undefined
+        if (!username || !password) return null
+        const extUser = await prisma.externalUser.findUnique({ where: { username } })
+        if (!extUser || !extUser.isActive) return null
+        const valid = await bcrypt.compare(password, extUser.passwordHash)
+        if (!valid) return null
+        return { id: `ext:${extUser.id}`, name: extUser.name, email: null } as any
+      },
+    }),
   ],
   session: {
     strategy: "jwt",
@@ -23,7 +43,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     error: '/login',
   },
   callbacks: {
-    async signIn({ user }) {
+    async signIn({ user, account }) {
+      // 외부 거래처 계정은 authorize에서 이미 검증 완료
+      if (account?.provider === 'external') return true
       if (!user.email) return false
       // 관리자가 차단한 계정 확인
       const dbUser = await prisma.user.findUnique({
@@ -45,8 +67,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return true
     },
     async jwt({ token, user, account }) {
+      // 일반 로그인 계정 (ExternalUser)
+      if (account?.provider === 'external' && user?.id?.startsWith('ext:')) {
+        const extId = user.id.replace('ext:', '')
+        const extUser = await prisma.externalUser.findUnique({
+          where: { id: extId },
+          select: { roles: true },
+        }).catch(() => null)
+        const extRoles = extUser?.roles ?? []
+        token.extRoles = extRoles as string[]
+        token.isExternal = extRoles.includes('VENDOR')
+        token.externalName = user.name ?? ''
+        token.id = user.id
+        return token
+      }
+
       if (user?.id) token.id = user.id
       if (account?.providerAccountId) token.msOid = account.providerAccountId
+
+      // 일반 로그인 계정은 MS 검증 skip (extRoles가 있으면 external 계정)
+      if (token.extRoles !== undefined) return token
 
       // MS 계정 활성 여부 30분마다 재확인 (이메일/UPN 기준 — OID 불일치 방지)
       const MS_CHECK_INTERVAL = 30 * 60 * 1000
@@ -63,6 +103,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token
     },
     async session({ session, token }) {
+      // 일반 로그인 계정 세션 (VENDOR 여부와 무관하게 extRoles가 있으면 external 계정)
+      if (token.extRoles !== undefined) {
+        session.user.id = token.id as string
+        session.user.name = token.externalName as string
+        session.user.roles = (token.extRoles as any[]) ?? []
+        session.user.isExternal = token.isExternal ?? false
+        return session
+      }
+
       // MS에서 삭제/비활성화된 계정은 세션 무효화
       if (token.msActive === false) {
         return { ...session, user: undefined } as any

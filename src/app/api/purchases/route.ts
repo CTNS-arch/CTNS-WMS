@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { PurchaseStatus } from '@prisma/client'
 
+const EXTERNAL_ALLOWED_STATUSES: PurchaseStatus[] = ['APPROVED', 'ORDERED', 'RECEIVED']
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
@@ -10,16 +12,28 @@ export async function GET(req: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
     const limit = Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10))
     const skip = (page - 1) * limit
-
     const department = searchParams.get('department')
+    // 외부 거래처 클라이언트가 전달하는 플래그
+    const externalView = searchParams.get('externalView') === '1'
 
     const where: any = {}
-    if (status) where.status = status as PurchaseStatus
-    if (department) {
-      // '연구비' 탭은 탭명 변경 전 '기타' 데이터도 포함
-      where.department = department === '연구비'
-        ? { in: ['연구비', '기타'] }
-        : department
+
+    if (externalView) {
+      // 외부 거래처: 생산구매팀 고정 + 허용 상태만
+      where.department = '생산구매팀'
+      if (status && EXTERNAL_ALLOWED_STATUSES.includes(status as PurchaseStatus)) {
+        where.status = status as PurchaseStatus
+      } else {
+        where.status = { in: EXTERNAL_ALLOWED_STATUSES }
+      }
+    } else {
+      if (status) where.status = status as PurchaseStatus
+      if (department) {
+        // '연구비' 탭은 탭명 변경 전 '기타' 데이터도 포함
+        where.department = department === '연구비'
+          ? { in: ['연구비', '기타'] }
+          : department
+      }
     }
     if (search?.trim()) {
       where.OR = [
