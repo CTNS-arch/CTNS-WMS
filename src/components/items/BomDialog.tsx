@@ -142,6 +142,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [childBoms, setChildBoms] = useState<Record<string, { items: any[]; loading: boolean }>>({})
+  const [rootMemo, setRootMemo] = useState('')
 
   const searchTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const dropdownRefs = useRef<Record<string, HTMLDivElement | null>>({})
@@ -390,7 +391,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
         @media print{body{padding:10px}}
       </style>
     </head><body>
-      <div class="bom-title">BOM(MASS PRODUCTION)</div>
+      <div class="bom-title">BOM</div>
       <div class="bom-sub">${item?.itemCode ?? ''} &nbsp;—&nbsp; ${item?.itemName ?? ''} &nbsp;|&nbsp; 총 ${totalCount}개 구성 품목</div>
       <table>
         <colgroup>
@@ -400,10 +401,10 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
         </colgroup>
         <thead>
           <tr>
-            <th colspan="3">Level</th>
-            <th rowspan="2">PART NO.</th>
-            <th rowspan="2">PART NAME</th>
-            <th rowspan="2">QTY</th>
+            <th colspan="3">레벨</th>
+            <th rowspan="2">품목코드</th>
+            <th rowspan="2">품목명</th>
+            <th rowspan="2">수량</th>
             <th rowspan="2">단위</th>
             <th rowspan="2">비고</th>
           </tr>
@@ -469,9 +470,18 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
   const allSelected = activeRows.length > 0 && activeRows.every(r => selectedKeys.has(r._key))
   const existingChildIds = new Set(rows.filter(r => r.childId).map(r => r.childId!))
 
-  const displayNums = new Map<string, number>()
-  let cnt = 0
-  rows.forEach(r => { if (r.child) displayNums.set(r._key, ++cnt) })
+  // 정렬: 반제품 → 직접 자재 → 빈 행 (입력용)
+  const asmBomRows = rows.filter(r => r.child?.category === 'ASSEMBLY')
+  const compBomRows = rows.filter(r => r.child && r.child.category !== 'ASSEMBLY')
+  const emptyBomRows = rows.filter(r => !r.child)
+  const sortedRows = [...asmBomRows, ...compBomRows, ...emptyBomRows]
+
+  // 레벨 번호 계산
+  let _asmNum = 0
+  const rowLevels = new Map<string, { lv1: string; lv2: string; lv3: string }>()
+  asmBomRows.forEach(r => rowLevels.set(r._key, { lv1: '', lv2: String(++_asmNum), lv3: '' }))
+  compBomRows.forEach((r, i) => rowLevels.set(r._key, { lv1: '', lv2: '', lv3: String(i + 1) }))
+  emptyBomRows.forEach(r => rowLevels.set(r._key, { lv1: '', lv2: '', lv3: '' }))
 
   const cell = 'h-7 w-full bg-transparent px-2 text-xs focus:bg-white focus:ring-1 focus:ring-blue-400 focus:outline-none hover:bg-gray-50 transition-colors rounded border-0 disabled:opacity-30 disabled:cursor-not-allowed'
 
@@ -490,11 +500,6 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
               </span>
               <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{activeRows.length}개 구성 품목</span>
             </div>
-            <p className="text-xs text-gray-500 font-mono">
-              <span className="font-semibold text-gray-700">{item?.itemCode}</span>
-              <span className="mx-1.5 text-gray-300">—</span>
-              {item?.itemName}
-            </p>
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" className="h-8 text-xs px-3 gap-1.5" onClick={handlePrint}>
@@ -530,39 +535,86 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
             <table className="w-full text-xs border-collapse" style={{ tableLayout: 'fixed' }}>
               <colgroup>
                 <col style={{ width: 36 }} />   {/* 체크 */}
-                <col style={{ width: 32 }} />   {/* # */}
+                <col style={{ width: 38 }} />   {/* 레벨: 완제품 */}
+                <col style={{ width: 38 }} />   {/* 레벨: 반제품 */}
+                <col style={{ width: 38 }} />   {/* 레벨: 자재 */}
                 <col style={{ width: 130 }} />  {/* 중분류 */}
                 <col style={{ width: 115 }} />  {/* 소분류 */}
-                <col style={{ width: 145 }} />  {/* 품목코드 */}
-                <col />                          {/* 품명 */}
+                <col style={{ width: 215 }} />  {/* 품목코드 */}
+                <col style={{ width: 240 }} />  {/* 품목명 */}
                 <col style={{ width: 68 }} />   {/* 수량 */}
                 <col style={{ width: 52 }} />   {/* 단위 */}
-                <col style={{ width: 300 }} />  {/* 비고 */}
+                <col />                          {/* 비고 */}
                 <col style={{ width: 72 }} />   {/* 작업 */}
               </colgroup>
               <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="py-2.5 text-center">
+                  <th className="py-2.5 text-center border-r border-gray-200" rowSpan={2}>
                     <input type="checkbox" checked={allSelected}
                       onChange={() => allSelected ? setSelectedKeys(new Set()) : setSelectedKeys(new Set(activeRows.map(r => r._key)))}
                       className="rounded" />
                   </th>
-                  <th className="py-2.5 text-center text-gray-400 font-medium">#</th>
-                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium">중분류</th>
-                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium">소분류</th>
-                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium">품목코드</th>
-                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium">품명</th>
-                  <th className="px-2 py-2.5 text-right text-gray-500 font-medium">수량 <span className="text-red-400">*</span></th>
-                  <th className="px-2 py-2.5 text-center text-gray-500 font-medium">단위</th>
-                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium">비고</th>
-                  <th className="py-2.5 text-center text-gray-400 font-medium text-[10px]">작업</th>
+                  <th className="py-2 text-center text-gray-500 font-medium text-[10px] border-r border-gray-200" colSpan={3}>레벨</th>
+                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium border-r border-gray-200" rowSpan={2}>중분류</th>
+                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium border-r border-gray-200" rowSpan={2}>소분류</th>
+                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium border-r border-gray-200" rowSpan={2}>품목코드</th>
+                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium border-r border-gray-200" rowSpan={2}>품목명</th>
+                  <th className="px-2 py-2.5 text-right text-gray-500 font-medium border-r border-gray-200" rowSpan={2}>수량 <span className="text-red-400">*</span></th>
+                  <th className="px-2 py-2.5 text-center text-gray-500 font-medium border-r border-gray-200" rowSpan={2}>단위</th>
+                  <th className="px-2 py-2.5 text-left text-gray-500 font-medium border-r border-gray-200" rowSpan={2}>비고</th>
+                  <th className="py-2.5 text-center text-gray-400 font-medium text-[10px]" rowSpan={2}>작업</th>
+                </tr>
+                <tr>
+                  <th className="py-1.5 text-center text-[9px] font-semibold text-yellow-700 bg-yellow-50 border-t border-r border-gray-200">완제품</th>
+                  <th className="py-1.5 text-center text-[9px] font-semibold text-green-700 bg-green-50 border-t border-r border-gray-200">반제품</th>
+                  <th className="py-1.5 text-center text-[9px] font-semibold text-sky-700 bg-sky-50 border-t border-r border-gray-200">자재</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map(row => {
+                {/* 완제품 (레벨 1) 고정 행 */}
+                {item && (() => {
+                  const itemThirdVal = THIRD_LEVEL[item.subCategory ?? '']?.field === 'chemistryType'
+                    ? item.chemistryType : item.formFactor
+                  return (
+                    <tr className="bg-yellow-50/70 border-b border-yellow-100" style={{ height: 36 }}>
+                      <td className="py-1.5"></td>
+                      <td className="py-1.5 text-center border-r border-gray-100">
+                        <span className="text-xs font-bold text-yellow-700">1</span>
+                      </td>
+                      <td className="py-1.5 text-center border-r border-gray-100"></td>
+                      <td className="py-1.5 text-center border-r border-gray-100"></td>
+                      <td className="px-1 py-1.5 border-r border-gray-100">
+                        {item.subCategory && (
+                          <span className="text-[10px] bg-gray-100 text-gray-900 px-1.5 py-0.5 rounded whitespace-nowrap">
+                            {SUB_LABEL[item.subCategory] ?? item.subCategory}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1.5 border-r border-gray-100 text-xs text-gray-300">—</td>
+                      <td className="px-2 py-1.5 border-r border-gray-100">
+                        <span className="font-mono text-gray-700 text-xs">{item.itemCode}</span>
+                      </td>
+                      <td className="px-2 py-1.5 text-gray-700 truncate border-r border-gray-100 text-xs">{item.itemName}</td>
+                      <td className="px-2 py-1.5 border-r border-gray-100 text-xs text-center text-gray-700 font-medium">1</td>
+                      <td className="px-2 py-1.5 border-r border-gray-100 text-xs text-center text-gray-700">{item.unit || '—'}</td>
+                      <td className="px-0.5 py-0.5 border-r border-gray-100">
+                        <input value={rootMemo} onChange={e => setRootMemo(e.target.value)}
+                          placeholder="비고" className={cell} />
+                      </td>
+                      <td className="py-1.5 px-1">
+                        <div className="flex items-center justify-center">
+                          <button onClick={() => handleViewItem(item)} title="보기" className="w-6 h-6 flex items-center justify-center rounded text-blue-400 hover:text-blue-600 hover:bg-blue-50">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })()}
+                {sortedRows.map(row => {
                   const isSel = selectedKeys.has(row._key)
                   const search = searches[row._key]
-                  const num = displayNums.get(row._key) ?? ''
+                  const lvl = rowLevels.get(row._key) ?? { lv1: '', lv2: '', lv3: '' }
                   const isAssembly = row.child?.category === 'ASSEMBLY' && !!row.id
                   const childBom = childBoms[row._key]
                   const isCell = row.filterSubCat === 'CL'
@@ -579,7 +631,12 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
 
                   return (
                     <Fragment key={row._key}>
-                      <tr className={`border-b border-gray-100 transition-colors ${isSel ? 'bg-blue-50' : 'hover:bg-gray-50/60'}`}>
+                      <tr className={`border-b border-gray-100 transition-colors ${
+                        isSel ? 'bg-indigo-100' :
+                        row.child?.category === 'ASSEMBLY' ? 'bg-green-50 hover:bg-green-100/60' :
+                        row.child?.category === 'COMPONENT' ? 'bg-sky-50/60 hover:bg-sky-50' :
+                        'hover:bg-gray-50/60'
+                      }`}>
 
                         {/* 체크 */}
                         <td className="py-1 text-center">
@@ -590,13 +647,23 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                           )}
                         </td>
 
-                        {/* # */}
-                        <td className="py-1 text-center text-gray-400 tabular-nums">{num}</td>
+                        {/* 레벨: 완제품 */}
+                        <td className="py-1 text-center border-r border-gray-100">
+                          <span className="text-xs font-bold text-yellow-700">{lvl.lv1}</span>
+                        </td>
+                        {/* 레벨: 반제품 */}
+                        <td className="py-1 text-center border-r border-gray-100">
+                          <span className="text-xs font-bold text-green-700">{lvl.lv2}</span>
+                        </td>
+                        {/* 레벨: 자재 */}
+                        <td className="py-1 text-center border-r border-gray-100">
+                          <span className="text-xs font-bold text-sky-700">{lvl.lv3}</span>
+                        </td>
 
                         {/* 중분류 */}
                         <td className="px-1 py-1 border-r border-gray-100">
                           {row.child ? (
-                            <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded whitespace-nowrap">
+                            <span className="text-[10px] bg-gray-100 text-gray-900 px-1.5 py-0.5 rounded whitespace-nowrap">
                               {SUB_LABEL[row.child.subCategory ?? ''] ?? row.child.subCategory ?? '—'}
                             </span>
                           ) : (
@@ -617,7 +684,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                         <td className="px-1 py-1 border-r border-gray-100">
                           {row.child ? (
                             childThirdVal ? (
-                              <span className="text-[10px] bg-gray-50 text-gray-500 px-1.5 py-0.5 rounded border border-gray-100 whitespace-nowrap">
+                              <span className="text-[10px] bg-gray-50 text-gray-900 px-1.5 py-0.5 rounded border border-gray-200 whitespace-nowrap">
                                 {thirdLabelMap[childThirdVal] ?? childThirdVal}
                               </span>
                             ) : <span className="text-gray-200 text-xs px-1">—</span>
@@ -815,37 +882,37 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                       {isAssembly && childBom && (
                         childBom.loading ? (
                           <tr key={`${row._key}-loading`}>
-                            <td colSpan={10} className="py-2 text-center text-xs text-gray-400 bg-purple-50/20">불러오는 중...</td>
+                            <td colSpan={12} className="py-2 text-center text-xs text-gray-400 bg-sky-50/20">불러오는 중...</td>
                           </tr>
-                        ) : childBom.items.length === 0 ? (
-                          <tr key={`${row._key}-empty`}>
-                            <td colSpan={10} className="py-1.5 text-center text-xs text-gray-300 bg-purple-50/10">하위 BOM 없음</td>
-                          </tr>
-                        ) : (
+                        ) : childBom.items.length > 0 ? (
                           childBom.items.map((sub: any, si: number) => (
-                            <tr key={`${row._key}-s${si}`} className="bg-purple-50/20 border-b border-purple-100/40">
+                            <tr key={`${row._key}-s${si}`} className="bg-sky-50/40 border-b border-sky-100/50">
                               <td className="py-1"></td>
-                              <td className="py-1 text-center text-gray-300 text-[10px]">└</td>
+                              <td className="py-1 text-center border-r border-gray-100"></td>
+                              <td className="py-1 text-center border-r border-gray-100"></td>
+                              <td className="py-1 text-center border-r border-gray-100">
+                                <span className="text-xs font-bold text-sky-700">{si + 1}</span>
+                              </td>
                               <td className="px-2 py-1 border-r border-gray-100">
-                                {sub.child?.subCategory && <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">{SUB_LABEL[sub.child.subCategory] ?? sub.child.subCategory}</span>}
+                                {sub.child?.subCategory && <span className="text-[10px] bg-gray-100 text-gray-900 px-1.5 py-0.5 rounded">{SUB_LABEL[sub.child.subCategory] ?? sub.child.subCategory}</span>}
                               </td>
                               <td className="px-2 py-1 border-r border-gray-100">
                                 {(() => {
                                   const v = THIRD_LEVEL[sub.child?.subCategory ?? '']?.field === 'chemistryType' ? sub.child?.chemistryType : sub.child?.formFactor
-                                  return v ? <span className="text-[10px] bg-gray-50 text-gray-400 px-1.5 py-0.5 rounded border border-gray-100">{thirdLabelMap[v] ?? v}</span> : null
+                                  return v ? <span className="text-[10px] bg-gray-50 text-gray-900 px-1.5 py-0.5 rounded border border-gray-200">{thirdLabelMap[v] ?? v}</span> : null
                                 })()}
                               </td>
                               <td className="px-2 py-1 pl-5 border-r border-gray-100">
-                                <span className="font-mono text-gray-400 truncate text-xs">{sub.child?.itemCode}</span>
+                                <span className="font-mono text-gray-600 truncate text-xs">{sub.child?.itemCode}</span>
                               </td>
-                              <td className="px-2 py-1 text-gray-500 truncate border-r border-gray-100 text-xs">{sub.child?.itemName}</td>
-                              <td className="px-2 py-1 text-right text-xs text-gray-400 border-r border-gray-100 tabular-nums">{sub.quantity}</td>
-                              <td className="px-2 py-1 text-center text-xs text-gray-400 border-r border-gray-100">{sub.unit}</td>
-                              <td className="px-2 py-1 text-xs text-gray-300">{sub.memo}</td>
+                              <td className="px-2 py-1 text-gray-600 truncate border-r border-gray-100 text-xs">{sub.child?.itemName}</td>
+                              <td className="px-2 py-1 text-right text-xs text-gray-500 border-r border-gray-100 tabular-nums">{sub.quantity}</td>
+                              <td className="px-2 py-1 text-center text-xs text-gray-500 border-r border-gray-100">{sub.unit}</td>
+                              <td className="px-2 py-1 text-xs text-gray-400">{sub.memo}</td>
                               <td></td>
                             </tr>
                           ))
-                        )
+                        ) : null
                       )}
                     </Fragment>
                   )

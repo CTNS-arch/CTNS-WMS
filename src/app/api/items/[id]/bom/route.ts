@@ -8,7 +8,7 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ id: st
       where: { parentId: id },
       include: {
         child: {
-          select: { id: true, itemCode: true, itemName: true, unit: true, category: true, subCategory: true },
+          select: { id: true, itemCode: true, itemName: true, unit: true, category: true, subCategory: true, formFactor: true, chemistryType: true },
         },
       },
       orderBy: { id: 'asc' },
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     })
     const child = await prisma.item.findUnique({
       where: { id: childId },
-      select: { id: true, itemCode: true, itemName: true, unit: true, category: true, subCategory: true },
+      select: { id: true, itemCode: true, itemName: true, unit: true, category: true, subCategory: true, formFactor: true, chemistryType: true },
     })
     return NextResponse.json({ success: true, data: { ...line, child } }, { status: 201 })
   } catch (err: any) {
