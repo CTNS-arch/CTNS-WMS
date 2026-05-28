@@ -20,7 +20,7 @@ import ItemFormDialog from '@/components/items/ItemFormDialog'
 
 // ── 상수 ──────────────────────────────────────────────────
 const STATUS_LABEL: Record<string, string> = {
-  PENDING: '요청', APPROVED: '검토중', ORDERED: '주문완료', RECEIVED: '입고완료', REJECTED: '반려',
+  PENDING: '요청', APPROVED: '주문진행', ORDERED: '주문완료', RECEIVED: '입고완료', REJECTED: '반려',
 }
 const STATUS_COLOR: Record<string, string> = {
   PENDING:  'bg-amber-100 text-amber-700 border border-amber-200',
@@ -57,14 +57,14 @@ const FILTER_PILLS_MISC: { value: string; label: string }[] = [
 ]
 const FILTER_PILLS_EXTERNAL: { value: string; label: string }[] = [
   { value: '', label: '전체' },
-  { value: 'APPROVED', label: '검토중' },
+  { value: 'APPROVED', label: '주문진행' },
   { value: 'ORDERED', label: '주문완료' },
   { value: 'RECEIVED', label: '입고완료' },
 ]
 const FILTER_PILLS_DEPT: { value: string; label: string }[] = [
   { value: '', label: '전체' },
   { value: 'PENDING', label: '요청' },
-  { value: 'APPROVED', label: '검토중' },
+  { value: 'APPROVED', label: '주문진행' },
   { value: 'ORDERED', label: '주문완료' },
   { value: 'RECEIVED', label: '입고완료' },
   { value: 'REJECTED', label: '반려' },

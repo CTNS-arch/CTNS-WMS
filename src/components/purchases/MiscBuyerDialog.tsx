@@ -163,7 +163,7 @@ export default function MiscBuyerDialog({ open, request, onClose, onSaved }: Pro
             >
               <option value="ORDERED">주문완료</option>
               <option value="RECEIVED">입고완료</option>
-              <option value="APPROVED">검토중</option>
+              <option value="APPROVED">주문진행</option>
               <option value="REJECTED">반려</option>
               <option value="PENDING">요청</option>
             </select>
