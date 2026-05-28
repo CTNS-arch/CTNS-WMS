@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import StockAuditDialog from '@/components/stock/StockAuditDialog'
+import { SUB_OPTIONS } from '@/lib/classification'
 
 const CATEGORY_LABEL: Record<string, string> = {
   PRODUCT: '완제품', ASSEMBLY: '반제품', COMPONENT: '자재',
@@ -84,6 +85,8 @@ export default function StockPage() {
   const [loading, setLoading] = useState(false)
   const [search, setSearch]   = useState('')
   const [searchInput, setSearchInput] = useState('')
+  const [filterCategory, setFilterCategory] = useState('')
+  const [filterSubCategory, setFilterSubCategory] = useState<string[]>([])
 
   const [txDialog, setTxDialog] = useState<{ open: boolean; row: StockRow | null; type: 'IN' | 'OUT' | 'ADJUST' }>({
     open: false, row: null, type: 'IN',
@@ -118,11 +121,13 @@ export default function StockPage() {
   const totalPages  = Math.max(1, Math.ceil(total / LIMIT))
 
   // ── 단일 부서 조회 ────────────────────────────────────────
-  const fetchRows = useCallback(async (p: number, d: Dept, q: string) => {
+  const fetchRows = useCallback(async (p: number, d: Dept, q: string, cat: string, subCats: string[]) => {
     setLoading(true)
     try {
       const params = new URLSearchParams({ department: d, page: String(p), limit: String(LIMIT) })
       if (q) params.set('search', q)
+      if (cat) params.set('category', cat)
+      if (subCats.length > 0) params.set('subCategory', subCats.join(','))
       const res  = await fetch(`/api/stock?${params}`)
       const json = await res.json()
       if (json.success) {
@@ -140,13 +145,15 @@ export default function StockPage() {
   }, [])
 
   // ── 전체(양 부서 동시) 조회 ────────────────────────────────
-  const fetchAllRows = useCallback(async (p: number, q: string) => {
+  const fetchAllRows = useCallback(async (p: number, q: string, cat: string, subCats: string[]) => {
     setLoading(true)
     try {
       const qs = q ? `&search=${encodeURIComponent(q)}` : ''
+      const catQs = cat ? `&category=${encodeURIComponent(cat)}` : ''
+      const subQs = subCats.length > 0 ? `&subCategory=${encodeURIComponent(subCats.join(','))}` : ''
       const [labRes, prodRes] = await Promise.all([
-        fetch(`/api/stock?department=LAB&page=${p}&limit=${LIMIT}${qs}`),
-        fetch(`/api/stock?department=PRODUCTION&page=${p}&limit=${LIMIT}${qs}`),
+        fetch(`/api/stock?department=LAB&page=${p}&limit=${LIMIT}${qs}${catQs}${subQs}`),
+        fetch(`/api/stock?department=PRODUCTION&page=${p}&limit=${LIMIT}${qs}${catQs}${subQs}`),
       ])
       const [labJson, prodJson] = await Promise.all([labRes.json(), prodRes.json()])
       if (labJson.success && prodJson.success) {
@@ -176,9 +183,9 @@ export default function StockPage() {
   }, [])
 
   const refresh = useCallback(() => {
-    if (deptTab === 'ALL') fetchAllRows(page, search)
-    else fetchRows(page, deptTab, search)
-  }, [deptTab, page, search, fetchAllRows, fetchRows])
+    if (deptTab === 'ALL') fetchAllRows(page, search, filterCategory, filterSubCategory)
+    else fetchRows(page, deptTab, search, filterCategory, filterSubCategory)
+  }, [deptTab, page, search, filterCategory, filterSubCategory, fetchAllRows, fetchRows])
 
   useEffect(() => { refresh() }, [refresh])
 
@@ -433,6 +440,58 @@ export default function StockPage() {
         ))}
       </div>
 
+      {/* 메인 영역: 사이드바 + 콘텐츠 */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* 분류 사이드바 */}
+        <aside className="w-44 shrink-0 border-r bg-white overflow-y-auto flex flex-col p-3 gap-4">
+          {/* 대분류 */}
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-1">대분류</p>
+            {[
+              { value: '', label: '전체' },
+              { value: 'PRODUCT', label: '완제품' },
+              { value: 'ASSEMBLY', label: '반제품' },
+              { value: 'COMPONENT', label: '자재' },
+            ].map(opt => (
+              <button key={opt.value}
+                onClick={() => { setFilterCategory(opt.value); setFilterSubCategory([]); setPage(1) }}
+                className={`text-left text-xs px-2.5 py-1.5 rounded-lg transition-colors font-medium ${
+                  filterCategory === opt.value
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >{opt.label}</button>
+            ))}
+          </div>
+          {/* 중분류 */}
+          {filterCategory && (SUB_OPTIONS[filterCategory]?.length ?? 0) > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-1">중분류</p>
+              {(SUB_OPTIONS[filterCategory] ?? []).map(opt => {
+                const sel = filterSubCategory.includes(opt.value)
+                return (
+                  <button key={opt.value}
+                    onClick={() => {
+                      setFilterSubCategory(prev => sel ? prev.filter(v => v !== opt.value) : [...prev, opt.value])
+                      setPage(1)
+                    }}
+                    className={`text-left text-xs px-2.5 py-1.5 rounded-lg transition-colors ${
+                      sel ? 'bg-blue-100 text-blue-700 font-medium' : 'text-gray-500 hover:bg-gray-100'
+                    }`}
+                  >{opt.label}</button>
+                )
+              })}
+            </div>
+          )}
+          {(filterCategory || filterSubCategory.length > 0) && (
+            <button onClick={() => { setFilterCategory(''); setFilterSubCategory([]); setPage(1) }}
+              className="text-xs text-gray-400 hover:text-gray-600 px-2.5 py-1 text-left">
+              ↺ 필터 초기화
+            </button>
+          )}
+        </aside>
+        {/* 우측: 검색 + 테이블 + 페이지네이션 */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
       {/* 검색 */}
       <div className="px-4 py-2.5 border-b bg-white flex items-center gap-3 flex-wrap shrink-0">
         <form onSubmit={handleSearch} className="flex items-center gap-1">
@@ -685,6 +744,8 @@ export default function StockPage() {
           <Button variant="outline" size="sm" className="h-7 text-xs" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>이전</Button>
           <span className="text-xs text-gray-600 px-2">{page} / {totalPages}</span>
           <Button variant="outline" size="sm" className="h-7 text-xs" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>다음</Button>
+        </div>
+      </div>
         </div>
       </div>
 

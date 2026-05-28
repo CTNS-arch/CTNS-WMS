@@ -31,11 +31,17 @@ type RecentTx = {
   fromDept?: string | null; toDept?: string | null
 }
 type ReportData = {
-  summary: { totalIn: number; totalOut: number; totalStock: number; itemCount: number }
+  summary: { totalIn: number; totalOut: number; totalStock: number; itemCount: number; totalCost: number }
   byCat: Record<string, number>
   topItems: TopItem[]
   monthly: MonthData[]
   recentTx: RecentTx[]
+}
+
+function fmtKRW(v: number): string {
+  if (v >= 1_0000_0000) return `₩${(v / 1_0000_0000).toFixed(1)}억`
+  if (v >= 1_0000) return `₩${Math.round(v / 1_0000).toLocaleString()}만`
+  return `₩${v.toLocaleString()}`
 }
 
 /* ── 막대 차트 (CSS) ── */
@@ -200,12 +206,13 @@ export default function ReportsPage() {
             ) : (
               <div className="flex flex-col gap-5">
                 {/* 요약 카드 4개 */}
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-5 gap-3">
                   {[
                     { label: '현재 총 재고', value: data.summary.totalStock.toLocaleString(), unit: '건', color: 'text-blue-600', bg: 'bg-blue-50' },
                     { label: '최근 12개월 입고', value: data.summary.totalIn.toLocaleString(), unit: '건', color: 'text-emerald-600', bg: 'bg-emerald-50' },
                     { label: '최근 12개월 출고', value: data.summary.totalOut.toLocaleString(), unit: '건', color: 'text-red-500', bg: 'bg-red-50' },
                     { label: '재고 품목 수', value: data.summary.itemCount.toLocaleString(), unit: '종', color: 'text-purple-600', bg: 'bg-purple-50' },
+                    { label: '현재 재고 원가 합계', value: fmtKRW(data.summary.totalCost ?? 0), unit: '원', color: 'text-amber-600', bg: 'bg-amber-50' },
                   ].map(card => (
                     <div key={card.label} className={`rounded-xl border p-4 ${card.bg}`}>
                       <p className="text-xs text-gray-500 mb-1">{card.label}</p>

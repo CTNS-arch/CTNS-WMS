@@ -79,10 +79,38 @@ export async function GET(req: NextRequest) {
     const totalOut = monthly.reduce((s, m) => s + m.out, 0)
     const totalStock = stocks.reduce((s, st) => s + st.quantity, 0)
 
+    // ── 5. 원가 총 합계 ──
+    let totalCost = 0
+    try {
+      const stockItemIds = stocks.map(s => s.itemId)
+      if (stockItemIds.length > 0 && (prisma as any).stockCostLayer) {
+        const costLayers = await prisma.stockCostLayer.findMany({
+          where: {
+            itemId: { in: stockItemIds },
+            ...(dept ? { department: dept as any } : {}),
+            remainQty: { gt: 0 },
+          },
+          select: { itemId: true, department: true, unitCost: true, remainQty: true },
+        })
+        const costMap: Record<string, { totalValue: number; totalQty: number }> = {}
+        for (const layer of costLayers) {
+          const key = `${layer.itemId}_${layer.department}`
+          if (!costMap[key]) costMap[key] = { totalValue: 0, totalQty: 0 }
+          costMap[key].totalValue += Number(layer.unitCost) * layer.remainQty
+          costMap[key].totalQty += layer.remainQty
+        }
+        for (const s of stocks) {
+          const key = `${s.itemId}_${s.department}`
+          const cm = costMap[key]
+          if (cm && cm.totalQty > 0) totalCost += s.quantity * (cm.totalValue / cm.totalQty)
+        }
+      }
+    } catch {}
+
     return NextResponse.json({
       success: true,
       data: {
-        summary: { totalIn, totalOut, totalStock, itemCount: topItems.length },
+        summary: { totalIn, totalOut, totalStock, itemCount: topItems.length, totalCost: Math.round(totalCost) },
         byCat,
         topItems: topItems.slice(0, 15),
         monthly,

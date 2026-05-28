@@ -100,11 +100,13 @@ export function buildComponentCode(form: {
   return `${catCode}-${subCode}-${thirdCode}-${serial}`
 }
 
-// BMS/PCM 코드: {catCode}-{BM/PC}-{제조사코드}-{최대직렬}S-{정격전류}A-{버전}
+// BMS/PCM 코드: {catCode}-{BM/PC}-{제조사코드}-{직렬범위}-{정격전류}A-{버전}
+// 범위: {min}S-{max}S (minSeriesCount != maxSeriesCount일 때), 단일: {max}S
 export function buildBmsCode(form: {
   category?: string
   subCategory?: string
   manufacturer?: string
+  minSeriesCount?: number | string
   maxSeriesCount?: number | string
   ratedCurrent?: number | string
   revisionNumber?: number | string
@@ -112,7 +114,11 @@ export function buildBmsCode(form: {
   const catCode = CATEGORY_CODE[form.category ?? ''] ?? '?'
   const subCode = getCode('subCategory', form.subCategory ?? '')
   const mfrCode = form.manufacturer ? getCode('manufacturer', form.manufacturer) : '?'
-  const serS = form.maxSeriesCount ? `${form.maxSeriesCount}S` : '?S'
+  const min = form.minSeriesCount !== '' && form.minSeriesCount != null ? Number(form.minSeriesCount) : null
+  const max = form.maxSeriesCount !== '' && form.maxSeriesCount != null ? Number(form.maxSeriesCount) : null
+  const serS = max
+    ? (min != null && min !== max ? `${min}S-${max}S` : `${max}S`)
+    : '?S'
   const capA = form.ratedCurrent ? `${Math.round(Number(form.ratedCurrent))}A` : '?A'
   const version = String(form.revisionNumber || 1).padStart(3, '0')
   return `${catCode}-${subCode}-${mfrCode}-${serS}-${capA}-${version}`

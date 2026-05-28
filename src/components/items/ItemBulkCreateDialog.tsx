@@ -54,7 +54,7 @@ function getSubOpts(type: BulkType, subMap: Record<string, SelectOption[]>): Sel
 }
 
 const DIALOG_W: Record<BulkType, number> = {
-  BATTERY: 1500, SOFTPACK: 1500, BMS: 1360, ASSEMBLY_OTHER: 1020, CELL: 1760, COMPONENT_OTHER: 1870, CHARGER: 1190,
+  BATTERY: 1500, SOFTPACK: 1500, BMS: 1440, ASSEMBLY_OTHER: 1020, CELL: 1760, COMPONENT_OTHER: 1870, CHARGER: 1190,
 }
 
 // ── 행 구조 ────────────────────────────────────────────────
@@ -83,6 +83,7 @@ interface BulkRow {
   vendors: string[]
   // BMS
   manufacturer: string
+  minSeriesCount: string
   maxSeriesCount: string
   continuousDischargeCurrent: string
   // CELL 전기 사양
@@ -119,7 +120,7 @@ function emptyRow(): BulkRow {
     chemistryType: '', cellManufacturer: '', cellModel: '',
     seriesCount: '', parallelCount: '', layerCount: '', circuit: '',
     specialOptions: [], certifications: [], drawings: [], specSheets: [], vendors: [],
-    manufacturer: '', maxSeriesCount: '', continuousDischargeCurrent: '',
+    manufacturer: '', minSeriesCount: '', maxSeriesCount: '', continuousDischargeCurrent: '',
     dischargeCutoffVoltage: '', nominalVoltage: '', chargeCutoffVoltage: '',
     nominalCapacity: '', energy: '', maxChargeCurrent: '', maxDischargeCurrent: '',
     continuousChargeCurrent: '', chargeCRate: '', dischargeCRate: '',
@@ -179,6 +180,7 @@ function previewCode(row: BulkRow, type: BulkType, revisionNumber = 1): string {
       return buildBmsCode({
         category, subCategory: sub,
         manufacturer: row.manufacturer || undefined,
+        minSeriesCount: row.minSeriesCount ? Number(row.minSeriesCount) : undefined,
         maxSeriesCount: row.maxSeriesCount ? Number(row.maxSeriesCount) : undefined,
         ratedCurrent: row.ratedCurrent ? Number(row.ratedCurrent) : undefined,
         revisionNumber,
@@ -506,7 +508,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
           code1 = buildItemCode(buildCodeParts({ category, subCategory: sub, chemistryType: row.chemistryType || undefined, cellModel: row.cellModel || undefined, seriesCount: row.seriesCount ? Number(row.seriesCount) : undefined, parallelCount: row.parallelCount ? Number(row.parallelCount) : undefined, circuit: row.circuit || undefined, revisionNumber: 1 }))
           break
         case 'BMS':
-          code1 = buildBmsCode({ category, subCategory: sub, manufacturer: row.manufacturer || undefined, maxSeriesCount: row.maxSeriesCount ? Number(row.maxSeriesCount) : undefined, ratedCurrent: row.ratedCurrent ? Number(row.ratedCurrent) : undefined, revisionNumber: 1 })
+          code1 = buildBmsCode({ category, subCategory: sub, manufacturer: row.manufacturer || undefined, minSeriesCount: row.minSeriesCount ? Number(row.minSeriesCount) : undefined, maxSeriesCount: row.maxSeriesCount ? Number(row.maxSeriesCount) : undefined, ratedCurrent: row.ratedCurrent ? Number(row.ratedCurrent) : undefined, revisionNumber: 1 })
           break
         case 'CELL':
           code1 = buildCellCode({ category, chemistryType: row.chemistryType || undefined, cellModel: row.cellModel || undefined })
@@ -566,7 +568,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
             itemCode = buildItemCode(buildCodeParts({ category, subCategory: sub, chemistryType: row.chemistryType || undefined, cellModel: row.cellModel || undefined, seriesCount: row.seriesCount ? Number(row.seriesCount) : undefined, parallelCount: row.parallelCount ? Number(row.parallelCount) : undefined, circuit: row.circuit || undefined, revisionNumber }))
             break
           case 'BMS':
-            itemCode = buildBmsCode({ category, subCategory: sub, manufacturer: row.manufacturer || undefined, maxSeriesCount: row.maxSeriesCount ? Number(row.maxSeriesCount) : undefined, ratedCurrent: row.ratedCurrent ? Number(row.ratedCurrent) : undefined, revisionNumber })
+            itemCode = buildBmsCode({ category, subCategory: sub, manufacturer: row.manufacturer || undefined, minSeriesCount: row.minSeriesCount ? Number(row.minSeriesCount) : undefined, maxSeriesCount: row.maxSeriesCount ? Number(row.maxSeriesCount) : undefined, ratedCurrent: row.ratedCurrent ? Number(row.ratedCurrent) : undefined, revisionNumber })
             break
           case 'COMPONENT_OTHER':
             itemCode = buildComponentCode({ category, subCategory: sub, formFactor: row.thirdLevel || undefined, revisionNumber })
@@ -604,7 +606,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
           })
           break
         case 'BMS':
-          Object.assign(payload, { manufacturer: row.manufacturer || null, maxSeriesCount: ni(row.maxSeriesCount), continuousDischargeCurrent: n(row.continuousDischargeCurrent), specialOptions: row.specialOptions })
+          Object.assign(payload, { manufacturer: row.manufacturer || null, minSeriesCount: ni(row.minSeriesCount), maxSeriesCount: ni(row.maxSeriesCount), continuousDischargeCurrent: n(row.continuousDischargeCurrent), specialOptions: row.specialOptions })
           break
         case 'CELL':
           Object.assign(payload, {
@@ -856,7 +858,8 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     {/* BMS 전용 */}
                     {bulkType === 'BMS' && <th className={thSm} style={{ width: 90 }}>화학계</th>}
                     {bulkType === 'BMS' && <th className={thSm} style={{ width: 110 }}>제조사</th>}
-                    {bulkType === 'BMS' && <th className={thSm} style={{ width: 74 }}>최대직렬(S)</th>}
+                    {bulkType === 'BMS' && <th className={thSm} style={{ width: 68 }}>최소직렬(S)</th>}
+                    {bulkType === 'BMS' && <th className={thSm} style={{ width: 68 }}>최대직렬(S)</th>}
                     {bulkType === 'BMS' && <th className={thSm} style={{ width: 80 }}>정격전류(A)</th>}
 
                     {/* CELL 전용 */}
@@ -903,7 +906,7 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                     {(isBatteryLike || bulkType === 'BMS') && <th className={thSm} style={{ width: 130 }}>특수옵션</th>}
                     {isBatteryLike && <th className={thSm} style={{ width: 120 }}>인증</th>}
                     {isBatteryLike && <th className={thSm} style={{ width: 64 }}>도면</th>}
-                    {bulkType !== 'COMPONENT_OTHER' && bulkType !== 'CELL' && <th className={thSm} style={{ width: 130 }}>고객사</th>}
+                    <th className={thSm} style={{ width: 130 }}>고객사</th>
                     <th className={thL} style={{ width: 120 }}>비고</th>
                     <th className={thL} style={{ width: 180 }}>BOM 연결 <span className="text-gray-400 font-normal">(완제품/반제품)</span></th>
                     <th className={thSm} style={{ width: 52 }}>작업</th>
@@ -1138,7 +1141,8 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                         {/* ── BMS 전용 ── */}
                         {bulkType === 'BMS' && ts(90, row.chemistryType, v => upd(row._key, 'chemistryType', v), opts.chemistryType ?? [], 'chemistryType', '화학계')}
                         {bulkType === 'BMS' && ts(110, row.manufacturer, v => upd(row._key, 'manufacturer', v), opts.manufacturer ?? [], 'manufacturer', '제조사')}
-                        {bulkType === 'BMS' && num(74, 'maxSeriesCount', 'S')}
+                        {bulkType === 'BMS' && num(68, 'minSeriesCount', 'S')}
+                        {bulkType === 'BMS' && num(68, 'maxSeriesCount', 'S')}
                         {bulkType === 'BMS' && num(80, 'ratedCurrent', 'A')}
 
                         {/* ── CELL 전용 ── */}
@@ -1261,8 +1265,8 @@ export default function ItemBulkCreateDialog({ open, onClose, onSaved }: Props) 
                           </td>
                         )}
 
-                        {/* 고객사 (COMPONENT_OTHER, CELL 제외) */}
-                        {bulkType !== 'COMPONENT_OTHER' && bulkType !== 'CELL' && tms(130, row.vendors, v => upd(row._key, 'vendors', v), opts.vendor ?? [], 'vendor', '고객사')}
+                        {/* 고객사 */}
+                        {tms(130, row.vendors, v => upd(row._key, 'vendors', v), opts.vendor ?? [], 'vendor', '고객사')}
 
                         {/* 비고 */}
                         <td className="px-0.5 py-0.5 border-r border-gray-100" style={{ width: 120 }}>

@@ -8,6 +8,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = req.nextUrl
     const department = (searchParams.get('department') ?? 'LAB') as Department
     const search = searchParams.get('search') ?? ''
+    const category = searchParams.get('category') ?? ''
+    const subCategory = searchParams.get('subCategory') ?? ''
     const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
     const limit = Math.max(1, parseInt(searchParams.get('limit') ?? '20', 10))
     const skip = (page - 1) * limit
@@ -18,6 +20,12 @@ export async function GET(req: NextRequest) {
         { itemCode: { contains: search, mode: 'insensitive' } },
         { itemName: { contains: search, mode: 'insensitive' } },
       ]
+    }
+    if (category) where.category = category
+    if (subCategory) {
+      const subCats = subCategory.split(',').filter(Boolean)
+      if (subCats.length === 1) where.subCategory = subCats[0]
+      else if (subCats.length > 1) where.subCategory = { in: subCats }
     }
 
     const [items, total] = await Promise.all([

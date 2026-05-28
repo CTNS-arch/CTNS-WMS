@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 
 const STATUS_LABEL: Record<string, string> = {
@@ -23,9 +23,20 @@ interface Props {
 }
 
 export default function MiscReceiveViewDialog({ open, request, onClose }: Props) {
-  if (!open || !request) return null
+  const [files,   setFiles]   = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
 
-  const files: any[] = request.files ?? []
+  useEffect(() => {
+    if (!open || !request?.id) { setFiles([]); return }
+    setLoading(true)
+    fetch(`/api/purchases/${request.id}/files`)
+      .then(r => r.json())
+      .then(json => { if (json.success) setFiles(json.data ?? []) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [open, request?.id])
+
+  if (!open || !request) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
@@ -61,7 +72,11 @@ export default function MiscReceiveViewDialog({ open, request, onClose }: Props)
           {/* 첨부 파일 */}
           <div className="space-y-2">
             <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">첨부 파일</label>
-            {files.length === 0 ? (
+            {loading ? (
+              <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-4 text-xs text-gray-400 text-center">
+                불러오는 중...
+              </div>
+            ) : files.length === 0 ? (
               <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-4 text-xs text-gray-400 text-center">
                 첨부된 파일이 없습니다.
               </div>

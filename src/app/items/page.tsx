@@ -57,7 +57,7 @@ const toParam = (arr: string[]) => arr.length > 0 ? arr.join(',') : undefined
 
 export default function ItemsPage() {
   const { data: session } = useSession()
-  const canWrite = (session?.user?.roles?.includes('ITEM_WRITE') || session?.user?.roles?.includes('MASTER_ADMIN')) ?? false
+  const canWrite = (session?.user?.roles?.includes('ITEM_WRITE') || session?.user?.roles?.includes('ITEM_DELETE') || session?.user?.roles?.includes('MASTER_ADMIN')) ?? false
 
   const [requestFormOpen, setRequestFormOpen] = useState(false)
 
@@ -114,6 +114,7 @@ export default function ItemsPage() {
 
   // ── 다이얼로그 ──
   const [formOpen, setFormOpen] = useState(false)
+  const [formViewOnly, setFormViewOnly] = useState(false)
   const [editItem, setEditItem] = useState<any>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleteBomEntries, setDeleteBomEntries] = useState<any[]>([])
@@ -121,6 +122,7 @@ export default function ItemsPage() {
   const [batchStatusOpen, setBatchStatusOpen] = useState(false)
   const [batchStatus, setBatchStatus] = useState('')
   const [bomItem, setBomItem] = useState<any>(null)
+  const [bomViewOnly, setBomViewOnly] = useState(false)
   const [bulkFormOpen, setBulkFormOpen] = useState(false)
 
   // ── 옵션 ──
@@ -221,7 +223,7 @@ export default function ItemsPage() {
 
   // 뷰별 총 컬럼 수 (colSpan 계산용) — BOM 컬럼은 isComp 제외
   const hasBomCol = !isComp
-  const colCount = isAll ? 11 : (isProd || isPO) ? 24 : isBmsPcm ? 16 : isAsmGeneric ? 19 : isCell ? 26 : isElCharger ? 17 : isElComp ? 23 : isCompOther ? 22 : 17
+  const colCount = isAll ? 11 : (isProd || isPO) ? 24 : isBmsPcm ? 16 : isAsmGeneric ? 19 : isCell ? 27 : isElCharger ? 17 : isElComp ? 24 : isCompOther ? 23 : 17
 
   const fetchItems = useCallback(async () => {
     setLoading(true)
@@ -342,7 +344,6 @@ export default function ItemsPage() {
     if (next === 'PRODUCT') {
       setFilterLengthMin(''); setFilterWidthMin(''); setFilterHeightMin(''); setFilterDiameterMin(''); setFilterWeightMin('')
     }
-    if (next === 'COMPONENT') setFilterVendor([])
     if (next !== 'COMPONENT') setFilterMaterial([])
     resetAndPage()
   }
@@ -477,7 +478,7 @@ export default function ItemsPage() {
     .forEach(key => getOptions(key).forEach((o: SelectOption) => { formFactorLabelMap[o.value] = o.label }))
 
   // 뷰별 테이블 너비
-  const tableWidth = isAll ? 1385 : (isProd || isPO) ? 2410 : isBmsPcm ? 1830 : isAsmGeneric ? 1980 : isCell ? 2750 : isElCharger ? 1850 : isElComp ? 2310 : isCompOther ? 2240 : 1820
+  const tableWidth = isAll ? 1385 : (isProd || isPO) ? 2410 : isBmsPcm ? 1830 : isAsmGeneric ? 1980 : isCell ? 2840 : isElCharger ? 1850 : isElComp ? 2400 : isCompOther ? 2330 : 1820
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -755,8 +756,8 @@ export default function ItemsPage() {
               </FilterSection>
             )}
 
-            {/* 고객사: 자재(충전기 제외)·BMS/PCM 제외 */}
-            {vendorOpts.length > 0 && (!isComp || isElCharger) && !isBmsPcm && (
+            {/* 고객사: BMS/PCM 제외 */}
+            {vendorOpts.length > 0 && !isBmsPcm && (
               <FilterSection label="고객사">
                 <SearchableMultiSelect
                   value={filterVendor}
@@ -775,7 +776,7 @@ export default function ItemsPage() {
                   초기화
                 </Button>
                 {canWrite ? (
-                  <Button size="sm" className="flex-1 text-xs" disabled={!filterCategory} onClick={() => { setEditItem(null); setFormOpen(true) }}>
+                  <Button size="sm" className="flex-1 text-xs" disabled={!filterCategory} onClick={() => { setEditItem(null); setFormViewOnly(false); setFormOpen(true) }}>
                     + 등록
                   </Button>
                 ) : (
@@ -815,7 +816,7 @@ export default function ItemsPage() {
                   </SelectContent>
                 </Select>
                 <Button size="sm" variant="outline" className="h-8 text-xs px-3" onClick={handleExport}>CSV 내보내기</Button>
-                <Button size="sm" variant="destructive" className="h-8 text-xs px-3" onClick={() => setBatchDeleteOpen(true)}>삭제</Button>
+                {canWrite && <Button size="sm" variant="destructive" className="h-8 text-xs px-3" onClick={() => setBatchDeleteOpen(true)}>삭제</Button>}
               </div>
             )}
             <div className="ml-auto flex items-center gap-1.5">
@@ -874,8 +875,8 @@ export default function ItemsPage() {
                 {isElCharger && <><col style={{ width: 90 }} /><col style={{ width: 65 }} /><col style={{ width: 105 }} /><col style={{ width: 100 }} /></>}
                 {/* 이미지 */}
                 {(isAsmGeneric || isComp || isBmsPcm) && <col style={{ width: 100 }} />}
-                {/* 일반반제품·충전기: 고객사 */}
-                {(isAsmGeneric || isElCharger) && <col style={{ width: 90 }} />}
+                {/* 일반반제품·자재: 고객사 */}
+                {(isAsmGeneric || isComp) && <col style={{ width: 90 }} />}
                 {/* 완제품/소프트팩: 특수옵션, 인증, 도면, 이미지 */}
                 {(isProd || isPO) && <><col style={{ width: 80 }} /><col style={{ width: 80 }} /><col style={{ width: 80 }} /><col style={{ width: 100 }} /></>}
                 {/* BMS/PCM: 특수옵션 */}
@@ -968,7 +969,7 @@ export default function ItemsPage() {
                     <TableHead className="whitespace-nowrap text-xs">충전전류(A)</TableHead>
                   </>}
                   {(isAsmGeneric || isComp || isBmsPcm) && <TableHead className="whitespace-nowrap text-xs">이미지</TableHead>}
-                  {(isAsmGeneric || isElCharger) && <TableHead className="whitespace-nowrap text-xs">고객사</TableHead>}
+                  {(isAsmGeneric || isComp) && <TableHead className="whitespace-nowrap text-xs">고객사</TableHead>}
                   {(isProd || isPO) && <>
                     <TableHead className="whitespace-nowrap text-xs">특수옵션</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">인증</TableHead>
@@ -1080,7 +1081,7 @@ export default function ItemsPage() {
                         <TableCell className="text-xs text-center text-gray-900">{item.continuousChargeCurrent != null ? Number(item.continuousChargeCurrent) : '-'}</TableCell>
                       </>}
                       {(isAsmGeneric || isComp || isBmsPcm) && <TableCell><ImageCell urls={item.images ?? []} /></TableCell>}
-                      {(isAsmGeneric || isElCharger) && <TableCell><TagListCell values={item.vendors ?? []} /></TableCell>}
+                      {(isAsmGeneric || isComp) && <TableCell><TagListCell values={item.vendors ?? []} /></TableCell>}
                       {(isProd || isPO) && <>
                         <TableCell><TagListCell values={item.specialOptions ?? []} /></TableCell>
                         <TableCell><TagListCell values={item.certifications ?? []} /></TableCell>
@@ -1094,18 +1095,31 @@ export default function ItemsPage() {
                       {hasBomCol && (
                         <TableCell className="pr-1">
                           {hasBom(item.category) ? (
-                            <Button size="sm" variant="outline" className="text-xs h-7 px-2 text-blue-600 border-blue-200 hover:bg-blue-50" onClick={() => setBomItem(item)}>
-                              BOM{(item as any)._count?.bomAsParent > 0 ? ` (${(item as any)._count.bomAsParent})` : ''}
-                            </Button>
+                            canWrite ? (
+                              <Button size="sm" variant="outline" className="text-xs h-7 px-2 text-blue-600 border-blue-200 hover:bg-blue-50"
+                                onClick={() => { setBomViewOnly(false); setBomItem(item) }}>
+                                BOM{(item as any)._count?.bomAsParent > 0 ? ` (${(item as any)._count.bomAsParent})` : ''}
+                              </Button>
+                            ) : (
+                              <Button size="sm" variant="outline" className="text-xs h-7 px-2 text-gray-500 border-gray-200 hover:bg-gray-50"
+                                onClick={() => { setBomViewOnly(true); setBomItem(item) }}>
+                                BOM 보기{(item as any)._count?.bomAsParent > 0 ? ` (${(item as any)._count.bomAsParent})` : ''}
+                              </Button>
+                            )
                           ) : null}
                         </TableCell>
                       )}
                       <TableCell className="pr-2">
-                        <div className="flex items-center gap-1 flex-nowrap">
-                          <Button size="sm" variant="outline" className="text-xs h-7 px-2" onClick={() => handleRevise(item.id)}>리비전</Button>
-                          <Button size="sm" variant="outline" className="text-xs h-7 px-2" onClick={() => { setEditItem(item); setFormOpen(true) }}>수정</Button>
-                          <Button size="sm" variant="destructive" className="text-xs h-7 px-2" onClick={() => openDeleteDialog(item.id)}>삭제</Button>
-                        </div>
+                        {canWrite ? (
+                          <div className="flex items-center gap-1 flex-nowrap">
+                            <Button size="sm" variant="outline" className="text-xs h-7 px-2" onClick={() => handleRevise(item.id)}>리비전</Button>
+                            <Button size="sm" variant="outline" className="text-xs h-7 px-2" onClick={() => { setEditItem(item); setFormViewOnly(false); setFormOpen(true) }}>수정</Button>
+                            <Button size="sm" variant="destructive" className="text-xs h-7 px-2" onClick={() => openDeleteDialog(item.id)}>삭제</Button>
+                          </div>
+                        ) : (
+                          <Button size="sm" variant="outline" className="text-xs h-7 px-2"
+                            onClick={() => { setEditItem(item); setFormViewOnly(true); setFormOpen(true) }}>보기</Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   )
@@ -1130,14 +1144,16 @@ export default function ItemsPage() {
       <ItemFormDialog
         open={formOpen}
         item={editItem}
+        viewOnly={formViewOnly}
         initialValues={editItem ? undefined : buildInitialValues()}
-        onClose={() => { setFormOpen(false); setEditItem(null) }}
-        onSaved={() => { setFormOpen(false); setEditItem(null); fetchItems() }}
+        onClose={() => { setFormOpen(false); setEditItem(null); setFormViewOnly(false) }}
+        onSaved={() => { setFormOpen(false); setEditItem(null); setFormViewOnly(false); fetchItems() }}
       />
       <BomDialog
         open={!!bomItem}
         item={bomItem}
-        onClose={() => setBomItem(null)}
+        readOnly={bomViewOnly}
+        onClose={() => { setBomItem(null); setBomViewOnly(false) }}
         onBomChanged={count => {
           if (!bomItem) return
           setItems(prev => prev.map(it =>

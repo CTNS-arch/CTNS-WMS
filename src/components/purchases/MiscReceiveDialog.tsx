@@ -1,12 +1,13 @@
 'use client'
 
-import React, { useRef, useState } from 'react'
+import React, { useRef, useState, useEffect } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
 const FILE_TYPE_OPTIONS = ['견적서', '발주서', '주문내역', '기타']
 
 type AttachedFile = { file: File; fileType: string }
+type ServerFile  = { id: string; fileName: string; fileType: string; fileSize: number | null; fileUrl: string }
 
 interface Props {
   open: boolean
@@ -16,10 +17,23 @@ interface Props {
 }
 
 export default function MiscReceiveDialog({ open, request, onClose, onSaved }: Props) {
-  const [files,      setFiles]      = useState<AttachedFile[]>([])
-  const [isDragging, setIsDragging] = useState(false)
-  const [saving,     setSaving]     = useState(false)
+  const [files,        setFiles]        = useState<AttachedFile[]>([])
+  const [serverFiles,  setServerFiles]  = useState<ServerFile[]>([])
+  const [loadingFiles, setLoadingFiles] = useState(false)
+  const [isDragging,   setIsDragging]   = useState(false)
+  const [saving,       setSaving]       = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // 팝업 열릴 때 서버에 이미 업로드된 파일 로드
+  useEffect(() => {
+    if (!open || !request?.id) { setServerFiles([]); setFiles([]); return }
+    setLoadingFiles(true)
+    fetch(`/api/purchases/${request.id}/files`)
+      .then(r => r.json())
+      .then(json => { if (json.success) setServerFiles(json.data ?? []) })
+      .catch(() => {})
+      .finally(() => setLoadingFiles(false))
+  }, [open, request?.id])
 
   function addFiles(list: FileList | null) {
     if (!list) return
@@ -27,9 +41,7 @@ export default function MiscReceiveDialog({ open, request, onClose, onSaved }: P
   }
 
   function handleDrop(e: React.DragEvent) {
-    e.preventDefault()
-    setIsDragging(false)
-    addFiles(e.dataTransfer.files)
+    e.preventDefault(); setIsDragging(false); addFiles(e.dataTransfer.files)
   }
 
   function removeFile(idx: number) {
@@ -38,18 +50,17 @@ export default function MiscReceiveDialog({ open, request, onClose, onSaved }: P
 
   async function handleConfirm() {
     if (!request) return
-    if (files.length === 0) { toast.error('첨부파일을 1개 이상 업로드해주세요.'); return }
+    if (files.length === 0 && serverFiles.length === 0) {
+      toast.error('첨부파일을 1개 이상 업로드해주세요.'); return
+    }
     setSaving(true)
     try {
-      // 파일 업로드
       for (const af of files) {
         const fd = new FormData()
         fd.append('files', af.file)
         fd.append('fileType', af.fileType)
         await fetch(`/api/purchases/${request.id}/files`, { method: 'POST', body: fd }).catch(() => {})
       }
-
-      // 상태 입고완료로 변경
       const res  = await fetch(`/api/purchases/${request.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -89,10 +100,41 @@ export default function MiscReceiveDialog({ open, request, onClose, onSaved }: P
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
 
-          {/* 파일 첨부 */}
+          {/* 기존 업로드된 파일 */}
+          {loadingFiles && (
+            <p className="text-xs text-gray-400 text-center py-1">파일 목록 불러오는 중...</p>
+          )}
+          {!loadingFiles && serverFiles.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">업로드된 파일</label>
+              <div className="space-y-1.5">
+                {serverFiles.map(f => (
+                  <div key={f.id} className="flex items-center gap-2 bg-emerald-50 rounded-lg px-3 py-2 border border-emerald-100">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-white border border-gray-200 text-gray-500 shrink-0">
+                      {f.fileType ?? '기타'}
+                    </span>
+                    <a href={f.fileUrl} target="_blank" rel="noopener noreferrer"
+                      className="flex-1 text-xs text-blue-600 hover:underline truncate">
+                      {f.fileName}
+                    </a>
+                    {f.fileSize != null && (
+                      <span className="text-[11px] text-gray-400 shrink-0">
+                        {f.fileSize < 1024 * 1024
+                          ? `${Math.round(f.fileSize / 1024)} KB`
+                          : `${(f.fileSize / 1024 / 1024).toFixed(1)} MB`}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 새 파일 첨부 */}
           <div className="space-y-2">
             <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
-              파일 첨부 <span className="text-red-400 normal-case font-normal">*필수</span>
+              파일 첨부
+              {serverFiles.length === 0 && <span className="text-red-400 normal-case font-normal ml-1">*필수</span>}
             </label>
             <div
               onDragOver={e => { e.preventDefault(); setIsDragging(true) }}

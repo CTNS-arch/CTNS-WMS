@@ -7,22 +7,23 @@ import { Input } from '@/components/ui/input'
 
 const ROLE_OPTIONS = [
   { value: 'MASTER_ADMIN', label: '마스터 관리자', desc: '모든 권한', color: 'bg-red-100 text-red-700 border-red-200' },
-  { value: 'ITEM_WRITE',   label: '품번 생성/편집', desc: '품목 등록·수정', color: 'bg-blue-100 text-blue-700 border-blue-200' },
-  { value: 'ITEM_DELETE',  label: '품번 삭제', desc: '품목 삭제', color: 'bg-orange-100 text-orange-700 border-orange-200' },
+  { value: 'ITEM_WRITE',   label: '품목 관리', desc: '품목 등록·수정·삭제', color: 'bg-blue-100 text-blue-700 border-blue-200' },
   { value: 'LAB_STOCK',    label: '연구소 재고', desc: '연구소 입출고', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
   { value: 'PROD_STOCK',   label: '생산구매 재고', desc: '생산팀 입출고', color: 'bg-purple-100 text-purple-700 border-purple-200' },
 ]
 
 const LOCAL_ROLE_OPTIONS = [
   { value: 'MASTER_ADMIN', label: '마스터 관리자', desc: '모든 권한', color: 'bg-red-100 text-red-700 border-red-200' },
-  { value: 'ITEM_WRITE',   label: '품번 생성/편집', desc: '품목 등록·수정', color: 'bg-blue-100 text-blue-700 border-blue-200' },
-  { value: 'ITEM_DELETE',  label: '품번 삭제', desc: '품목 삭제', color: 'bg-orange-100 text-orange-700 border-orange-200' },
+  { value: 'ITEM_WRITE',   label: '품목 관리', desc: '품목 등록·수정·삭제', color: 'bg-blue-100 text-blue-700 border-blue-200' },
   { value: 'LAB_STOCK',    label: '연구소 재고', desc: '연구소 입출고', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
   { value: 'PROD_STOCK',   label: '생산구매 재고', desc: '생산팀 입출고', color: 'bg-purple-100 text-purple-700 border-purple-200' },
   { value: 'VENDOR',       label: '거래처', desc: '구매요청 제한 접근', color: 'bg-amber-100 text-amber-700 border-amber-200' },
 ]
 
-const ALL_ROLE_MAP = Object.fromEntries([...ROLE_OPTIONS, ...LOCAL_ROLE_OPTIONS].map(r => [r.value, r]))
+const ALL_ROLE_MAP: Record<string, any> = {
+  ...Object.fromEntries([...ROLE_OPTIONS, ...LOCAL_ROLE_OPTIONS].map(r => [r.value, r])),
+  ITEM_DELETE: { label: '품목 관리', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+}
 
 const AVATAR_COLORS = [
   'bg-blue-500', 'bg-purple-500', 'bg-emerald-500',
@@ -96,8 +97,15 @@ export default function UsersPage() {
 
   const startEdit = (user: MsUser) => { setEditingId(user.msId); setEditRoles(user.roles ?? []) }
   const cancelEdit = () => { setEditingId(null); setEditRoles([]) }
-  const toggleRole = (role: string) =>
-    setEditRoles(prev => prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role])
+  const toggleRole = (role: string) => {
+    if (role === 'ITEM_WRITE') {
+      setEditRoles(prev => prev.includes('ITEM_WRITE')
+        ? prev.filter(r => r !== 'ITEM_WRITE' && r !== 'ITEM_DELETE')
+        : [...prev.filter(r => r !== 'ITEM_DELETE'), 'ITEM_WRITE', 'ITEM_DELETE'])
+    } else {
+      setEditRoles(prev => prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role])
+    }
+  }
 
   const saveRoles = async (user: MsUser) => {
     if (!user.dbId) return
@@ -166,8 +174,15 @@ export default function UsersPage() {
 
   const startLocalEdit = (user: LocalUser) => { setLocalEditingId(user.id); setLocalEditRoles(user.roles ?? []); setResetId(null) }
   const cancelLocalEdit = () => { setLocalEditingId(null); setLocalEditRoles([]) }
-  const toggleLocalRole = (role: string) =>
-    setLocalEditRoles(prev => prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role])
+  const toggleLocalRole = (role: string) => {
+    if (role === 'ITEM_WRITE') {
+      setLocalEditRoles(prev => prev.includes('ITEM_WRITE')
+        ? prev.filter(r => r !== 'ITEM_WRITE' && r !== 'ITEM_DELETE')
+        : [...prev.filter(r => r !== 'ITEM_DELETE'), 'ITEM_WRITE', 'ITEM_DELETE'])
+    } else {
+      setLocalEditRoles(prev => prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role])
+    }
+  }
 
   const saveLocalRoles = async (userId: string) => {
     setLocalSaving(true)
@@ -330,6 +345,9 @@ export default function UsersPage() {
                   const initials = (user.name?.[0] ?? user.email?.[0] ?? '?').toUpperCase()
                   const isMaster = user.roles.includes('MASTER_ADMIN')
                   const isBlocked = user.roles.includes('ACCESS_BLOCKED')
+                  const displayRoles = user.roles
+                    .filter(r => r !== 'ACCESS_BLOCKED')
+                    .filter(r => !(r === 'ITEM_DELETE' && user.roles.includes('ITEM_WRITE')))
                   return (
                     <div key={user.msId} className={`rounded-xl border transition-all ${isBlocked ? 'bg-red-50/40 border-red-200' : isEditing ? 'bg-white ring-2 ring-blue-200 border-blue-300 shadow-sm' : 'bg-white hover:border-gray-300'}`}>
                       <div className="flex items-start gap-4 p-4">
@@ -353,8 +371,8 @@ export default function UsersPage() {
                           <p className="text-xs text-gray-500 mt-0.5">{user.email}</p>
                           {!isEditing && (
                             <div className="mt-2.5 flex flex-wrap gap-1">
-                              {user.roles.filter(r => r !== 'ACCESS_BLOCKED').length > 0 ? (
-                                user.roles.filter(r => r !== 'ACCESS_BLOCKED').map(role => (
+                              {displayRoles.length > 0 ? (
+                                displayRoles.map(role => (
                                   <span key={role} className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${ALL_ROLE_MAP[role]?.color ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                                     {ALL_ROLE_MAP[role]?.label ?? role}
                                   </span>
@@ -463,7 +481,15 @@ export default function UsersPage() {
                     const checked = createRoles.includes(opt.value)
                     return (
                       <label key={opt.value} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-xs font-medium transition-all ${checked ? `${opt.color} border-current` : 'bg-white border-gray-200 text-gray-500 hover:border-gray-300'}`}>
-                        <input type="checkbox" checked={checked} onChange={() => setCreateRoles(prev => prev.includes(opt.value) ? prev.filter(r => r !== opt.value) : [...prev, opt.value])} className="w-3.5 h-3.5 accent-blue-600"/>
+                        <input type="checkbox" checked={checked} onChange={() => {
+                          if (opt.value === 'ITEM_WRITE') {
+                            setCreateRoles(prev => prev.includes('ITEM_WRITE')
+                              ? prev.filter(r => r !== 'ITEM_WRITE' && r !== 'ITEM_DELETE')
+                              : [...prev.filter(r => r !== 'ITEM_DELETE'), 'ITEM_WRITE', 'ITEM_DELETE'])
+                          } else {
+                            setCreateRoles(prev => prev.includes(opt.value) ? prev.filter(r => r !== opt.value) : [...prev, opt.value])
+                          }
+                        }} className="w-3.5 h-3.5 accent-blue-600"/>
                         {opt.label}
                       </label>
                     )
@@ -501,6 +527,8 @@ export default function UsersPage() {
                 {filteredLocal.map(user => {
                   const isEditing = localEditingId === user.id
                   const isResetting = resetId === user.id
+                  const displayRoles = user.roles
+                    .filter(r => !(r === 'ITEM_DELETE' && user.roles.includes('ITEM_WRITE')))
                   return (
                     <div key={user.id} className={`rounded-xl border transition-all ${!user.isActive ? 'bg-gray-50 border-gray-200 opacity-60' : isEditing || isResetting ? 'bg-white ring-2 ring-blue-200 border-blue-300 shadow-sm' : 'bg-white hover:border-gray-300'}`}>
                       <div className="p-4">
@@ -521,8 +549,8 @@ export default function UsersPage() {
                             {/* 역할 뱃지 */}
                             {!isEditing && !isResetting && (
                               <div className="mt-1.5 flex flex-wrap gap-1">
-                                {user.roles.length > 0 ? (
-                                  user.roles.map(role => (
+                                {displayRoles.length > 0 ? (
+                                  displayRoles.map(role => (
                                     <span key={role} className={`text-[11px] px-2 py-0.5 rounded-full border font-medium ${ALL_ROLE_MAP[role]?.color ?? 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                                       {ALL_ROLE_MAP[role]?.label ?? role}
                                     </span>

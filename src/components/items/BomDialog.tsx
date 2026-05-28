@@ -101,6 +101,7 @@ const makeEmptyRow = (): BomRow => ({ _key: newKey(), quantity: '', unit: '', me
 interface Props {
   open: boolean
   item: any
+  readOnly?: boolean
   onClose: () => void
   onBomChanged?: (count: number) => void
 }
@@ -132,7 +133,7 @@ async function buildLeveledRows(items: PrintRow[], level: number, visited: Set<s
   return result
 }
 
-export default function BomDialog({ open, item, onClose, onBomChanged }: Props) {
+export default function BomDialog({ open, item, readOnly = false, onClose, onBomChanged }: Props) {
   const [rows, setRows] = useState<BomRow[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
@@ -513,7 +514,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
         </div>
 
         {/* 선택 서브헤더 */}
-        {selectedKeys.size > 0 && (
+        {selectedKeys.size > 0 && !readOnly && (
           <div className="flex items-center gap-2.5 px-6 py-2 bg-blue-50 border-b shrink-0">
             <span className="text-xs text-blue-700 font-medium">{selectedKeys.size}개 선택됨</span>
             <Button size="sm" variant="destructive" className="h-6 text-xs px-3" onClick={handleDeleteSelected}>선택 삭제</Button>
@@ -550,9 +551,11 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
               <thead className="sticky top-0 z-10 bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="py-2.5 text-center border-r border-gray-200" rowSpan={2}>
-                    <input type="checkbox" checked={allSelected}
-                      onChange={() => allSelected ? setSelectedKeys(new Set()) : setSelectedKeys(new Set(activeRows.map(r => r._key)))}
-                      className="rounded" />
+                    {!readOnly && (
+                      <input type="checkbox" checked={allSelected}
+                        onChange={() => allSelected ? setSelectedKeys(new Set()) : setSelectedKeys(new Set(activeRows.map(r => r._key)))}
+                        className="rounded" />
+                    )}
                   </th>
                   <th className="py-2 text-center text-gray-500 font-medium text-[10px] border-r border-gray-200" colSpan={3}>레벨</th>
                   <th className="px-2 py-2.5 text-left text-gray-500 font-medium border-r border-gray-200" rowSpan={2}>중분류</th>
@@ -599,7 +602,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                       <td className="px-2 py-1.5 border-r border-gray-100 text-xs text-center text-gray-700">{item.unit || '—'}</td>
                       <td className="px-0.5 py-0.5 border-r border-gray-100">
                         <input value={rootMemo} onChange={e => setRootMemo(e.target.value)}
-                          placeholder="비고" className={cell} />
+                          placeholder="비고" disabled={readOnly} className={cell} />
                       </td>
                       <td className="py-1.5 px-1">
                         <div className="flex items-center justify-center">
@@ -640,7 +643,7 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
 
                         {/* 체크 */}
                         <td className="py-1 text-center">
-                          {row.child && (
+                          {row.child && !readOnly && (
                             <input type="checkbox" checked={isSel}
                               onChange={() => setSelectedKeys(prev => { const s = new Set(prev); s.has(row._key) ? s.delete(row._key) : s.add(row._key); return s })}
                               className="rounded" />
@@ -840,20 +843,20 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                           <input type="number" min="0" step="any" value={row.quantity}
                             onChange={e => updateField(row._key, 'quantity', e.target.value)}
                             onWheel={e => e.currentTarget.blur()}
-                            placeholder="수량" disabled={!row.child}
+                            placeholder="수량" disabled={!row.child || readOnly}
                             className={cell + ' text-right'} />
                         </td>
 
                         {/* 단위 */}
                         <td className="px-0.5 py-0.5 border-r border-gray-100">
                           <input value={row.unit} onChange={e => updateField(row._key, 'unit', e.target.value)}
-                            placeholder="단위" disabled={!row.child} className={cell + ' text-center'} />
+                            placeholder="단위" disabled={!row.child || readOnly} className={cell + ' text-center'} />
                         </td>
 
                         {/* 비고 */}
                         <td className="px-0.5 py-0.5">
                           <input value={row.memo} onChange={e => updateField(row._key, 'memo', e.target.value)}
-                            placeholder="비고" disabled={!row.child} className={cell} />
+                            placeholder="비고" disabled={!row.child || readOnly} className={cell} />
                         </td>
 
                         {/* 작업 버튼 */}
@@ -864,12 +867,12 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                               </button>
                             )}
-                            {row.child && (
+                            {row.child && !readOnly && (
                               <button onClick={() => handleCloneRow(row)} title="복제" className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100">
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                               </button>
                             )}
-                            {row.child && (
+                            {row.child && !readOnly && (
                               <button onClick={() => handleDeleteRow(row)} title="삭제" className="w-6 h-6 flex items-center justify-center rounded text-gray-300 hover:text-red-500 hover:bg-red-50">
                                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                               </button>
@@ -929,9 +932,11 @@ export default function BomDialog({ open, item, onClose, onBomChanged }: Props) 
           </span>
           <div className="flex items-center gap-2">
             <Button size="sm" variant="outline" className="text-xs h-8 rounded-lg px-5" onClick={onClose}>닫기</Button>
-            <Button size="sm" className="text-xs h-8 rounded-lg px-5" onClick={handleSave} disabled={!isDirty || saving}>
-              {saving ? '저장 중...' : '저장'}
-            </Button>
+            {!readOnly && (
+              <Button size="sm" className="text-xs h-8 rounded-lg px-5" onClick={handleSave} disabled={!isDirty || saving}>
+                {saving ? '저장 중...' : '저장'}
+              </Button>
+            )}
           </div>
         </div>
       </div>

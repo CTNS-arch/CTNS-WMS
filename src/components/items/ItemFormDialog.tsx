@@ -183,7 +183,8 @@ function ClassificationTree({
   category, subCategory, thirdValue, opts,
   cellModel, seriesCount, parallelCount, circuit,
   isBP, isCL, isBms,
-  manufacturer, maxSeriesCount, ratedCurrent,
+  manufacturer, minSeriesCount, maxSeriesCount, ratedCurrent,
+  bmsRangeMode, onToggleBmsRange,
   cellModelGroups, onAddCellModelGroup, onAddCellModelEntry,
   onCategory, onSub, onThird, onAddOpt, onSet,
   onSelectCLItem, onSelectBMSItem,
@@ -193,7 +194,8 @@ function ClassificationTree({
   opts: Record<string, SelectOption[]>
   cellModel: string; seriesCount: string; parallelCount: string; circuit: string
   isBP: boolean; isCL: boolean; isBms: boolean
-  manufacturer: string; maxSeriesCount: string; ratedCurrent: string
+  manufacturer: string; minSeriesCount: string; maxSeriesCount: string; ratedCurrent: string
+  bmsRangeMode: boolean; onToggleBmsRange: () => void
   cellModelGroups: CellModelGroup[]
   onAddCellModelGroup: (mfr: string) => void
   onAddCellModelEntry: (mfr: string, label: string, code: string) => void
@@ -369,7 +371,11 @@ function ClassificationTree({
         {isBP && parallelCount && row('병렬(P)', `${parallelCount}P`)}
         {isBP && circuit && row('회로', circuitLabel)}
         {isBms && manufacturer && row('제조사', mfrLabel)}
-        {isBms && maxSeriesCount && row('최대직렬(S)', `${maxSeriesCount}S`)}
+        {isBms && maxSeriesCount && (
+          bmsRangeMode && minSeriesCount
+            ? row('직렬범위', `${minSeriesCount}S ~ ${maxSeriesCount}S`)
+            : row('최대직렬(S)', `${maxSeriesCount}S`)
+        )}
         {isBms && ratedCurrent && row('정격전류(A)', `${ratedCurrent}A`)}
       </div>
     )
@@ -551,8 +557,22 @@ function ClassificationTree({
                   <LevelRow label="제조사">
                     <TagSelect value={manufacturer} onChange={v => onSet('manufacturer', v)} options={opts.manufacturer ?? []} onAdd={onAddOpt('manufacturer')} placeholder="제조사 선택" />
                   </LevelRow>
-                  <LevelRow label="최대직렬(S)">
-                    <Input type="number" value={maxSeriesCount} onChange={e => onSet('maxSeriesCount', e.target.value)} placeholder="예) 16" />
+                  {bmsRangeMode && (
+                    <LevelRow label="최소직렬(S)">
+                      <Input type="number" value={minSeriesCount} onChange={e => onSet('minSeriesCount', e.target.value)} placeholder="예) 7" />
+                    </LevelRow>
+                  )}
+                  <LevelRow label={bmsRangeMode ? '최대직렬(S)' : '직렬(S)'}>
+                    <div className="flex items-center gap-2">
+                      <Input type="number" value={maxSeriesCount} onChange={e => onSet('maxSeriesCount', e.target.value)} placeholder="예) 16" className="flex-1" />
+                      <button
+                        type="button"
+                        onClick={onToggleBmsRange}
+                        className={`text-xs px-2 py-1 rounded border shrink-0 transition-colors ${bmsRangeMode ? 'bg-blue-100 border-blue-300 text-blue-700' : 'bg-gray-100 border-gray-300 text-gray-500 hover:bg-gray-200'}`}
+                      >
+                        범위
+                      </button>
+                    </div>
                   </LevelRow>
                   <LevelRow label="정격전류(A)">
                     <Input type="number" step="0.01" value={ratedCurrent} onChange={e => onSet('ratedCurrent', e.target.value)} placeholder="예) 100" />
@@ -673,10 +693,12 @@ const CODE_LABELS: Record<ItemCodeType, string[]> = {
   component: ['1분류', '2분류', '3분류', '일련번호'],
   simple:    [],
 }
+const BMS_LABELS_RANGE = ['1분류', '2분류', '제조사', '최소직렬', '최대직렬', '정격전류', '버전']
 
 function CodePreviewPanel({ itemCode, codeType }: { itemCode: string; codeType: ItemCodeType }) {
-  const labels = CODE_LABELS[codeType]
   const segs = itemCode ? itemCode.split('-') : []
+  let labels = CODE_LABELS[codeType]
+  if (codeType === 'bms' && segs.length === 7) labels = BMS_LABELS_RANGE
   const isSegmented = labels.length > 0 && segs.length === labels.length
 
   if (isSegmented) {
@@ -733,6 +755,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
   } | null>(null)
   const [selectedCLItem, setSelectedCLItem] = useState<{ id: string; unit: string } | null>(null)
   const [selectedBMSItem, setSelectedBMSItem] = useState<{ id: string; unit: string } | null>(null)
+  const [bmsRangeMode, setBmsRangeMode] = useState(false)
 
   const handleDrawingFiles = useCallback(async (files: FileList | File[]) => {
     const arr = Array.from(files)
@@ -850,6 +873,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
           ratedCurrent: item.ratedCurrent ?? item.continuousDischargeCurrent ?? '' }
       : { ...EMPTY, ...(initialValues ?? {}) }
     )
+    setBmsRangeMode(!!(item?.minSeriesCount))
     ensureServerSync().then(reload)
   }, [item, open])
 
@@ -876,7 +900,7 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
     if (codeType === 'bp') {
       set('itemCode', buildItemCode(codeParts))
     } else if (codeType === 'bms') {
-      set('itemCode', buildBmsCode(form))
+      set('itemCode', buildBmsCode({ ...form, minSeriesCount: bmsRangeMode ? form.minSeriesCount : '' }))
     } else if (codeType === 'cell') {
       set('itemCode', buildCellCode(form))
     } else if (codeType === 'component') {
@@ -887,8 +911,8 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
   }, [
     codeType, codeParts,
     form.category, form.subCategory, form.revisionNumber,
-    form.manufacturer, form.maxSeriesCount, form.ratedCurrent,
-    form.chemistryType, form.cellModel, form.formFactor,
+    form.manufacturer, form.minSeriesCount, form.maxSeriesCount, form.ratedCurrent,
+    form.chemistryType, form.cellModel, form.formFactor, bmsRangeMode,
   ])
 
   const revCheckTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -1081,8 +1105,14 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
               isCL={isCL}
               isBms={bms}
               manufacturer={form.manufacturer}
+              minSeriesCount={form.minSeriesCount}
               maxSeriesCount={form.maxSeriesCount}
               ratedCurrent={form.ratedCurrent}
+              bmsRangeMode={bmsRangeMode}
+              onToggleBmsRange={() => {
+                if (bmsRangeMode) { setBmsRangeMode(false); set('minSeriesCount', '') }
+                else setBmsRangeMode(true)
+              }}
               cellModelGroups={cellModelGroups}
               onAddCellModelGroup={mfr => { addCellModelGroup(mfr); setCellModelGroups([...getCellModelGroups()]); saveToServer() }}
               onAddCellModelEntry={(mfr, label, code) => { addCellModelEntry(mfr, label, code); setCellModelGroups([...getCellModelGroups()]); setOpts(prev => ({ ...prev, cellModel: getOptions('cellModel') })); saveToServer() }}
@@ -1141,11 +1171,9 @@ export default function ItemFormDialog({ open, item, initialValues, viewOnly, on
             <Field label="단위">
               <TagSelect value={form.unit} onChange={v => set('unit', v)} options={opts.unit ?? []} onAdd={addOpt('unit')} placeholder="단위 선택" />
             </Field>
-            {(form.category !== 'COMPONENT' || isCharger) && (
-              <Field label="고객사">
-                <TagMultiSelect value={form.vendors} onChange={v => set('vendors', v)} options={opts.vendor ?? []} onAdd={addOpt('vendor')} placeholder="고객사 선택 또는 입력 후 만들기" />
-              </Field>
-            )}
+            <Field label="고객사">
+              <TagMultiSelect value={form.vendors} onChange={v => set('vendors', v)} options={opts.vendor ?? []} onAdd={addOpt('vendor')} placeholder="고객사 선택 또는 입력 후 만들기" />
+            </Field>
           </div>
 
           {/* ── 물리 규격 ── */}
