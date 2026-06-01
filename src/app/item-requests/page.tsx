@@ -47,6 +47,8 @@ type ItemRequest = {
   workCode: string | null
   memo: string | null
   reviewMemo: string | null
+  oldItemCode: string | null
+  linkedItemId: string | null
   createdAt: string
   requester: { name: string | null; email: string } | null
 }
@@ -57,15 +59,58 @@ function getSubLabel(category: string, subCode: string | null) {
 }
 
 function DetailModal({
-  req, canWrite, onClose, onStatusChange,
+  req, canWrite, onClose, onStatusChange, onLinked,
 }: {
   req: ItemRequest
   canWrite: boolean
   onClose: () => void
   onStatusChange: (id: string, status: string, reviewMemo: string) => Promise<void>
+  onLinked: () => void
 }) {
   const [reviewMemo, setReviewMemo] = useState(req.reviewMemo || '')
   const [saving, setSaving]         = useState(false)
+  const [linkSearch, setLinkSearch] = useState('')
+  const [linkResults, setLinkResults] = useState<any[]>([])
+  const [linkSearching, setLinkSearching] = useState(false)
+  const [linking, setLinking]       = useState(false)
+  const linkTimer = useState<ReturnType<typeof setTimeout> | null>(null)
+
+  async function searchItems(q: string) {
+    if (!q.trim()) { setLinkResults([]); return }
+    setLinkSearching(true)
+    try {
+      const res = await fetch(`/api/items?search=${encodeURIComponent(q)}&limit=8`)
+      const json = await res.json()
+      if (json.success) setLinkResults(json.data.items)
+    } finally { setLinkSearching(false) }
+  }
+
+  function handleLinkInput(v: string) {
+    setLinkSearch(v)
+    clearTimeout(linkTimer[0] as any)
+    ;(linkTimer as any)[0] = setTimeout(() => searchItems(v), 250)
+  }
+
+  async function handleLink(itemId: string) {
+    setLinking(true)
+    try {
+      const res = await fetch(`/api/item-requests/${req.id}/link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        const cnt = json.updatedPurchaseItems ?? 0
+        toast.success(`품목 연결 완료${cnt > 0 ? ` — 구매요청 ${cnt}건 자동 업데이트` : ''}`)
+        onLinked()
+        onClose()
+      } else {
+        toast.error(json.message ?? '연결에 실패했습니다.')
+      }
+    } catch { toast.error('서버 오류가 발생했습니다.') }
+    finally { setLinking(false) }
+  }
 
   async function handle(status: string) {
     setSaving(true)
@@ -96,6 +141,20 @@ function DetailModal({
 
         {/* 내용 */}
         <div className="px-6 py-5 space-y-4 overflow-y-auto" style={{ maxHeight: '65vh' }}>
+
+          {/* 기존 품목코드 (구매요청 연동) */}
+          {req.oldItemCode && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+              <svg className="w-3.5 h-3.5 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-[11px] text-amber-700">구매요청 기존 품목코드:</span>
+              <span className="text-[11px] font-mono font-bold text-amber-800">{req.oldItemCode}</span>
+              {req.linkedItemId && (
+                <span className="ml-auto text-[10px] text-emerald-600 font-medium">✓ 연결완료</span>
+              )}
+            </div>
+          )}
 
           {/* 분류 */}
           <div className="grid grid-cols-2 gap-4">
@@ -183,6 +242,41 @@ function DetailModal({
             <div>
               <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">검토 의견</p>
               <p className="text-xs text-gray-700 bg-gray-50 rounded-lg px-3 py-2 border border-gray-100 whitespace-pre-wrap">{req.reviewMemo}</p>
+            </div>
+          )}
+
+          {/* 관리자: 품목 연결 (oldItemCode 있고 아직 미연결일 때) */}
+          {canWrite && req.oldItemCode && !req.linkedItemId && (
+            <div className="pt-3 border-t border-gray-200">
+              <p className="text-[11px] font-semibold text-gray-700 mb-2">WMS 품목 연결</p>
+              <p className="text-[11px] text-gray-400 mb-2">신규 생성된 WMS 품목을 검색해서 연결하면, 기존 구매요청의 품목코드가 자동으로 교체됩니다.</p>
+              <div className="relative">
+                <input
+                  value={linkSearch}
+                  onChange={e => handleLinkInput(e.target.value)}
+                  placeholder="품목코드 또는 품목명 검색..."
+                  className="w-full h-8 rounded-lg border border-gray-200 px-3 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+                {linkSearching && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400">검색 중...</span>
+                )}
+              </div>
+              {linkResults.length > 0 && (
+                <div className="mt-1 border border-gray-200 rounded-lg overflow-hidden">
+                  {linkResults.map(item => (
+                    <button
+                      key={item.id}
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => handleLink(item.id)}
+                      disabled={linking}
+                      className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b last:border-0 flex items-center gap-2 transition-colors disabled:opacity-50"
+                    >
+                      <span className="text-[11px] font-mono font-semibold text-gray-800 whitespace-nowrap">{item.itemCode}</span>
+                      <span className="text-[11px] text-gray-500 truncate">{item.itemName}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -320,22 +414,23 @@ export default function ItemRequestsPage() {
 
       {/* 테이블 */}
       <div className="flex-1 overflow-auto">
-        <table className="text-xs w-full border-collapse" style={{ minWidth: 800 }}>
+        <table className="text-xs w-full border-collapse" style={{ minWidth: 940 }}>
           <colgroup>
             <col style={{ width: 4 }} />
             <col style={{ width: 70 }} />
             <col style={{ width: 90 }} />
             <col style={{ width: 80 }} />
-            <col style={{ width: 220 }} />
-            <col style={{ width: 160 }} />
-            <col style={{ width: 80 }} />
+            <col style={{ width: 130 }} />
+            <col style={{ width: 200 }} />
+            <col style={{ width: 140 }} />
+            <col style={{ width: 70 }} />
             <col style={{ width: 90 }} />
             <col style={{ width: 100 }} />
           </colgroup>
           <thead className="bg-white sticky top-0 z-10">
             <tr className="border-b border-gray-200">
               <th className="w-1 p-0" />
-              {['상태', '대분류', '중분류', '품명 / 설명', '규격', '수량', '요청자', '요청일'].map(h => (
+              {['상태', '대분류', '중분류', '기존 품목코드', '품명 / 설명', '규격', '수량', '요청자', '요청일'].map(h => (
                 <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 whitespace-nowrap bg-gray-50/80">
                   {h}
                 </th>
@@ -344,10 +439,10 @@ export default function ItemRequestsPage() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="px-3 py-16 text-center text-gray-400">불러오는 중...</td></tr>
+              <tr><td colSpan={10} className="px-3 py-16 text-center text-gray-400">불러오는 중...</td></tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-16 text-center">
+                <td colSpan={10} className="px-3 py-16 text-center">
                   <div className="text-gray-300 text-2xl mb-2">📋</div>
                   <div className="text-gray-400 text-xs">품목 생성 요청이 없습니다.</div>
                 </td>
@@ -369,10 +464,15 @@ export default function ItemRequestsPage() {
                     {CAT_LABEL[row.category] ?? row.category}
                   </span>
                 </td>
-                <td className="px-3 py-2.5 text-gray-600">
+                <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">
                   {getSubLabel(row.category, row.subCategory) ?? <span className="text-gray-300">—</span>}
                 </td>
-                <td className="px-3 py-2.5 font-medium text-gray-800 max-w-[200px] truncate">{row.itemName}</td>
+                <td className="px-3 py-2.5">
+                  {row.oldItemCode
+                    ? <span className={`font-mono text-[11px] font-semibold whitespace-nowrap ${row.linkedItemId ? 'text-emerald-600' : 'text-amber-600'}`}>{row.oldItemCode}</span>
+                    : <span className="text-gray-300">—</span>}
+                </td>
+                <td className="px-3 py-2.5 font-medium text-gray-800 max-w-[200px] truncate whitespace-nowrap">{row.itemName}</td>
                 <td className="px-3 py-2.5 text-gray-500 max-w-[150px] truncate">
                   {row.spec || <span className="text-gray-300">—</span>}
                 </td>
@@ -410,6 +510,7 @@ export default function ItemRequestsPage() {
           canWrite={canWrite}
           onClose={() => setSelected(null)}
           onStatusChange={handleStatusChange}
+          onLinked={() => fetchRows(page, filterStatus)}
         />
       )}
     </div>

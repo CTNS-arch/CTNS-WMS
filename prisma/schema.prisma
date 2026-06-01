@@ -199,6 +199,7 @@ model Item {
   stockCostLayers   StockCostLayer[]
   supplierItems     SupplierItem[]
   purchaseItems     PurchaseRequestItem[]
+  linkedRequests    ItemCreateRequest[]   @relation("ItemCreateRequestLinked")
 }
 
 model ItemCost {
@@ -448,10 +449,13 @@ model ItemCreateRequest {
   workCode      String?
   memo          String?
   reviewMemo    String?
+  oldItemCode   String?           // 기존(구형) 품목코드 — 구매요청 연동 시 저장
+  linkedItemId  String?           // 매핑된 신규 WMS 품목 ID
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
-  requester User? @relation(fields: [requesterId], references: [id])
+  requester   User?  @relation(fields: [requesterId], references: [id])
+  linkedItem  Item?  @relation("ItemCreateRequestLinked", fields: [linkedItemId], references: [id])
 }
 
 // ── 외부 거래처 계정 ────────────────────────────────────────

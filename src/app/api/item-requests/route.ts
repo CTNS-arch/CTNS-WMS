@@ -15,10 +15,17 @@ export async function GET(req: NextRequest) {
     const status   = searchParams.get('status') || ''
     const page     = Math.max(1, Number(searchParams.get('page') || 1))
     const canWrite = session.user.roles?.includes('ITEM_WRITE') || session.user.roles?.includes('MASTER_ADMIN')
+    const isExternal = session.user.id.startsWith('ext:')
 
     const where: any = {}
     if (status) where.status = status
-    if (!canWrite) where.requesterId = session.user.id
+    if (!canWrite) {
+      if (isExternal) {
+        where.requesterName = session.user.name || ''
+      } else {
+        where.requesterId = session.user.id
+      }
+    }
 
     const [rows, total] = await Promise.all([
       prisma.itemCreateRequest.findMany({
@@ -45,7 +52,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { category, subCategory, itemName, spec, quantity, unit, workCode, memo } = body
+    const { category, subCategory, itemName, spec, quantity, unit, workCode, memo, oldItemCode } = body
 
     if (!category || !itemName?.trim()) {
       return NextResponse.json({ success: false, message: '대분류와 품명은 필수입니다.' }, { status: 400 })
@@ -89,9 +96,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: '동일한 품목이 있습니다.' }, { status: 409 })
     }
 
+    // NeonHTTP: nested connect/include는 내부 트랜잭션을 유발하므로
+    // 단순 create 후 raw UPDATE로 requesterId 설정
     const record = await prisma.itemCreateRequest.create({
       data: {
-        requesterId:   session.user.id,
         requesterName: session.user.name || session.user.email || '',
         category,
         subCategory:   normSub,
@@ -101,9 +109,15 @@ export async function POST(req: NextRequest) {
         unit:          normUnit,
         workCode:      normWork,
         memo:          normMemo,
+        oldItemCode:   oldItemCode?.trim() || null,
       },
-      include: { requester: { select: { name: true, email: true } } },
     })
+
+    // 내부 사용자만 requesterId 설정 (외부 거래처는 ExternalUser이므로 스킵)
+    const isExternal = session.user.id.startsWith('ext:')
+    if (!isExternal && session.user.id) {
+      await prisma.$executeRaw`UPDATE "ItemCreateRequest" SET "requesterId" = ${session.user.id} WHERE id = ${record.id}`
+    }
 
     return NextResponse.json({ success: true, data: record }, { status: 201 })
   } catch (error: any) {

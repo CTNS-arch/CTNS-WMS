@@ -17,6 +17,7 @@ import MiscBuyerDialog from '@/components/purchases/MiscBuyerDialog'
 import MiscReceiveDialog from '@/components/purchases/MiscReceiveDialog'
 import MiscReceiveViewDialog from '@/components/purchases/MiscReceiveViewDialog'
 import ItemFormDialog from '@/components/items/ItemFormDialog'
+import ItemRequestDialog from '@/components/items/ItemRequestDialog'
 
 // ── 상수 ──────────────────────────────────────────────────
 const STATUS_LABEL: Record<string, string> = {
@@ -258,6 +259,10 @@ export default function PurchasesPage() {
   const [itemDetailOpen,  setItemDetailOpen]  = useState(false)
   const [itemDetailItem,  setItemDetailItem]  = useState<any | null>(null)
   const [itemDetailLoading, setItemDetailLoading] = useState(false)
+
+  const [itemReqOpen,    setItemReqOpen]    = useState(false)
+  const [itemReqOldCode, setItemReqOldCode] = useState<string | undefined>(undefined)
+  const [itemReqItemName, setItemReqItemName] = useState<string | undefined>(undefined)
 
   const [users,          setUsers]          = useState<UserItem[]>([])
   const [settingsOpen,   setSettingsOpen]   = useState(false)
@@ -1168,7 +1173,7 @@ export default function PurchasesPage() {
                 </div>
 
                 <div className="border border-gray-200 rounded-xl overflow-auto flex-1 bg-white">
-                  <table className="text-xs border-collapse" style={{ tableLayout: 'fixed', minWidth: 1640 }}>
+                  <table className="text-xs border-collapse" style={{ tableLayout: 'fixed', minWidth: 1570 }}>
                     <colgroup>
                       <col style={{ width: 36 }} />
                       <col style={{ width: 72 }} />
@@ -1180,7 +1185,6 @@ export default function PurchasesPage() {
                       <col style={{ width: 100 }} />
                       <col style={{ width: 180 }} />
                       <col style={{ width: 60 }} />
-                      <col style={{ width: 70 }} />
                       <col style={{ width: 70 }} />
                       <col style={{ width: 130 }} />
                       <col style={{ width: 90 }} />
@@ -1202,7 +1206,6 @@ export default function PurchasesPage() {
                           { label: '품목명', req: true },
                           { label: '단위', req: true },
                           { label: '수량', req: true },
-                          { label: '통화', req: true },
                           { label: '공급처', req: false },
                           { label: '입고장소', req: true },
                           { label: '입고희망일', req: true },
@@ -1275,6 +1278,18 @@ export default function PurchasesPage() {
                                 disabled={!isDomesticSelected}
                                 className={cell + ' font-mono' + dimCls + (isDomesticSelected && !isItemSelected ? ' placeholder:text-red-500' : '')}
                               />
+                              {isDomesticSelected && row.bomNo && !isItemSelected && (
+                                <div className="flex items-center gap-1 mt-0.5">
+                                  <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded px-1 py-px leading-tight whitespace-nowrap">미등록</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => { setItemReqOldCode(row.bomNo); setItemReqItemName(row.spec || undefined); setItemReqOpen(true) }}
+                                    className="text-[9px] text-blue-600 hover:text-blue-800 underline whitespace-nowrap leading-tight"
+                                  >
+                                    품목 생성 요청
+                                  </button>
+                                </div>
+                              )}
                             </td>
                             <td className="px-1.5 py-0.5 border-r">
                               <input value={row.category} onChange={e => updItem(row._key, 'category', e.target.value)}
@@ -1317,12 +1332,6 @@ export default function PurchasesPage() {
                                 onChange={e => updItem(row._key, 'quantity', e.target.value)}
                                 disabled={!isDomesticSelected}
                                 placeholder="0" className={cell + ' text-right' + dimCls} />
-                            </td>
-                            <td className="px-0.5 py-0.5 border-r">
-                              <select value={row.currency} onChange={e => updItem(row._key, 'currency', e.target.value)}
-                                disabled={!isDomesticSelected} className={sel + dimCls}>
-                                {CURRENCY_OPTIONS.map(c => <option key={c}>{c}</option>)}
-                              </select>
                             </td>
                             <td className="px-0.5 py-0.5 border-r">
                               <input
@@ -1441,7 +1450,7 @@ export default function PurchasesPage() {
             <span className="text-xs text-gray-400">{itemDropdown.results.length}건</span>
           </div>
           <div className="grid grid-cols-[1fr_1.4fr_60px_70px_60px] px-3 py-1 bg-gray-50 border-b text-[11px] text-gray-400 font-medium">
-            <span>품번</span><span>품명</span><span>대분류</span><span>중분류</span><span>단위</span>
+            <span className="whitespace-nowrap">품번</span><span className="whitespace-nowrap">품명</span><span className="whitespace-nowrap">대분류</span><span className="whitespace-nowrap">중분류</span><span className="whitespace-nowrap">단위</span>
           </div>
           <div className="max-h-60 overflow-y-auto">
             {itemDropdown.results.map(item => (
@@ -1450,11 +1459,11 @@ export default function PurchasesPage() {
                 onMouseDown={e => { e.preventDefault(); selectBomItem(item) }}
                 className="w-full text-left px-3 py-2 hover:bg-blue-50 grid grid-cols-[1fr_1.4fr_60px_70px_60px] gap-x-2 items-center border-b last:border-0 transition-colors"
               >
-                <span className="text-xs font-mono font-semibold text-gray-800 truncate">{item.itemCode}</span>
-                <span className="text-xs text-gray-700 truncate">{item.itemName}</span>
-                <span className="text-xs text-gray-500">{ITEM_CAT_LABEL[item.category] ?? item.category}</span>
-                <span className="text-xs text-gray-500">{item.subCategory ? (SUB_CAT_LABEL[item.subCategory] ?? item.subCategory) : '-'}</span>
-                <span className="text-xs text-gray-400">{item.unit}</span>
+                <span className="text-xs font-mono font-semibold text-gray-800 truncate min-w-0">{item.itemCode}</span>
+                <span className="text-xs text-gray-700 truncate min-w-0">{item.itemName}</span>
+                <span className="text-xs text-gray-500 whitespace-nowrap">{ITEM_CAT_LABEL[item.category] ?? item.category}</span>
+                <span className="text-xs text-gray-500 whitespace-nowrap">{item.subCategory ? (SUB_CAT_LABEL[item.subCategory] ?? item.subCategory) : '-'}</span>
+                <span className="text-xs text-gray-400 whitespace-nowrap">{item.unit}</span>
               </button>
             ))}
           </div>
@@ -1617,6 +1626,15 @@ export default function PurchasesPage() {
       </AlertDialog>
 
       {/* ── 기본 결재라인 설정 모달 (PROD_STOCK 전용) ─── */}
+      {/* ── 품목 생성 요청 다이얼로그 ─────────────────────── */}
+      <ItemRequestDialog
+        open={itemReqOpen}
+        onClose={() => setItemReqOpen(false)}
+        onSubmitted={() => setItemReqOpen(false)}
+        initialOldItemCode={itemReqOldCode}
+        initialItemName={itemReqItemName}
+      />
+
       {settingsOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
           onClick={() => setSettingsOpen(false)}>

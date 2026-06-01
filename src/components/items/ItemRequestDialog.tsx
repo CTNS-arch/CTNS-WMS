@@ -11,6 +11,8 @@ interface Props {
   open: boolean
   onClose: () => void
   onSubmitted: () => void
+  initialOldItemCode?: string
+  initialItemName?: string
 }
 
 const UNIT_OPTIONS = ['EA', 'SET', 'BOX', 'PCS', 'KG', 'M', 'L', '기타']
@@ -135,7 +137,7 @@ function SearchableSelect({
 
 // ── 메인 컴포넌트 ───────────────────────────────────────────
 
-export default function ItemRequestDialog({ open, onClose, onSubmitted }: Props) {
+export default function ItemRequestDialog({ open, onClose, onSubmitted, initialOldItemCode, initialItemName }: Props) {
   const [category,      setCategory]      = useState('')
   const [subCategory,   setSubCategory]   = useState('')
   const [thirdCategory, setThirdCategory] = useState('')
@@ -146,6 +148,11 @@ export default function ItemRequestDialog({ open, onClose, onSubmitted }: Props)
   const [memo,          setMemo]          = useState('')
   const [saving,        setSaving]        = useState(false)
   const [optStore,      setOptStore]      = useState<Record<string, SelectOption[]>>({})
+
+  // 구매요청에서 열릴 때 초기값 세팅
+  useEffect(() => {
+    if (open && initialItemName) setItemName(initialItemName)
+  }, [open, initialItemName])
 
   useEffect(() => {
     ensureServerSync().then(() => {
@@ -226,7 +233,7 @@ export default function ItemRequestDialog({ open, onClose, onSubmitted }: Props)
       const res = await fetch('/api/item-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category, subCategory, thirdCategory, itemName, spec, quantity, unit, memo }),
+        body: JSON.stringify({ category, subCategory, thirdCategory, itemName, spec, quantity, unit, memo, oldItemCode: initialOldItemCode || null }),
       })
       const json = await res.json()
       if (json.success) {
@@ -267,6 +274,17 @@ export default function ItemRequestDialog({ open, onClose, onSubmitted }: Props)
 
         {/* 폼 */}
         <div className="px-6 py-5 space-y-4 overflow-y-auto" style={{ maxHeight: '70vh' }}>
+
+          {/* 기존 품목코드 (구매요청 연동 시) */}
+          {initialOldItemCode && (
+            <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+              <svg className="w-3.5 h-3.5 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="text-[11px] text-amber-700">구매요청 기존 품목코드:</span>
+              <span className="text-[11px] font-mono font-bold text-amber-800">{initialOldItemCode}</span>
+            </div>
+          )}
 
           {/* 대분류 */}
           <div className="flex flex-col gap-1.5">
