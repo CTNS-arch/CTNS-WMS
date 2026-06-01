@@ -129,6 +129,15 @@ export async function GET(req: NextRequest) {
     if (chargeCRateMin) where.chargeCRate = { gte: parseFloat(chargeCRateMin) } as any
     if (dischargeCRateMin) where.dischargeCRate = { gte: parseFloat(dischargeCRateMin) } as any
 
+    const manufacturerVal = multiIn(searchParams.get('manufacturer'))
+    if (manufacturerVal) where.manufacturer = toIn(manufacturerVal) as any
+    const minSeriesCountGte = searchParams.get('minSeriesCountGte')
+    if (minSeriesCountGte) where.minSeriesCount = { gte: parseInt(minSeriesCountGte) } as any
+    const maxSeriesCountLte = searchParams.get('maxSeriesCountLte')
+    if (maxSeriesCountLte) where.maxSeriesCount = { lte: parseInt(maxSeriesCountLte) } as any
+    const ratedCurrentMin = searchParams.get('ratedCurrentMin')
+    if (ratedCurrentMin) where.ratedCurrent = { gte: parseFloat(ratedCurrentMin) } as any
+
     const validSort = ['itemCode', 'itemName', 'category', 'subCategory', 'status', 'createdAt', 'updatedAt', 'revisionNumber']
     const orderBy: Prisma.ItemOrderByWithRelationInput = validSort.includes(sortBy)
       ? { [sortBy]: sortOrder }
@@ -219,6 +228,11 @@ export async function POST(req: NextRequest) {
       const newVersion = maxVersion + 1
       itemCode = `${baseCode}-${String(newVersion).padStart(3, '0')}`
       rest.revisionNumber = newVersion
+    }
+
+    // BMS/PCM: 최소직렬 미입력 시 최대직렬과 동일하게 자동 설정
+    if (rest.maxSeriesCount != null && rest.minSeriesCount == null) {
+      rest.minSeriesCount = rest.maxSeriesCount
     }
 
     const item = await prisma.item.create({

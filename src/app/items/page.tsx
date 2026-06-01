@@ -97,6 +97,11 @@ export default function ItemsPage() {
   const [filterContinuousDischargeCurrentMin, setFilterContinuousDischargeCurrentMin] = useState('')
   const [filterChargeCRateMin, setFilterChargeCRateMin] = useState('')
   const [filterDischargeCRateMin, setFilterDischargeCRateMin] = useState('')
+  // BMS/PCM 전용 필터
+  const [filterManufacturer, setFilterManufacturer] = useState<string[]>([])
+  const [filterMinSeriesCountGte, setFilterMinSeriesCountGte] = useState('')
+  const [filterMaxSeriesCountLte, setFilterMaxSeriesCountLte] = useState('')
+  const [filterRatedCurrentMin, setFilterRatedCurrentMin] = useState('')
 
   // ── 정렬 ──
   const [sortBy, setSortBy] = useState('createdAt')
@@ -136,6 +141,7 @@ export default function ItemsPage() {
   const [specialOptionOpts, setSpecialOptionOpts] = useState<SelectOption[]>([])
   const [bmsItemOpts, setBmsItemOpts] = useState<{ value: string; label: string; subCat: string }[]>([])
   const [clItemOpts, setClItemOpts] = useState<{ value: string; label: string; cellModel: string; chemistryType: string }[]>([])
+  const [manufacturerOpts, setManufacturerOpts] = useState<SelectOption[]>([])
 
   useEffect(() => {
     ensureServerSync().then(() => {
@@ -151,7 +157,7 @@ export default function ItemsPage() {
   }, [])
 
   useEffect(() => {
-    fetch('/api/items?category=ASSEMBLY&subCategory=BM,PC&limit=200&sortBy=itemCode&sortOrder=asc')
+    fetch('/api/items?category=ASSEMBLY&subCategory=BM,PC&limit=500&sortBy=itemCode&sortOrder=asc')
       .then(r => r.json())
       .then(json => {
         if (json.success) {
@@ -160,6 +166,15 @@ export default function ItemsPage() {
             label: `${item.itemName} (${item.subCategory === 'BM' ? 'BMS' : 'PCM'})`,
             subCat: item.subCategory,
           })))
+          const seen = new Set<string>()
+          const mfgOpts: SelectOption[] = []
+          for (const item of json.data.items) {
+            if (item.manufacturer && !seen.has(item.manufacturer)) {
+              seen.add(item.manufacturer)
+              mfgOpts.push({ value: item.manufacturer, label: item.manufacturer, colorIndex: 0 })
+            }
+          }
+          setManufacturerOpts(mfgOpts)
         }
       }).catch(() => {})
   }, [])
@@ -223,7 +238,7 @@ export default function ItemsPage() {
 
   // 뷰별 총 컬럼 수 (colSpan 계산용) — BOM 컬럼은 isComp 제외
   const hasBomCol = !isComp
-  const colCount = isAll ? 11 : (isProd || isPO) ? 24 : isBmsPcm ? 16 : isAsmGeneric ? 19 : isCell ? 27 : isElCharger ? 17 : isElComp ? 24 : isCompOther ? 23 : 17
+  const colCount = isAll ? 11 : (isProd || isPO) ? 24 : isBmsPcm ? 18 : isAsmGeneric ? 19 : isCell ? 27 : isElCharger ? 17 : isElComp ? 24 : isCompOther ? 23 : 17
 
   const fetchItems = useCallback(async () => {
     setLoading(true)
@@ -273,6 +288,10 @@ export default function ItemsPage() {
     if (filterContinuousDischargeCurrentMin) params.set('continuousDischargeCurrentMin', filterContinuousDischargeCurrentMin)
     if (filterChargeCRateMin) params.set('chargeCRateMin', filterChargeCRateMin)
     if (filterDischargeCRateMin) params.set('dischargeCRateMin', filterDischargeCRateMin)
+    const mfgParam = toParam(filterManufacturer); if (mfgParam) params.set('manufacturer', mfgParam)
+    if (filterMinSeriesCountGte) params.set('minSeriesCountGte', filterMinSeriesCountGte)
+    if (filterMaxSeriesCountLte) params.set('maxSeriesCountLte', filterMaxSeriesCountLte)
+    if (filterRatedCurrentMin) params.set('ratedCurrentMin', filterRatedCurrentMin)
 
     const res = await fetch(`/api/items?${params}`)
     const json = await res.json()
@@ -289,6 +308,7 @@ export default function ItemsPage() {
     filterMaxChargeCurrentMin, filterMaxDischargeCurrentMin,
     filterContinuousChargeCurrentMin, filterContinuousDischargeCurrentMin,
     filterChargeCRateMin, filterDischargeCRateMin,
+    filterManufacturer, filterMinSeriesCountGte, filterMaxSeriesCountLte, filterRatedCurrentMin,
     sortBy, sortOrder])
 
   useEffect(() => { fetchItems() }, [fetchItems])
@@ -326,6 +346,7 @@ export default function ItemsPage() {
     setFilterMaxChargeCurrentMin(''); setFilterMaxDischargeCurrentMin('')
     setFilterContinuousChargeCurrentMin(''); setFilterContinuousDischargeCurrentMin('')
     setFilterChargeCRateMin(''); setFilterDischargeCRateMin('')
+    setFilterManufacturer([]); setFilterMinSeriesCountGte(''); setFilterMaxSeriesCountLte(''); setFilterRatedCurrentMin('')
     setPage(1); setSelected(new Set())
   }
 
@@ -339,6 +360,7 @@ export default function ItemsPage() {
       setFilterPackType([]); setFilterSeriesCount(''); setFilterParallelCount(''); setFilterLayerCount('')
       setFilterBMSItems([]); setFilterCLItems([])
       setFilterCertification([]); setFilterSpecialOption([])
+      setFilterManufacturer([]); setFilterMinSeriesCountGte(''); setFilterMaxSeriesCountLte(''); setFilterRatedCurrentMin('')
     }
     setFilterFormFactor([])
     if (next === 'PRODUCT') {
@@ -478,7 +500,7 @@ export default function ItemsPage() {
     .forEach(key => getOptions(key).forEach((o: SelectOption) => { formFactorLabelMap[o.value] = o.label }))
 
   // 뷰별 테이블 너비
-  const tableWidth = isAll ? 1385 : (isProd || isPO) ? 2410 : isBmsPcm ? 1830 : isAsmGeneric ? 1980 : isCell ? 2840 : isElCharger ? 1850 : isElComp ? 2400 : isCompOther ? 2330 : 1820
+  const tableWidth = isAll ? 1385 : (isProd || isPO) ? 2410 : isBmsPcm ? 1990 : isAsmGeneric ? 1980 : isCell ? 2840 : isElCharger ? 1850 : isElComp ? 2400 : isCompOther ? 2330 : 1820
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -557,6 +579,43 @@ export default function ItemsPage() {
                   placeholder="화학계 선택"
                 />
               </FilterSection>
+            )}
+
+            {/* BMS/PCM 전용: 제조사, 직렬 수 범위, 정격전류 */}
+            {isBmsPcm && (
+              <>
+                {manufacturerOpts.length > 0 && (
+                  <FilterSection label="제조사">
+                    <SearchableMultiSelect
+                      value={filterManufacturer}
+                      onChange={v => { setFilterManufacturer(v); resetAndPage() }}
+                      options={manufacturerOpts}
+                      placeholder="제조사 선택"
+                    />
+                  </FilterSection>
+                )}
+                <FilterSection label="최소직렬 이상(S)">
+                  <input type="number" min="1" value={filterMinSeriesCountGte}
+                    onChange={e => debounce(setFilterMinSeriesCountGte)(e.target.value)}
+                    onWheel={e => e.currentTarget.blur()} placeholder="예) 4"
+                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  />
+                </FilterSection>
+                <FilterSection label="최대직렬 이하(S)">
+                  <input type="number" min="1" value={filterMaxSeriesCountLte}
+                    onChange={e => debounce(setFilterMaxSeriesCountLte)(e.target.value)}
+                    onWheel={e => e.currentTarget.blur()} placeholder="예) 16"
+                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  />
+                </FilterSection>
+                <FilterSection label="정격전류 이상(A)">
+                  <input type="number" min="0" step="any" value={filterRatedCurrentMin}
+                    onChange={e => debounce(setFilterRatedCurrentMin)(e.target.value)}
+                    onWheel={e => e.currentTarget.blur()} placeholder="예) 50"
+                    className="w-full text-xs border border-gray-200 rounded px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  />
+                </FilterSection>
+              </>
             )}
 
             {isCell && (
@@ -756,8 +815,8 @@ export default function ItemsPage() {
               </FilterSection>
             )}
 
-            {/* 고객사: BMS/PCM 제외 */}
-            {vendorOpts.length > 0 && !isBmsPcm && (
+            {/* 고객사 */}
+            {vendorOpts.length > 0 && (
               <FilterSection label="고객사">
                 <SearchableMultiSelect
                   value={filterVendor}
@@ -851,8 +910,8 @@ export default function ItemsPage() {
                 {isCompOther && <col style={{ width: 90 }} />}
                 {/* 완제품/소프트팩: 화학계, 셀모델, 회로, 팩타입 */}
                 {(isProd || isPO) && <><col style={{ width: 80 }} /><col style={{ width: 110 }} /><col style={{ width: 80 }} /><col style={{ width: 80 }} /></>}
-                {/* BMS/PCM: 화학계, 제조사, 최대직렬, 연속방전 */}
-                {isBmsPcm && <><col style={{ width: 90 }} /><col style={{ width: 100 }} /><col style={{ width: 70 }} /><col style={{ width: 80 }} /></>}
+                {/* BMS/PCM: 화학계, 제조사, 최소직렬, 최대직렬, 정격전류 */}
+                {isBmsPcm && <><col style={{ width: 90 }} /><col style={{ width: 100 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 80 }} /></>}
                 {/* 단위: BMS/PCM 제외 */}
                 {!isBmsPcm && <col style={{ width: 55 }} />}
                 {/* 이미지: 전체보기에서 단위 다음 */}
@@ -875,8 +934,8 @@ export default function ItemsPage() {
                 {isElCharger && <><col style={{ width: 90 }} /><col style={{ width: 65 }} /><col style={{ width: 105 }} /><col style={{ width: 100 }} /></>}
                 {/* 이미지 */}
                 {(isAsmGeneric || isComp || isBmsPcm) && <col style={{ width: 100 }} />}
-                {/* 일반반제품·자재: 고객사 */}
-                {(isAsmGeneric || isComp) && <col style={{ width: 90 }} />}
+                {/* 일반반제품·자재·BMS/PCM: 고객사 */}
+                {(isAsmGeneric || isComp || isBmsPcm) && <col style={{ width: 90 }} />}
                 {/* 완제품/소프트팩: 특수옵션, 인증, 도면, 이미지 */}
                 {(isProd || isPO) && <><col style={{ width: 80 }} /><col style={{ width: 80 }} /><col style={{ width: 80 }} /><col style={{ width: 100 }} /></>}
                 {/* BMS/PCM: 특수옵션 */}
@@ -913,6 +972,7 @@ export default function ItemsPage() {
                   {isBmsPcm && <>
                     <TableHead className="whitespace-nowrap text-xs">화학계</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">제조사</TableHead>
+                    <TableHead className="whitespace-nowrap text-xs">최소직렬(S)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">최대직렬(S)</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">정격전류(A)</TableHead>
                   </>}
@@ -969,7 +1029,7 @@ export default function ItemsPage() {
                     <TableHead className="whitespace-nowrap text-xs">충전전류(A)</TableHead>
                   </>}
                   {(isAsmGeneric || isComp || isBmsPcm) && <TableHead className="whitespace-nowrap text-xs">이미지</TableHead>}
-                  {(isAsmGeneric || isComp) && <TableHead className="whitespace-nowrap text-xs">고객사</TableHead>}
+                  {(isAsmGeneric || isComp || isBmsPcm) && <TableHead className="whitespace-nowrap text-xs">고객사</TableHead>}
                   {(isProd || isPO) && <>
                     <TableHead className="whitespace-nowrap text-xs">특수옵션</TableHead>
                     <TableHead className="whitespace-nowrap text-xs">인증</TableHead>
@@ -1025,6 +1085,7 @@ export default function ItemsPage() {
                       {isBmsPcm && <>
                         <TableCell className="text-xs text-center text-gray-900">{item.chemistryType ?? '-'}</TableCell>
                         <TableCell><TooltipCell value={item.manufacturer} /></TableCell>
+                        <TableCell className="text-xs text-center text-gray-900">{item.minSeriesCount ?? '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.maxSeriesCount ?? '-'}</TableCell>
                         <TableCell className="text-xs text-center text-gray-900">{item.ratedCurrent != null ? Number(item.ratedCurrent) : item.continuousDischargeCurrent != null ? Number(item.continuousDischargeCurrent) : '-'}</TableCell>
                       </>}
@@ -1081,7 +1142,7 @@ export default function ItemsPage() {
                         <TableCell className="text-xs text-center text-gray-900">{item.continuousChargeCurrent != null ? Number(item.continuousChargeCurrent) : '-'}</TableCell>
                       </>}
                       {(isAsmGeneric || isComp || isBmsPcm) && <TableCell><ImageCell urls={item.images ?? []} /></TableCell>}
-                      {(isAsmGeneric || isComp) && <TableCell><TagListCell values={item.vendors ?? []} /></TableCell>}
+                      {(isAsmGeneric || isComp || isBmsPcm) && <TableCell><TagListCell values={item.vendors ?? []} /></TableCell>}
                       {(isProd || isPO) && <>
                         <TableCell><TagListCell values={item.specialOptions ?? []} /></TableCell>
                         <TableCell><TagListCell values={item.certifications ?? []} /></TableCell>
