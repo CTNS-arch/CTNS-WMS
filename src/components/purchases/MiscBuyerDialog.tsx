@@ -161,7 +161,7 @@ export default function MiscBuyerDialog({ open, request, onClose, onSaved }: Pro
               onChange={e => setSelectedStatus(e.target.value)}
               className="h-8 w-full rounded-lg border border-gray-200 px-2 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white"
             >
-              <option value="ORDERED">주문완료</option>
+              <option value="ORDERED">발주완료</option>
               <option value="RECEIVED">입고완료</option>
               <option value="APPROVED">주문진행</option>
               <option value="REJECTED">반려</option>

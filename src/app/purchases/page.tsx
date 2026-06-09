@@ -21,7 +21,7 @@ import ItemRequestDialog from '@/components/items/ItemRequestDialog'
 
 // ── 상수 ──────────────────────────────────────────────────
 const STATUS_LABEL: Record<string, string> = {
-  PENDING: '요청', APPROVED: '주문진행', ORDERED: '주문완료', RECEIVED: '입고완료', REJECTED: '반려',
+  PENDING: '요청', APPROVED: '주문진행', ORDERED: '발주완료', RECEIVED: '입고완료', REJECTED: '반려',
 }
 const STATUS_COLOR: Record<string, string> = {
   PENDING:  'bg-amber-100 text-amber-700 border border-amber-200',
@@ -52,21 +52,21 @@ const STATUS_ROW: Record<string, string> = {
 const FILTER_PILLS_MISC: { value: string; label: string }[] = [
   { value: '', label: '전체' },
   { value: 'PENDING', label: '요청' },
-  { value: 'ORDERED', label: '주문완료' },
+  { value: 'ORDERED', label: '발주완료' },
   { value: 'RECEIVED', label: '입고완료' },
   { value: 'REJECTED', label: '반려' },
 ]
 const FILTER_PILLS_EXTERNAL: { value: string; label: string }[] = [
   { value: '', label: '전체' },
   { value: 'APPROVED', label: '주문진행' },
-  { value: 'ORDERED', label: '주문완료' },
+  { value: 'ORDERED', label: '발주완료' },
   { value: 'RECEIVED', label: '입고완료' },
 ]
 const FILTER_PILLS_DEPT: { value: string; label: string }[] = [
   { value: '', label: '전체' },
   { value: 'PENDING', label: '요청' },
   { value: 'APPROVED', label: '주문진행' },
-  { value: 'ORDERED', label: '주문완료' },
+  { value: 'ORDERED', label: '발주완료' },
   { value: 'RECEIVED', label: '입고완료' },
   { value: 'REJECTED', label: '반려' },
 ]
@@ -241,6 +241,25 @@ export default function PurchasesPage() {
   const [deleteId,        setDeleteId]        = useState<string | null>(null)
   const [deleting,        setDeleting]        = useState(false)
 
+  const [selectedIds,  setSelectedIds]  = useState<Set<string>>(new Set())
+  const [bulkQueue,    setBulkQueue]    = useState<any[]>([])
+
+  const toggleSelect = (id: string) => setSelectedIds(prev => {
+    const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next
+  })
+  const toggleAll = () => {
+    const allIds = requests.map((r: any) => r.id)
+    setSelectedIds(prev => prev.size === allIds.length ? new Set() : new Set(allIds))
+  }
+  const handleBulkBuyer = () => {
+    const reqs = requests.filter((r: any) => selectedIds.has(r.id))
+    if (!reqs.length) return
+    const [first, ...rest] = reqs
+    setBulkQueue(rest)
+    setBuyerRequest(first)
+    setBuyerOpen(true)
+  }
+
   const [buyerOpen,    setBuyerOpen]    = useState(false)
   const [buyerRequest, setBuyerRequest] = useState<any | null>(null)
 
@@ -309,6 +328,7 @@ export default function PurchasesPage() {
         setTotal(json.data.total)
         setPage(json.data.page)
         if (json.data.statusCounts) setStatusCounts(json.data.statusCounts)
+      setSelectedIds(new Set())
       } else toast.error('데이터를 불러오지 못했습니다.')
     } catch { toast.error('서버 오류가 발생했습니다.') }
     finally { setLoading(false) }
@@ -716,13 +736,27 @@ export default function PurchasesPage() {
         </div>
       </div>
 
+      {/* ── 일괄 액션 바 ─────────────────────────────────── */}
+      {selectedIds.size > 0 && (isAdmin || (isExternal && deptTab === '생산구매팀')) && deptTab !== '연구비' && (
+        <div className="px-4 py-2 bg-purple-50 border-b border-purple-100 flex items-center gap-3 shrink-0">
+          <span className="text-xs text-purple-700 font-medium">{selectedIds.size}건 선택됨</span>
+          <button
+            onClick={handleBulkBuyer}
+            className="h-7 px-3 rounded text-xs font-medium border border-purple-300 text-purple-700 bg-white hover:bg-purple-100 transition-colors whitespace-nowrap"
+          >
+            일괄 구매 처리
+          </button>
+          <button onClick={() => setSelectedIds(new Set())} className="text-xs text-gray-400 hover:text-gray-600">선택 해제</button>
+        </div>
+      )}
+
       {/* ── 목록 테이블 ──────────────────────────────────── */}
       <div className="flex-1 overflow-auto">
         {deptTab === '연구비' ? (
           /* 연구비 테이블 */
-          <table className="text-xs w-full border-collapse" style={{ minWidth: 960 }}>
+          <table className="text-xs w-full border-collapse" style={{ minWidth: 993 }}>
             <colgroup>
-              <col style={{ width: 3 }} />
+              <col style={{ width: 36 }} />
               <col style={{ width: 82 }} />
               <col style={{ width: 110 }} />
               <col style={{ width: 88 }} />
@@ -736,7 +770,11 @@ export default function PurchasesPage() {
             </colgroup>
             <thead className="bg-white sticky top-0 z-10">
               <tr className="border-b border-gray-200">
-                <th className="w-1 p-0" />
+                <th className="px-2 py-2.5 text-center">
+                  <input type="checkbox" className="rounded"
+                    checked={requests.length > 0 && requests.every((r: any) => selectedIds.has(r.id))}
+                    onChange={toggleAll} />
+                </th>
                 {['상태', '구매요청코드', '요청자', '프로젝트코드', '요청제목', '공급처', '배송지', '총금액', '사용카드', '관리'].map(h => (
                   <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 whitespace-nowrap">
                     {h}
@@ -749,17 +787,20 @@ export default function PurchasesPage() {
                 <tr><td colSpan={12} className="px-3 py-16 text-center text-gray-400 text-xs">불러오는 중...</td></tr>
               ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-3 py-16 text-center">
+                  <td colSpan={12} className="px-3 py-16 text-center">
                     <div className="text-gray-300 text-2xl mb-2">📋</div>
                     <div className="text-gray-400 text-xs">연구비 구매 요청 내역이 없습니다.</div>
                   </td>
                 </tr>
               ) : requests.map((req: any) => {
                 const drafter = getDrafter(req)
-                const rowCls = `border-b border-gray-100 hover:bg-gray-50/60 transition-colors ${STATUS_ROW[req.status] ?? ''}`
+                const isSel = selectedIds.has(req.id)
+                const rowCls = `border-b border-gray-100 hover:bg-gray-50/60 transition-colors ${isSel ? 'bg-purple-50/40' : STATUS_ROW[req.status] ?? ''}`
                 return (
                   <tr key={req.id} className={rowCls}>
-                    <td className={`w-1 p-0 ${STATUS_STRIPE[req.status] ?? 'bg-gray-200'}`} />
+                    <td className="px-2 py-2 text-center align-middle">
+                      <input type="checkbox" className="rounded" checked={isSel} onChange={() => toggleSelect(req.id)} />
+                    </td>
                     <td className="px-3 py-2 align-middle">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${STATUS_COLOR[req.status] ?? ''}`}>
                         {STATUS_LABEL[req.status] ?? req.status}
@@ -861,27 +902,33 @@ export default function PurchasesPage() {
           </table>
         ) : (
           /* 일반 테이블 (생산구매팀 / 연구소) */
-          <table className="text-xs w-full border-collapse" style={{ minWidth: 1450 }}>
+          <table className="text-xs w-full border-collapse" style={{ minWidth: 1663 }}>
             <colgroup>
-              <col style={{ width: 3 }} />
+              <col style={{ width: 36 }} />
               <col style={{ width: 82 }} />
-              <col style={{ width: 60 }} />
               <col style={{ width: 90 }} />
               <col style={{ width: 88 }} />
+              <col style={{ width: 90 }} />
+              <col style={{ width: 60 }} />
               <col style={{ width: 68 }} />
               <col style={{ width: 110 }} />
               <col style={{ width: 160 }} />
               <col style={{ width: 80 }} />
               <col style={{ width: 100 }} />
-              <col style={{ width: 90 }} />
               <col style={{ width: 130 }} />
+              <col style={{ width: 90 }} />
+              <col style={{ width: 90 }} />
               <col style={{ width: 90 }} />
               <col style={{ width: 175 }} />
             </colgroup>
             <thead className="bg-white sticky top-0 z-10">
               <tr className="border-b border-gray-200">
-                <th className="w-1 p-0" />
-                {['상태', '구분', '구매요청코드', '요청자', '배송지', '품목코드', '품목명', '수량', '공급처', '입고희망일', '구매사유', '진행자', '관리'].map(h => (
+                <th className="px-2 py-2.5 text-center">
+                  <input type="checkbox" className="rounded"
+                    checked={requests.length > 0 && requests.every((r: any) => selectedIds.has(r.id))}
+                    onChange={toggleAll} />
+                </th>
+                {['상태', '요청일', '요청자', '구매요청코드', '구분', '배송지', '품목코드', '품목명', '수량', '공급처', '구매사유', '입고희망일', '입고예정일', '진행자', '관리'].map(h => (
                   <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 whitespace-nowrap">
                     {h}
                   </th>
@@ -890,10 +937,10 @@ export default function PurchasesPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={14} className="px-3 py-16 text-center text-gray-400 text-xs">불러오는 중...</td></tr>
+                <tr><td colSpan={16} className="px-3 py-16 text-center text-gray-400 text-xs">불러오는 중...</td></tr>
               ) : requests.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="px-3 py-16 text-center">
+                  <td colSpan={16} className="px-3 py-16 text-center">
                     <div className="text-gray-300 text-2xl mb-2">📋</div>
                     <div className="text-gray-400 text-xs">구매 요청 내역이 없습니다.</div>
                   </td>
@@ -914,35 +961,33 @@ export default function PurchasesPage() {
                     ? (Number(item.additionalCost) || 0) + (Number(item.supplyAmount) || 0) + (Number(item.taxAmount) || 0)
                     : null
                   const rowCls = `border-b border-gray-100 hover:bg-gray-50/60 transition-colors ${STATUS_ROW[req.status] ?? ''} ${isFirst && groupIdx > 0 ? 'border-t-2 border-t-gray-200' : ''}`
+                  const isSel = selectedIds.has(req.id)
                   return (
-                    <tr key={`${req.id}-${item?.id ?? 'empty'}`} className={rowCls}>
-                      {isFirst && (
-                        <td rowSpan={groupSize} className={`w-1 p-0 ${STATUS_STRIPE[req.status] ?? 'bg-gray-200'}`} />
-                      )}
-                      {isFirst && (
-                        <td rowSpan={groupSize} className="px-3 py-2 align-middle">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${STATUS_COLOR[req.status] ?? ''}`}>
-                            {STATUS_LABEL[req.status] ?? req.status}
-                          </span>
-                        </td>
-                      )}
+                    <tr key={`${req.id}-${item?.id ?? 'empty'}`} className={`${rowCls} ${isSel ? 'bg-purple-50/40' : ''}`}>
+                      <td className="px-2 py-2 text-center align-middle">
+                        <input type="checkbox" className="rounded" checked={isSel} onChange={() => toggleSelect(req.id)} />
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${STATUS_COLOR[req.status] ?? ''}`}>
+                          {STATUS_LABEL[req.status] ?? req.status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">
+                        {req.createdAt ? req.createdAt.slice(0, 10) : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2 text-gray-600 whitespace-nowrap text-xs">
+                        {drafter ? drafter.replace(/\s*[\(（(].*[\)）)].*/, '').trim() || drafter : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-3 py-2 align-middle whitespace-nowrap">
+                        <span className="text-xs font-mono text-gray-700">
+                          {req.documentNo || <span className="text-gray-300">—</span>}
+                        </span>
+                      </td>
                       <td className="px-3 py-2 align-middle whitespace-nowrap">
                         {item?.domestic
                           ? <span className="text-xs text-gray-600">{item.domestic}</span>
                           : <span className="text-gray-300">—</span>}
                       </td>
-                      {isFirst && (
-                        <td rowSpan={groupSize} className="px-3 py-2 align-middle whitespace-nowrap">
-                          <span className="text-xs text-gray-600">
-                            {req.documentNo || <span className="text-gray-300">—</span>}
-                          </span>
-                        </td>
-                      )}
-                      {isFirst && (
-                        <td rowSpan={groupSize} className="px-3 py-2 text-gray-600 whitespace-nowrap text-xs align-middle">
-                          {drafter || <span className="text-gray-300">—</span>}
-                        </td>
-                      )}
                       <td className="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">
                         {item?.deliveryLocation || <span className="text-gray-300">—</span>}
                       </td>
@@ -968,19 +1013,22 @@ export default function PurchasesPage() {
                       <td className="px-3 py-2 text-gray-600 whitespace-nowrap text-xs">
                         {item?.supplier || <span className="text-gray-300">—</span>}
                       </td>
+                      <td className="px-3 py-2 text-gray-500 text-xs max-w-[130px] truncate">
+                        {item?.purchaseReason || <span className="text-gray-300">—</span>}
+                      </td>
                       <td className="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">
                         {item?.requestedDeliveryDate
                           ? item.requestedDeliveryDate.slice(0, 10)
                           : <span className="text-gray-300">—</span>}
                       </td>
-                      <td className="px-3 py-2 text-gray-500 text-xs max-w-[130px] truncate">
-                        {item?.purchaseReason || <span className="text-gray-300">—</span>}
+                      <td className="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">
+                        {item?.estimatedArrivalDate
+                          ? item.estimatedArrivalDate.slice(0, 10)
+                          : <span className="text-gray-300">—</span>}
                       </td>
-                      {isFirst && (
-                        <td rowSpan={groupSize} className="px-3 py-2 whitespace-nowrap text-xs text-gray-600 align-middle">
-                          {getApprover(req) || <span className="text-gray-300">—</span>}
-                        </td>
-                      )}
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">
+                        {getApprover(req) || <span className="text-gray-300">—</span>}
+                      </td>
                       {isFirst && (
                         <td rowSpan={groupSize} className="px-3 py-2 align-middle">
                           <div className="flex items-center gap-1">
@@ -1116,6 +1164,18 @@ export default function PurchasesPage() {
                       {new Date().toLocaleDateString('ko-KR')}
                     </div>
                   </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">구매요청코드</label>
+                    <div className="h-8 flex items-center px-2.5 rounded-lg border border-gray-100 text-xs bg-gray-100 w-32 font-mono text-gray-600">
+                      {editReq
+                        ? (editReq.documentNo || '—')
+                        : nextSerial !== null
+                          ? form.department === '연구소'
+                            ? `L${String(new Date().getFullYear()).slice(-2)}-P${String(nextSerial).padStart(3, '0')}`
+                            : `P${String(new Date().getFullYear()).slice(-2)}-${String(nextSerial).padStart(4, '0')}`
+                          : '—'}
+                    </div>
+                  </div>
                   {/* 결재라인 */}
                   <div className="flex flex-col gap-1 ml-4 pl-4 border-l border-gray-200">
                     <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">결재 라인</label>
@@ -1173,11 +1233,10 @@ export default function PurchasesPage() {
                 </div>
 
                 <div className="border border-gray-200 rounded-xl overflow-auto flex-1 bg-white">
-                  <table className="text-xs border-collapse" style={{ tableLayout: 'fixed', minWidth: 1570 }}>
+                  <table className="text-xs border-collapse" style={{ tableLayout: 'fixed', minWidth: 1478 }}>
                     <colgroup>
                       <col style={{ width: 36 }} />
                       <col style={{ width: 72 }} />
-                      <col style={{ width: 92 }} />
                       <col style={{ width: 110 }} />
                       <col style={{ width: 130 }} />
                       <col style={{ width: 80 }} />
@@ -1197,7 +1256,6 @@ export default function PurchasesPage() {
                         {[
                           { label: 'NO', req: false },
                           { label: '구분', req: true },
-                          { label: '구매요청코드', req: false },
                           { label: '프로젝트코드', req: true },
                           { label: '품목코드', req: true },
                           { label: '대분류', req: true },
@@ -1224,12 +1282,6 @@ export default function PurchasesPage() {
                     <tbody>
                       {(() => {
                         const todayStr = new Date().toISOString().split('T')[0]
-                        const codeYY = String(new Date().getFullYear()).slice(-2)
-                        const validKeys = !editReq
-                          ? form.items
-                              .filter(it => it.quantity && Number(it.quantity) > 0 && it.unit.trim())
-                              .map(it => it._key)
-                          : []
                         return form.items.map((row, idx) => {
                         const filled = !!(row.quantity || row.workCode || row.spec || row.bomNo)
                         const isDomesticSelected = !!row.domestic
@@ -1237,14 +1289,6 @@ export default function PurchasesPage() {
                         const isGrayedRow = !!editReq && idx > 0
                         const dimCls = (!isGrayedRow && isItemSelected) ? ' text-gray-900' : ' text-gray-400'
                         const rowTotal = (Number(row.additionalCost) || 0) + (Number(row.supplyAmount) || 0) + (Number(row.taxAmount) || 0)
-                        const codeIdx = validKeys.indexOf(row._key)
-                        const codePreview = editReq
-                          ? (editReq.documentNo || null)
-                          : (codeIdx >= 0 && nextSerial !== null)
-                            ? form.department === '연구소'
-                              ? `L${codeYY}-P${String(nextSerial + codeIdx).padStart(3, '0')}`
-                              : `P${codeYY}-${String(nextSerial + codeIdx).padStart(4, '0')}`
-                            : null
                         const rowBg = !isDomesticSelected ? 'bg-gray-50/60' : filled ? 'bg-blue-50/30' : 'bg-white'
                         return (
                           <tr key={row._key} className={`border-b last:border-0 ${rowBg}`}>
@@ -1255,11 +1299,6 @@ export default function PurchasesPage() {
                                 <option value="국내">국내</option>
                                 <option value="해외">해외</option>
                               </select>
-                            </td>
-                            <td className="px-1.5 py-0.5 text-center border-r">
-                              {codePreview
-                                ? <span className={`font-mono text-xs ${isGrayedRow ? 'text-gray-400' : 'text-gray-800'}`}>{codePreview}</span>
-                                : <span className="text-gray-300 text-[11px]">—</span>}
                             </td>
                             <td className="px-0.5 py-0.5 border-r">
                               <input value={row.workCode} onChange={e => updItem(row._key, 'workCode', e.target.value)}
@@ -1524,10 +1563,16 @@ export default function PurchasesPage() {
       <BuyerDialog
         open={buyerOpen}
         request={buyerRequest}
-        onClose={() => { setBuyerOpen(false); setBuyerRequest(null) }}
+        onClose={() => { setBuyerOpen(false); setBuyerRequest(null); setBulkQueue([]); setSelectedIds(new Set()) }}
         onSaved={updated => {
-          setRequests(prev => prev.map(r => r.id === updated.id ? updated : r))
-          setBuyerRequest(updated)
+          setRequests(prev => prev.map((r: any) => r.id === updated.id ? updated : r))
+          if (bulkQueue.length > 0) {
+            const [next, ...rest] = bulkQueue
+            setBulkQueue(rest)
+            setBuyerRequest(next)
+          } else {
+            setBuyerRequest(updated)
+          }
         }}
       />
 

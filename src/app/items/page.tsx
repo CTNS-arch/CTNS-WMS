@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useSession } from 'next-auth/react'
+import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -128,7 +129,8 @@ export default function ItemsPage() {
   const [batchStatus, setBatchStatus] = useState('')
   const [bomItem, setBomItem] = useState<any>(null)
   const [bomViewOnly, setBomViewOnly] = useState(false)
-  const [bulkFormOpen, setBulkFormOpen] = useState(false)
+  const searchParams = useSearchParams()
+  const [bulkFormOpen, setBulkFormOpen] = useState(() => searchParams.get('action') === 'bulk')
 
   // ── 옵션 ──
   const [chemistryOpts, setChemistryOpts] = useState<SelectOption[]>([])

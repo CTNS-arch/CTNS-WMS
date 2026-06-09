@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING:  '요청',
-  ORDERED:  '주문완료',
+  ORDERED:  '발주완료',
   RECEIVED: '입고완료',
   REJECTED: '반려',
 }

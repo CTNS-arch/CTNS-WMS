@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-function makeItemData(it: any) {
+function makeItemData(it: any, lineNo: number) {
   return {
-    lineNo: 1,
+    lineNo,
     domestic: it.domestic?.trim() || null,
     workCode: it.workCode?.trim() || null,
     itemId: it.itemId || null,
@@ -25,25 +25,21 @@ function makeItemData(it: any) {
   }
 }
 
-async function buildCodes(dept: string, count: number): Promise<string[]> {
+async function buildCode(dept: string): Promise<string> {
   const yy = new Date().getFullYear().toString().slice(-2)
 
   if (dept === '연구소') {
-    // L{YY}-P{NNN}, 이번년도 시작: L26-P020
     const existing = await prisma.purchaseRequest.findMany({
       where: { documentNo: { startsWith: `L${yy}-P` } },
       select: { documentNo: true },
     })
-    let maxSerial = 19  // min 20
+    let maxSerial = 19
     for (const r of existing) {
       const match = (r.documentNo as string | null)?.match(/-P(\d+)$/)
       if (match) maxSerial = Math.max(maxSerial, parseInt(match[1], 10))
     }
-    return Array.from({ length: count }, (_, i) =>
-      `L${yy}-P${String(maxSerial + 1 + i).padStart(3, '0')}`
-    )
+    return `L${yy}-P${String(maxSerial + 1).padStart(3, '0')}`
   } else {
-    // 생산구매팀: P{YY}-{NNNN}
     const existing = await prisma.purchaseRequest.findMany({
       where: { documentNo: { startsWith: `P${yy}-` } },
       select: { documentNo: true },
@@ -53,9 +49,7 @@ async function buildCodes(dept: string, count: number): Promise<string[]> {
       const match = (r.documentNo as string | null)?.match(/-(\d+)$/)
       if (match) maxSerial = Math.max(maxSerial, parseInt(match[1], 10))
     }
-    return Array.from({ length: count }, (_, i) =>
-      `P${yy}-${String(maxSerial + 1 + i).padStart(4, '0')}`
-    )
+    return `P${yy}-${String(maxSerial + 1).padStart(4, '0')}`
   }
 }
 
@@ -74,47 +68,44 @@ export async function POST(req: NextRequest) {
 
     const dept = department?.trim() || '생산구매팀'
 
-    // unique 충돌 시 최대 3회 재시도 (동시 요청 대비)
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const codes = await buildCodes(dept, validItems.length)
+        const code = await buildCode(dept)
 
-        // Neon HTTP 어댑터: 중첩 create 미지원 → PurchaseRequest 생성 후 PurchaseRequestItem 별도 생성
-        const created: any[] = []
+        // 구매요청 1건 생성
+        const request = await prisma.purchaseRequest.create({
+          data: {
+            documentNo: code,
+            title: validItems[0].spec?.trim() || code,
+            requesterName: requesterName?.trim() || null,
+            department: dept,
+            memo: memo?.trim() || null,
+            requesterId: requesterId || null,
+            approvalLine: approvalLine ? JSON.stringify(approvalLine) : null,
+          },
+        })
+
+        // 품목 N개를 순서대로 생성
         for (let i = 0; i < validItems.length; i++) {
-          const request = await prisma.purchaseRequest.create({
-            data: {
-              documentNo: codes[i],
-              title: validItems[i].spec?.trim() || codes[i],
-              requesterName: requesterName?.trim() || null,
-              department: dept,
-              memo: memo?.trim() || null,
-              requesterId: requesterId || null,
-              approvalLine: approvalLine ? JSON.stringify(approvalLine) : null,
-            },
-          })
-
           await prisma.purchaseRequestItem.create({
             data: {
               purchaseRequestId: request.id,
-              ...makeItemData(validItems[i]),
+              ...makeItemData(validItems[i], i + 1),
             },
           })
-
-          const record = await prisma.purchaseRequest.findUnique({
-            where: { id: request.id },
-            include: {
-              items: { orderBy: { lineNo: 'asc' } },
-              requester: { select: { name: true, email: true } },
-              files: true,
-            },
-          })
-          if (record) created.push(record)
         }
 
-        return NextResponse.json({ success: true, data: created }, { status: 201 })
+        const record = await prisma.purchaseRequest.findUnique({
+          where: { id: request.id },
+          include: {
+            items: { orderBy: { lineNo: 'asc' } },
+            requester: { select: { name: true, email: true } },
+            files: true,
+          },
+        })
+
+        return NextResponse.json({ success: true, data: [record] }, { status: 201 })
       } catch (err: any) {
-        // P2002 = unique constraint violation → 재시도
         if (err?.code === 'P2002' && attempt < 2) continue
         throw err
       }
