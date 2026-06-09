@@ -104,9 +104,10 @@ enum StockTxType {
 // ── 구매 요청 ──────────────────────────────────────────────
 
 enum PurchaseStatus {
-  PENDING  // 검토중
-  APPROVED // 승인
-  ORDERED  // 발주
+  PENDING  // 구매요청
+  APPROVED // 견적진행
+  WAITING  // 발주대기
+  ORDERED  // 발주완료
   RECEIVED // 입고완료
   REJECTED // 반려
 }

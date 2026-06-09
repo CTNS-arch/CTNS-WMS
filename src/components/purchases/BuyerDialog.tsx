@@ -46,7 +46,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'payment',   label: '정산 정보' },
 ]
 const STATUS_LABEL: Record<string, string> = {
-  PENDING: '요청', APPROVED: '주문진행', ORDERED: '발주완료', RECEIVED: '입고완료', REJECTED: '반려',
+  PENDING: '구매요청', APPROVED: '견적진행', WAITING: '발주대기', ORDERED: '발주완료', RECEIVED: '입고완료', REJECTED: '반려',
 }
 const STATUS_COLOR: Record<string, string> = {
   PENDING:  'bg-[#fffae0] text-[#f59e26] border-[#f59e26]',

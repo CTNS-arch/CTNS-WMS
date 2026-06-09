@@ -21,11 +21,12 @@ import ItemRequestDialog from '@/components/items/ItemRequestDialog'
 
 // ── 상수 ──────────────────────────────────────────────────
 const STATUS_LABEL: Record<string, string> = {
-  PENDING: '요청', APPROVED: '주문진행', ORDERED: '발주완료', RECEIVED: '입고완료', REJECTED: '반려',
+  PENDING: '구매요청', APPROVED: '견적진행', WAITING: '발주대기', ORDERED: '발주완료', RECEIVED: '입고완료', REJECTED: '반려',
 }
 const STATUS_COLOR: Record<string, string> = {
   PENDING:  'bg-amber-100 text-amber-700 border border-amber-200',
   APPROVED: 'bg-indigo-100 text-indigo-700 border border-indigo-200',
+  WAITING:  'bg-orange-100 text-orange-700 border border-orange-200',
   ORDERED:  'bg-blue-100 text-blue-700 border border-blue-200',
   RECEIVED: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
   REJECTED: 'bg-red-100 text-red-500 border border-red-200',
@@ -33,6 +34,7 @@ const STATUS_COLOR: Record<string, string> = {
 const STATUS_STRIPE: Record<string, string> = {
   PENDING:  'bg-amber-400',
   APPROVED: 'bg-indigo-500',
+  WAITING:  'bg-orange-400',
   ORDERED:  'bg-blue-500',
   RECEIVED: 'bg-emerald-500',
   REJECTED: 'bg-red-400',
@@ -45,27 +47,30 @@ const DOMESTIC_CHIP: Record<string, string> = {
 const STATUS_ROW: Record<string, string> = {
   PENDING:  '',
   APPROVED: 'bg-indigo-50/30',
+  WAITING:  'bg-orange-50/20',
   ORDERED:  'bg-blue-50/20',
   RECEIVED: 'bg-emerald-50/20',
   REJECTED: 'bg-red-50/10',
 }
 const FILTER_PILLS_MISC: { value: string; label: string }[] = [
   { value: '', label: '전체' },
-  { value: 'PENDING', label: '요청' },
+  { value: 'PENDING', label: '구매요청' },
   { value: 'ORDERED', label: '발주완료' },
   { value: 'RECEIVED', label: '입고완료' },
   { value: 'REJECTED', label: '반려' },
 ]
 const FILTER_PILLS_EXTERNAL: { value: string; label: string }[] = [
   { value: '', label: '전체' },
-  { value: 'APPROVED', label: '주문진행' },
+  { value: 'APPROVED', label: '견적진행' },
+  { value: 'WAITING', label: '발주대기' },
   { value: 'ORDERED', label: '발주완료' },
   { value: 'RECEIVED', label: '입고완료' },
 ]
 const FILTER_PILLS_DEPT: { value: string; label: string }[] = [
   { value: '', label: '전체' },
-  { value: 'PENDING', label: '요청' },
-  { value: 'APPROVED', label: '주문진행' },
+  { value: 'PENDING', label: '구매요청' },
+  { value: 'APPROVED', label: '견적진행' },
+  { value: 'WAITING', label: '발주대기' },
   { value: 'ORDERED', label: '발주완료' },
   { value: 'RECEIVED', label: '입고완료' },
   { value: 'REJECTED', label: '반려' },
@@ -77,7 +82,8 @@ const DEPT_TABS = [
 ]
 const NEXT_STATUS: Record<string, string[]> = {
   PENDING:  ['APPROVED', 'REJECTED'],
-  APPROVED: ['ORDERED',  'PENDING', 'REJECTED'],
+  APPROVED: ['WAITING',  'PENDING', 'REJECTED'],
+  WAITING:  ['ORDERED',  'APPROVED', 'REJECTED'],
   ORDERED:  ['RECEIVED', 'PENDING', 'REJECTED'],
   RECEIVED: ['PENDING'],
   REJECTED: ['PENDING'],
@@ -211,8 +217,9 @@ export default function PurchasesPage() {
   const { data: session } = useSession()
   const sessionName = session?.user?.name ?? ''
   const isExternal  = session?.user?.isExternal ?? false
-  const isProdStock = session?.user?.roles?.includes('PROD_STOCK') ?? false
-  const isLabStock  = session?.user?.roles?.includes('LAB_STOCK')  ?? false
+  const isProdStock   = session?.user?.roles?.includes('PROD_STOCK')    ?? false
+  const isLabStock    = session?.user?.roles?.includes('LAB_STOCK')     ?? false
+  const isMasterAdmin = session?.user?.roles?.includes('MASTER_ADMIN')  ?? false
   const isOwn = (req: any) => {
     if (req.requester?.email && session?.user?.email) {
       return req.requester.email === session.user.email
@@ -241,23 +248,57 @@ export default function PurchasesPage() {
   const [deleteId,        setDeleteId]        = useState<string | null>(null)
   const [deleting,        setDeleting]        = useState(false)
 
+  // item.id 기준 행별 독립 선택 (같은 요청의 여러 행이 각각 선택됨)
   const [selectedIds,  setSelectedIds]  = useState<Set<string>>(new Set())
   const [bulkQueue,    setBulkQueue]    = useState<any[]>([])
 
-  const toggleSelect = (id: string) => setSelectedIds(prev => {
-    const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next
-  })
-  const toggleAll = () => {
-    const allIds = requests.map((r: any) => r.id)
-    setSelectedIds(prev => prev.size === allIds.length ? new Set() : new Set(allIds))
+  const rowKey = (req: any, item: any) => item?.id ?? req.id
+
+  const toggleSelect = (req: any, item: any) => {
+    const key = rowKey(req, item)
+    setSelectedIds(prev => { const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next })
   }
+  const toggleAll = () => {
+    const allKeys = requests.flatMap((r: any) =>
+      r.items?.length > 0 ? r.items.map((i: any) => i.id) : [r.id]
+    )
+    setSelectedIds(prev => prev.size === allKeys.length ? new Set() : new Set(allKeys))
+  }
+  // 선택된 row key → 중복 없는 req 목록
+  const selectedReqs = () => {
+    const seen = new Set<string>()
+    return requests.filter((r: any) => {
+      const items: any[] = r.items?.length > 0 ? r.items : [null]
+      return items.some((item: any) => selectedIds.has(rowKey(r, item)))
+    }).filter((r: any) => seen.has(r.id) ? false : (seen.add(r.id), true))
+  }
+
   const handleBulkBuyer = () => {
-    const reqs = requests.filter((r: any) => selectedIds.has(r.id))
+    const reqs = selectedReqs()
     if (!reqs.length) return
     const [first, ...rest] = reqs
     setBulkQueue(rest)
     setBuyerRequest(first)
     setBuyerOpen(true)
+  }
+
+  const handleBulkStatusChange = async (toStatus: string) => {
+    const ids = selectedReqs().map((r: any) => r.id)
+    try {
+      const res = await fetch('/api/purchases/batch', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, status: toStatus }),
+      })
+      const json = await res.json()
+      if (json.success) {
+        toast.success(`${json.count}건 상태가 변경되었습니다.`)
+        setSelectedIds(new Set())
+        fetchRequests(page, filterStatus, search, deptTab)
+      } else {
+        toast.error(json.message ?? '상태 변경에 실패했습니다.')
+      }
+    } catch { toast.error('서버 오류가 발생했습니다.') }
   }
 
   const [buyerOpen,    setBuyerOpen]    = useState(false)
@@ -737,15 +778,18 @@ export default function PurchasesPage() {
       </div>
 
       {/* ── 일괄 액션 바 ─────────────────────────────────── */}
-      {selectedIds.size > 0 && (isAdmin || (isExternal && deptTab === '생산구매팀')) && deptTab !== '연구비' && (
-        <div className="px-4 py-2 bg-purple-50 border-b border-purple-100 flex items-center gap-3 shrink-0">
-          <span className="text-xs text-purple-700 font-medium">{selectedIds.size}건 선택됨</span>
-          <button
-            onClick={handleBulkBuyer}
-            className="h-7 px-3 rounded text-xs font-medium border border-purple-300 text-purple-700 bg-white hover:bg-purple-100 transition-colors whitespace-nowrap"
-          >
-            일괄 구매 처리
-          </button>
+      {selectedIds.size > 0 && deptTab !== '연구비' && (
+        <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-100 flex items-center gap-3 shrink-0">
+          <span className="text-xs text-indigo-700 font-medium">{selectedIds.size}행 선택됨</span>
+          {/* 구매요청 → 견적진행: 마스터 또는 재고 담당자, 선택된 요청 모두 PENDING일 때 */}
+          {(isAdmin || isMasterAdmin) && selectedReqs().every((r: any) => r.status === 'PENDING') && (
+            <button
+              onClick={() => handleBulkStatusChange('APPROVED')}
+              className="h-7 px-3 rounded text-xs font-medium border border-indigo-300 text-indigo-700 bg-white hover:bg-indigo-100 transition-colors whitespace-nowrap"
+            >
+              견적진행으로 변경
+            </button>
+          )}
           <button onClick={() => setSelectedIds(new Set())} className="text-xs text-gray-400 hover:text-gray-600">선택 해제</button>
         </div>
       )}
@@ -772,7 +816,7 @@ export default function PurchasesPage() {
               <tr className="border-b border-gray-200">
                 <th className="px-2 py-2.5 text-center">
                   <input type="checkbox" className="rounded"
-                    checked={requests.length > 0 && requests.every((r: any) => selectedIds.has(r.id))}
+                    checked={requests.length > 0 && requests.flatMap((r: any) => r.items?.length > 0 ? r.items.map((i: any) => i.id) : [r.id]).every((k: string) => selectedIds.has(k))}
                     onChange={toggleAll} />
                 </th>
                 {['상태', '구매요청코드', '요청자', '프로젝트코드', '요청제목', '공급처', '배송지', '총금액', '사용카드', '관리'].map(h => (
@@ -794,12 +838,12 @@ export default function PurchasesPage() {
                 </tr>
               ) : requests.map((req: any) => {
                 const drafter = getDrafter(req)
-                const isSel = selectedIds.has(req.id)
-                const rowCls = `border-b border-gray-100 hover:bg-gray-50/60 transition-colors ${isSel ? 'bg-purple-50/40' : STATUS_ROW[req.status] ?? ''}`
+                const isSel = selectedIds.has(rowKey(req, null))
+                const rowCls = `border-b border-gray-100 hover:bg-gray-50/60 transition-colors ${isSel ? 'bg-indigo-50/30' : STATUS_ROW[req.status] ?? ''}`
                 return (
                   <tr key={req.id} className={rowCls}>
                     <td className="px-2 py-2 text-center align-middle">
-                      <input type="checkbox" className="rounded" checked={isSel} onChange={() => toggleSelect(req.id)} />
+                      <input type="checkbox" className="rounded" checked={isSel} onChange={() => toggleSelect(req, null)} />
                     </td>
                     <td className="px-3 py-2 align-middle">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${STATUS_COLOR[req.status] ?? ''}`}>
@@ -925,7 +969,7 @@ export default function PurchasesPage() {
               <tr className="border-b border-gray-200">
                 <th className="px-2 py-2.5 text-center">
                   <input type="checkbox" className="rounded"
-                    checked={requests.length > 0 && requests.every((r: any) => selectedIds.has(r.id))}
+                    checked={requests.length > 0 && requests.flatMap((r: any) => r.items?.length > 0 ? r.items.map((i: any) => i.id) : [r.id]).every((k: string) => selectedIds.has(k))}
                     onChange={toggleAll} />
                 </th>
                 {['상태', '요청일', '요청자', '구매요청코드', '구분', '배송지', '품목코드', '품목명', '수량', '공급처', '구매사유', '입고희망일', '입고예정일', '진행자', '관리'].map(h => (
@@ -961,11 +1005,11 @@ export default function PurchasesPage() {
                     ? (Number(item.additionalCost) || 0) + (Number(item.supplyAmount) || 0) + (Number(item.taxAmount) || 0)
                     : null
                   const rowCls = `border-b border-gray-100 hover:bg-gray-50/60 transition-colors ${STATUS_ROW[req.status] ?? ''} ${isFirst && groupIdx > 0 ? 'border-t-2 border-t-gray-200' : ''}`
-                  const isSel = selectedIds.has(req.id)
+                  const isSel = selectedIds.has(rowKey(req, item))
                   return (
-                    <tr key={`${req.id}-${item?.id ?? 'empty'}`} className={`${rowCls} ${isSel ? 'bg-purple-50/40' : ''}`}>
+                    <tr key={`${req.id}-${item?.id ?? 'empty'}`} className={`${rowCls} ${isSel ? 'bg-indigo-50/30' : ''}`}>
                       <td className="px-2 py-2 text-center align-middle">
-                        <input type="checkbox" className="rounded" checked={isSel} onChange={() => toggleSelect(req.id)} />
+                        <input type="checkbox" className="rounded" checked={isSel} onChange={() => toggleSelect(req, item)} />
                       </td>
                       <td className="px-3 py-2 align-middle">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium whitespace-nowrap ${STATUS_COLOR[req.status] ?? ''}`}>

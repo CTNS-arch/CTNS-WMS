@@ -122,3 +122,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, message: msg }, { status: 500 })
   }
 }
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const { auth } = await import('@/auth')
+    const session = await auth()
+    const roles = session?.user?.roles ?? []
+    const allowed = roles.includes('MASTER_ADMIN') || roles.includes('PROD_STOCK') || roles.includes('LAB_STOCK')
+    if (!allowed)
+      return NextResponse.json({ success: false, message: '권한이 없습니다.' }, { status: 403 })
+
+    const { ids, status } = await req.json()
+    if (!Array.isArray(ids) || ids.length === 0)
+      return NextResponse.json({ success: false, message: '변경할 요청 ID 목록이 필요합니다.' }, { status: 400 })
+    const validStatuses = ['PENDING', 'APPROVED', 'WAITING', 'ORDERED', 'RECEIVED', 'REJECTED']
+    if (!validStatuses.includes(status))
+      return NextResponse.json({ success: false, message: '유효하지 않은 상태값입니다.' }, { status: 400 })
+    const { count } = await prisma.purchaseRequest.updateMany({
+      where: { id: { in: ids } },
+      data: { status: status as any },
+    })
+    return NextResponse.json({ success: true, count })
+  } catch (error: any) {
+    return NextResponse.json({ success: false, message: error.message }, { status: 500 })
+  }
+}
