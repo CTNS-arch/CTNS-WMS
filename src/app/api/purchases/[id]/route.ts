@@ -5,16 +5,11 @@ import { PurchaseStatus } from '@prisma/client'
 export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const request = await prisma.purchaseRequest.findUnique({
-      where: { id },
-      include: {
-        items: { orderBy: { lineNo: 'asc' } },
-        requester: { select: { name: true, email: true } },
-        files: { orderBy: { uploadedAt: 'asc' } },
-      },
-    })
+    const request = await prisma.purchaseRequest.findUnique({ where: { id } })
     if (!request) return NextResponse.json({ success: false, message: '구매 요청을 찾을 수 없습니다.' }, { status: 404 })
-    return NextResponse.json({ success: true, data: request })
+    const items = await prisma.purchaseRequestItem.findMany({ where: { purchaseRequestId: id }, orderBy: { lineNo: 'asc' } })
+    const files = await prisma.purchaseFile.findMany({ where: { purchaseRequestId: id }, orderBy: { uploadedAt: 'asc' } })
+    return NextResponse.json({ success: true, data: { ...request, items, files } })
   } catch (error) {
     return NextResponse.json({ success: false, message: '데이터를 불러오지 못했습니다.' }, { status: 500 })
   }
@@ -118,27 +113,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             exchangeRate: bi.exchangeRate != null ? Number(bi.exchangeRate) : null,
             krwAmount: bi.krwAmount != null ? Number(bi.krwAmount) : null,
             unitPrice: bi.unitPrice != null ? Number(bi.unitPrice) : null,
+            orderNumber:   bi.orderNumber?.trim() || null,
             paymentMethod: bi.paymentMethod?.trim() || null,
-            payBankName: bi.payBankName?.trim() || null,
+            payBankName:   bi.payBankName?.trim() || null,
             payAccountNumber: bi.payAccountNumber?.trim() || null,
             payAccountHolder: bi.payAccountHolder?.trim() || null,
+            settlementRequired: bi.settlementRequired?.trim() || null,
+            settlementParty:    bi.settlementParty?.trim()    || null,
+            settlementAmount:   bi.settlementAmount != null ? Number(bi.settlementAmount) : null,
+            settlementDate:     bi.settlementDate ? new Date(bi.settlementDate) : null,
           },
         })
       }
     }
 
-    // Neon HTTP: update+include는 내부 트랜잭션 발생 → 별도 findUnique로 분리
+    // Neon HTTP: update+include 및 findUnique+multiple includes 모두 내부 트랜잭션 발생
+    // → update 후 각 관계를 별도 쿼리로 분리
     await prisma.purchaseRequest.update({ where: { id }, data })
-    const updated = await prisma.purchaseRequest.findUnique({
-      where: { id },
-      include: {
-        items: { orderBy: { lineNo: 'asc' } },
-        requester: { select: { name: true, email: true } },
-        files: { orderBy: { uploadedAt: 'asc' } },
-      },
-    })
+    const updated = await prisma.purchaseRequest.findUnique({ where: { id } })
+    const updatedItems = await prisma.purchaseRequestItem.findMany({ where: { purchaseRequestId: id }, orderBy: { lineNo: 'asc' } })
+    const updatedFiles = await prisma.purchaseFile.findMany({ where: { purchaseRequestId: id }, orderBy: { uploadedAt: 'asc' } })
+    const result = { ...updated, items: updatedItems, files: updatedFiles }
 
-    return NextResponse.json({ success: true, data: updated })
+    return NextResponse.json({ success: true, data: result })
   } catch (error: any) {
     console.error('[PATCH /api/purchases/[id]]', error)
     if (error?.code === 'P2025') {

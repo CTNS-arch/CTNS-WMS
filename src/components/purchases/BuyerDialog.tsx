@@ -14,28 +14,38 @@ interface PurchaseFile {
 
 interface BuyerItem {
   id: string; lineNo: number; itemId: string | null
+  purchaseRequestId: string   // 저장 시 어느 요청에 속하는지 식별용
   bomNo: string | null; spec: string | null; quantity: number; unit: string
   currency: string | null; supplyAmount: number | null; taxAmount: number | null
   // 발주
-  domestic: string; supplierName: string; orderMethod: string; orderNo: string
+  domestic: string; supplierName: string; orderMethod: string
+  paymentMethod: string  // 결제방식 (발주 탭으로 이동)
+  orderNo: string        // 견적번호 (주문번호 → 견적번호)
+  orderNumber: string    // 발주번호 (신규)
   buyerCurrency: string; exchangeRate: string
   additionalCost: string; buyerSupplyAmount: string; buyerTaxAmount: string
   krwAmount: string; unitPrice: string
+  remittanceDate: string; paymentDate: string  // 발주 탭으로 이동
+  buyerMemo: string                             // 발주 탭으로 이동
   // 물류
   plannedShipDate: string; actualShipDate: string
   shippingMethod: string; trackingNo: string; blNo: string
   boxCount: string; boxUnitQty: string; receiveQty: string
   portArrivalDate: string; loadingDate: string
   estimatedArrivalDate: string; actualReceiptDate: string
-  // 정산
-  paymentMethod: string
+  // 정산 (계좌)
   payBankName: string; payAccountNumber: string; payAccountHolder: string
-  remittanceDate: string; paymentDate: string; buyerMemo: string
+  // 정산 (신규)
+  settlementRequired: string  // Y/N
+  settlementParty: string     // 거래처
+  settlementAmount: string    // 금액
+  settlementDate: string      // 정산일
 }
 
 interface Props {
   open: boolean; request: any
   onClose: () => void; onSaved: (updated: any) => void
+  initialTab?: Tab; initialStatus?: string
 }
 
 // ── 상수 ────────────────────────────────────────────────────
@@ -46,28 +56,39 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'payment',   label: '정산 정보' },
 ]
 const STATUS_LABEL: Record<string, string> = {
-  PENDING: '구매요청', APPROVED: '견적진행', WAITING: '발주대기', ORDERED: '발주완료', RECEIVED: '입고완료', REJECTED: '반려',
+  PENDING: '구매요청', APPROVED: '견적진행', WAITING: '발주승인',
+  ORDER_PROGRESS: '발주진행', ORDERED: '발주완료',
+  RECEIVED: '입고완료', SETTLED: '정산완료', REJECTED: '반려',
 }
 const STATUS_COLOR: Record<string, string> = {
-  PENDING:  'bg-[#fffae0] text-[#f59e26] border-[#f59e26]',
-  APPROVED: 'bg-indigo-100 text-indigo-700 border-indigo-200',
-  ORDERED:  'bg-blue-100  text-blue-700  border-blue-200',
-  RECEIVED: 'bg-green-100 text-green-700 border-green-200',
-  REJECTED: 'bg-red-100   text-red-700   border-red-200',
+  PENDING:        'bg-[#fffae0] text-[#f59e26] border-[#f59e26]',
+  APPROVED:       'bg-indigo-100 text-indigo-700 border-indigo-200',
+  WAITING:        'bg-orange-100 text-orange-700 border-orange-200',
+  ORDER_PROGRESS: 'bg-violet-100 text-violet-700 border-violet-200',
+  ORDERED:        'bg-blue-100  text-blue-700  border-blue-200',
+  RECEIVED:       'bg-green-100 text-green-700 border-green-200',
+  SETTLED:        'bg-teal-100  text-teal-700  border-teal-200',
+  REJECTED:       'bg-red-100   text-red-700   border-red-200',
 }
 const NEXT_STATUS: Record<string, string[]> = {
-  PENDING:  ['APPROVED', 'REJECTED'],
-  APPROVED: ['ORDERED', 'PENDING', 'REJECTED'],
-  ORDERED:  ['RECEIVED', 'PENDING', 'REJECTED'],
-  RECEIVED: ['PENDING'],
-  REJECTED: ['PENDING'],
+  PENDING:        ['APPROVED', 'REJECTED'],
+  APPROVED:       ['WAITING',  'PENDING', 'REJECTED'],
+  WAITING:        ['ORDER_PROGRESS', 'ORDERED', 'APPROVED', 'REJECTED'],
+  ORDER_PROGRESS: ['ORDERED',  'APPROVED', 'REJECTED'],
+  ORDERED:        ['RECEIVED', 'PENDING', 'REJECTED'],
+  RECEIVED:       ['SETTLED',  'PENDING'],
+  SETTLED:        ['PENDING'],
+  REJECTED:       ['PENDING'],
 }
 const NEXT_STATUS_STYLE: Record<string, string> = {
-  APPROVED: 'bg-indigo-600 hover:bg-indigo-700 text-white',
-  ORDERED:  'bg-blue-600  hover:bg-blue-700  text-white',
-  RECEIVED: 'bg-green-600 hover:bg-green-700 text-white',
-  REJECTED: 'bg-red-500   hover:bg-red-600   text-white',
-  PENDING:  'bg-gray-600  hover:bg-gray-700  text-white',
+  APPROVED:       'bg-indigo-600 hover:bg-indigo-700 text-white',
+  WAITING:        'bg-orange-500 hover:bg-orange-600 text-white',
+  ORDER_PROGRESS: 'bg-violet-600 hover:bg-violet-700 text-white',
+  ORDERED:        'bg-blue-600  hover:bg-blue-700  text-white',
+  RECEIVED:       'bg-green-600 hover:bg-green-700 text-white',
+  SETTLED:        'bg-teal-600  hover:bg-teal-700  text-white',
+  REJECTED:       'bg-red-500   hover:bg-red-600   text-white',
+  PENDING:        'bg-gray-600  hover:bg-gray-700  text-white',
 }
 const FILE_TYPES   = ['견적서', '발주서', '인보이스', '기타']
 const DOMESTIC_OPT = ['국내', '해외']
@@ -180,11 +201,12 @@ function NumInput({ value, onChange, placeholder = '0', className = '' }: {
 }
 
 // ── 메인 컴포넌트 ────────────────────────────────────────────
-export default function BuyerDialog({ open, request, onClose, onSaved }: Props) {
+export default function BuyerDialog({ open, request, onClose, onSaved, initialTab, initialStatus }: Props) {
   const [items,           setItems]           = useState<BuyerItem[]>([])
   const [files,           setFiles]           = useState<PurchaseFile[]>([])
   const [costMap,         setCostMap]         = useState<Record<string, CostRow[]>>({})
   const [activeTab,       setActiveTab]       = useState<Tab>('order')
+  const [copyMenuOpen,    setCopyMenuOpen]    = useState<string | null>(null)
   const [saving,          setSaving]          = useState(false)
   const [dragging,        setDragging]        = useState(false)
   const [uploading,       setUploading]       = useState(false)
@@ -203,15 +225,18 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
   const fileRef    = useRef<HTMLInputElement>(null)
   const suppTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const initItems = useCallback((raw: any[]) =>
+  const initItems = useCallback((raw: any[], reqId?: string) =>
     setItems(raw.map(it => ({
       id: it.id, lineNo: it.lineNo, itemId: it.itemId ?? null,
+      purchaseRequestId: it.purchaseRequestId ?? reqId ?? '',
       bomNo: it.bomNo, spec: it.spec, quantity: it.quantity, unit: it.unit,
       currency: it.currency, supplyAmount: it.supplyAmount, taxAmount: it.taxAmount,
       domestic:     it.domestic     ?? '',
       supplierName: it.supplier     ?? '',
       orderMethod:  it.orderMethod  ?? '',
       orderNo:      it.orderNo      ?? '',
+      orderNumber:  it.orderNumber  ?? '',
+      paymentMethod:    it.paymentMethod    ?? '',
       buyerCurrency:     it.buyerCurrency ?? 'KRW',
       exchangeRate:      it.exchangeRate      != null ? String(it.exchangeRate)      : '',
       additionalCost:    it.additionalCost    != null ? String(it.additionalCost)    : '',
@@ -228,21 +253,33 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
       loadingDate:          toDate(it.loadingDate),
       estimatedArrivalDate: toDate(it.estimatedArrivalDate),
       actualReceiptDate:    toDate(it.actualReceiptDate),
-      paymentMethod:    it.paymentMethod    ?? '',
       payBankName:      it.payBankName      ?? '',
       payAccountNumber: it.payAccountNumber ?? '',
       payAccountHolder: it.payAccountHolder ?? '',
       remittanceDate: toDate(it.remittanceDate), paymentDate: toDate(it.paymentDate),
       buyerMemo: it.buyerMemo ?? '',
+      settlementRequired: it.settlementRequired ?? '',
+      settlementParty:    it.settlementParty    ?? '',
+      settlementAmount:   it.settlementAmount   != null ? String(it.settlementAmount) : '',
+      settlementDate:     toDate(it.settlementDate),
     })))
   , [])
 
   useEffect(() => {
     if (!open || !request) return
-    initItems(request.items ?? [])
-    setFiles(request.files ?? [])
-    setActiveTab('order')
-    setNextStatus('')
+    // _bulkRequests: 다중 선택 시 모든 요청 품목 합산
+    if (request._bulkRequests?.length > 0) {
+      const allItems = request._bulkRequests.flatMap((r: any) =>
+        (r.items ?? []).map((it: any) => ({ ...it, purchaseRequestId: r.id }))
+      )
+      initItems(allItems)
+      setFiles([])
+    } else {
+      initItems(request.items ?? [], request.id)
+      setFiles(request.files ?? [])
+    }
+    setActiveTab((request._forceTab as Tab) ?? initialTab ?? 'order')
+    setNextStatus(request._forceStatus ?? initialStatus ?? '')
     const initMap: Record<string, CostRow[]> = {}
     for (const it of request.items ?? []) {
       const rows: CostRow[] = []
@@ -480,39 +517,98 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
   }
 
   // ── 저장 ──────────────────────────────────────────────────
+  const buildItemPayload = (it: BuyerItem) => ({
+    id: it.id,
+    supplier:     it.supplierName || null,
+    domestic:     it.domestic,
+    orderMethod:  it.orderMethod, orderNo: it.orderNo, orderNumber: it.orderNumber || null,
+    plannedShipDate: it.plannedShipDate || null, actualShipDate: it.actualShipDate || null,
+    shippingMethod: it.shippingMethod, trackingNo: it.trackingNo, blNo: it.blNo,
+    boxCount:   it.boxCount   ? Number(it.boxCount)   : null,
+    boxUnitQty: it.boxUnitQty ? Number(it.boxUnitQty) : null,
+    portArrivalDate:      it.portArrivalDate      || null,
+    loadingDate:          it.loadingDate          || null,
+    estimatedArrivalDate: it.estimatedArrivalDate || null,
+    actualReceiptDate:    it.actualReceiptDate    || null,
+    buyerCurrency:     it.buyerCurrency     || null,
+    exchangeRate:      it.exchangeRate      ? Number(it.exchangeRate)      : null,
+    additionalCost:    it.additionalCost    ? Number(it.additionalCost)    : null,
+    buyerSupplyAmount: it.buyerSupplyAmount ? Number(it.buyerSupplyAmount) : null,
+    buyerTaxAmount:    it.buyerTaxAmount    ? Number(it.buyerTaxAmount)    : null,
+    krwAmount: it.krwAmount ? Number(it.krwAmount) : null,
+    unitPrice: it.unitPrice ? Number(it.unitPrice) : null,
+    paymentMethod:    it.paymentMethod    || null,
+    payBankName:      it.payBankName      || null,
+    payAccountNumber: it.payAccountNumber || null,
+    payAccountHolder: it.payAccountHolder || null,
+    remittanceDate: it.remittanceDate || null, paymentDate: it.paymentDate || null,
+    buyerMemo: it.buyerMemo,
+    settlementRequired: it.settlementRequired || null,
+    settlementParty:    it.settlementParty    || null,
+    settlementAmount:   it.settlementAmount   ? Number(it.settlementAmount) : null,
+    settlementDate:     it.settlementDate     || null,
+  })
+
+  // sourceIdx 카드의 내용을 targetId 카드에 복사
+  const copyFromTo = (sourceIdx: number, targetId: string) => {
+    const src = items[sourceIdx]
+    if (!src) return
+    setItems(prev => prev.map(it => {
+      if (it.id !== targetId) return it
+      return {
+        ...it,
+        domestic: src.domestic, supplierName: src.supplierName,
+        orderMethod: src.orderMethod, paymentMethod: src.paymentMethod,
+        orderNo: src.orderNo, orderNumber: src.orderNumber,
+        buyerCurrency: src.buyerCurrency, exchangeRate: src.exchangeRate,
+        additionalCost: src.additionalCost,
+        buyerSupplyAmount: src.buyerSupplyAmount, buyerTaxAmount: src.buyerTaxAmount,
+        krwAmount: src.krwAmount, unitPrice: src.unitPrice,
+        remittanceDate: src.remittanceDate, paymentDate: src.paymentDate,
+        buyerMemo: src.buyerMemo,
+        plannedShipDate: src.plannedShipDate, actualShipDate: src.actualShipDate,
+        shippingMethod: src.shippingMethod, trackingNo: src.trackingNo, blNo: src.blNo,
+        boxCount: src.boxCount, boxUnitQty: src.boxUnitQty,
+        portArrivalDate: src.portArrivalDate, loadingDate: src.loadingDate,
+        estimatedArrivalDate: src.estimatedArrivalDate, actualReceiptDate: src.actualReceiptDate,
+        payBankName: src.payBankName, payAccountNumber: src.payAccountNumber, payAccountHolder: src.payAccountHolder,
+        settlementRequired: src.settlementRequired, settlementParty: src.settlementParty,
+        settlementAmount: src.settlementAmount, settlementDate: src.settlementDate,
+      }
+    }))
+    setCopyMenuOpen(null)
+  }
+
   const handleSave = async () => {
     if (saving) return
     setSaving(true)
     try {
-      const body: any = {
-        buyerItems: items.map(it => ({
-          id: it.id,
-          supplier:     it.supplierName || null,
-          domestic:     it.domestic,
-          orderMethod:  it.orderMethod, orderNo: it.orderNo,
-          plannedShipDate: it.plannedShipDate || null, actualShipDate: it.actualShipDate || null,
-          shippingMethod: it.shippingMethod, trackingNo: it.trackingNo, blNo: it.blNo,
-          boxCount:   it.boxCount   ? Number(it.boxCount)   : null,
-          boxUnitQty: it.boxUnitQty ? Number(it.boxUnitQty) : null,
-          portArrivalDate:      it.portArrivalDate      || null,
-          loadingDate:          it.loadingDate          || null,
-          estimatedArrivalDate: it.estimatedArrivalDate || null,
-          actualReceiptDate:    it.actualReceiptDate    || null,
-          buyerCurrency:     it.buyerCurrency     || null,
-          exchangeRate:      it.exchangeRate      ? Number(it.exchangeRate)      : null,
-          additionalCost:    it.additionalCost    ? Number(it.additionalCost)    : null,
-          buyerSupplyAmount: it.buyerSupplyAmount ? Number(it.buyerSupplyAmount) : null,
-          buyerTaxAmount:    it.buyerTaxAmount    ? Number(it.buyerTaxAmount)    : null,
-          krwAmount: it.krwAmount ? Number(it.krwAmount) : null,
-          unitPrice: it.unitPrice ? Number(it.unitPrice) : null,
-          paymentMethod:    it.paymentMethod    || null,
-          payBankName:      it.payBankName      || null,
-          payAccountNumber: it.payAccountNumber || null,
-          payAccountHolder: it.payAccountHolder || null,
-          remittanceDate: it.remittanceDate || null, paymentDate: it.paymentDate || null,
-          buyerMemo: it.buyerMemo,
-        })),
+      const isBulk = !!request._bulkRequests?.length
+
+      if (isBulk) {
+        // 다중 요청: purchaseRequestId별로 그룹핑 후 각각 저장
+        const groups: Record<string, BuyerItem[]> = {}
+        for (const it of items) {
+          const rid = it.purchaseRequestId
+          if (!groups[rid]) groups[rid] = []
+          groups[rid].push(it)
+        }
+        for (const [reqId, reqItems] of Object.entries(groups)) {
+          const body: any = { buyerItems: reqItems.map(buildItemPayload) }
+          if (nextStatus) body.status = nextStatus
+          const res = await fetch(`/api/purchases/${reqId}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          })
+          const json = await res.json()
+          if (!json.success) throw new Error(json.message)
+        }
+        toast.success('저장되었습니다.')
+        onSaved({ ...request._bulkRequests[0], files })
+        return
       }
+
+      const body: any = { buyerItems: items.map(buildItemPayload) }
       if (nextStatus) body.status = nextStatus
       const res  = await fetch(`/api/purchases/${request.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -726,19 +822,51 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
   }
 
   // ── 품목 카드 ─────────────────────────────────────────────
-  const ItemCard = ({ it }: { it: BuyerItem }) => (
+  const ItemCard = ({ it, idx }: { it: BuyerItem; idx: number }) => {
+    const isMenuOpen = copyMenuOpen === it.id
+    return (
     <div className="rounded-xl border border-gray-200 overflow-hidden shadow-sm">
       {/* 헤더 */}
       <div className="px-4 py-2.5 bg-gradient-to-r from-gray-50 to-white border-b flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <span className="w-5 h-5 rounded-full bg-gray-200 text-gray-500 text-[10px] font-bold flex items-center justify-center shrink-0">
-            {it.lineNo}
+            {idx + 1}
           </span>
           <span className="font-mono text-xs font-semibold text-gray-700 shrink-0">{it.bomNo ?? '—'}</span>
           {it.spec && <span className="text-xs text-gray-400 truncate">{it.spec}</span>}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-xs text-gray-500 font-medium">{it.quantity.toLocaleString()} {it.unit}</span>
+          {/* 내용 복사 버튼 (항목 2개 이상일 때만) */}
+          {items.length > 1 && (
+            <div className="relative">
+              <button
+                onClick={() => setCopyMenuOpen(isMenuOpen ? null : it.id)}
+                className="h-6 px-2 rounded border border-gray-200 bg-white hover:bg-gray-50 text-[11px] text-gray-500 font-medium transition-colors whitespace-nowrap"
+              >
+                내용 복사
+              </button>
+              {isMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden min-w-[120px]">
+                  <div className="px-3 py-1.5 text-[10px] font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100">
+                    복사할 항목 선택
+                  </div>
+                  {items.map((src, srcIdx) => srcIdx !== idx && (
+                    <button
+                      key={src.id}
+                      onMouseDown={e => { e.preventDefault(); copyFromTo(srcIdx, it.id) }}
+                      className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2 border-b last:border-0 border-gray-100"
+                    >
+                      <span className="w-4 h-4 rounded-full bg-gray-200 text-gray-500 text-[9px] font-bold flex items-center justify-center shrink-0">
+                        {srcIdx + 1}
+                      </span>
+                      <span className="truncate">{src.bomNo ?? src.spec ?? `항목 ${srcIdx + 1}`}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -746,7 +874,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
       {activeTab === 'order' && (
         <div className="p-4 space-y-4">
           <div>
-            <Sec label="주문" color="text-gray-500" />
+            <Sec label="발주" color="text-gray-500" />
             <div className="grid grid-cols-2 gap-3">
               <Field label="구분">
                 <Sel value={it.domestic} onChange={e => upd(it.id, 'domestic', e.target.value)}>
@@ -809,14 +937,34 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
                   {ORDER_OPT.map(o => <option key={o}>{o}</option>)}
                 </Sel>
               </Field>
-              <Field label="주문번호">
-                <input value={it.orderNo} onChange={e => upd(it.id, 'orderNo', e.target.value)} className={inp} placeholder="주문번호 입력" />
+              <Field label="결제방식">
+                <Sel value={it.paymentMethod} onChange={e => upd(it.id, 'paymentMethod', e.target.value)}>
+                  <option value="">선택하세요</option>
+                  {PAYMENT_OPT.map(o => <option key={o}>{o}</option>)}
+                </Sel>
+              </Field>
+              <Field label="견적번호">
+                <input value={it.orderNo} onChange={e => upd(it.id, 'orderNo', e.target.value)} className={inp} placeholder="견적번호 입력" />
+              </Field>
+              <Field label="발주번호">
+                <input value={it.orderNumber} onChange={e => upd(it.id, 'orderNumber', e.target.value)} className={inp} placeholder="발주번호 입력" />
               </Field>
             </div>
           </div>
           <div>
             <Sec label="금액" color="text-amber-500" />
             {AmountBlock({ it })}
+          </div>
+          <div>
+            <Sec label="결제 일정" color="text-gray-400" />
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="송금일">
+                <input type="date" value={it.remittanceDate} onChange={e => upd(it.id, 'remittanceDate', e.target.value)} className={inp} />
+              </Field>
+              <Field label="결제일">
+                <input type="date" value={it.paymentDate} onChange={e => upd(it.id, 'paymentDate', e.target.value)} className={inp} />
+              </Field>
+            </div>
           </div>
           {it.id === items[items.length - 1]?.id && (
             <div>
@@ -900,6 +1048,17 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
               </div>
             </div>
           )}
+          {/* 메모 */}
+          <div>
+            <Sec label="메모" color="text-gray-400" />
+            <textarea
+              value={it.buyerMemo}
+              onChange={e => upd(it.id, 'buyerMemo', e.target.value)}
+              rows={3}
+              placeholder="구매자 메모"
+              className="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none"
+            />
+          </div>
         </div>
       )}
 
@@ -999,26 +1158,30 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
       {/* ── 정산 정보 ── */}
       {activeTab === 'payment' && (
         <div className="p-4 space-y-4">
-          {/* 결제 방식 */}
+          {/* 정산 기본 정보 */}
           <div>
-            <Sec label="결제 방식" color="text-purple-500" />
-            <div className="grid grid-cols-1 gap-3">
-              <Field label="구분">
-                <Sel value={it.paymentMethod} onChange={e => upd(it.id, 'paymentMethod', e.target.value)}>
+            <Sec label="정산" color="text-purple-500" />
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="정산 여부">
+                <Sel value={it.settlementRequired} onChange={e => upd(it.id, 'settlementRequired', e.target.value)}>
                   <option value="">선택하세요</option>
-                  {PAYMENT_OPT.map(o => <option key={o}>{o}</option>)}
+                  <option value="Y">Y</option>
+                  <option value="N">N</option>
                 </Sel>
+              </Field>
+              <Field label="거래처">
+                <input value={it.settlementParty} onChange={e => upd(it.id, 'settlementParty', e.target.value)} className={inp} placeholder="거래처 입력" />
+              </Field>
+              <Field label="금액">
+                <NumInput value={it.settlementAmount} onChange={v => upd(it.id, 'settlementAmount', v)} placeholder="0" className={inp + ' text-right'} />
+              </Field>
+              <Field label="정산일">
+                <input type="date" value={it.settlementDate} onChange={e => upd(it.id, 'settlementDate', e.target.value)} className={inp} />
               </Field>
             </div>
           </div>
 
-          {/* 금액 (공유 블록) */}
-          <div>
-            <Sec label="금액" color="text-amber-500" />
-            {AmountBlock({ it })}
-          </div>
-
-          {/* 계좌 정보 (계좌이체 시) */}
+          {/* 계좌 정보 (결제방식이 계좌이체 시) */}
           {it.paymentMethod === '계좌이체' && (
             <div>
               <Sec label="계좌 정보" color="text-blue-500" />
@@ -1054,34 +1217,10 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
             </div>
           )}
 
-          {/* 정산 일정 */}
-          <div>
-            <Sec label="정산 일정" color="text-gray-400" />
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="송금일">
-                <input type="date" value={it.remittanceDate} onChange={e => upd(it.id, 'remittanceDate', e.target.value)} className={inp} />
-              </Field>
-              <Field label="결제일">
-                <input type="date" value={it.paymentDate} onChange={e => upd(it.id, 'paymentDate', e.target.value)} className={inp} />
-              </Field>
-            </div>
-          </div>
-
-          {/* 메모 */}
-          <div>
-            <Sec label="메모" color="text-gray-400" />
-            <textarea
-              value={it.buyerMemo}
-              onChange={e => upd(it.id, 'buyerMemo', e.target.value)}
-              rows={3}
-              placeholder="구매자 메모"
-              className="w-full px-2.5 py-2 text-xs rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none"
-            />
-          </div>
         </div>
       )}
     </div>
-  )
+  )}
 
   // ── 렌더 ──────────────────────────────────────────────────
   return (
@@ -1128,12 +1267,18 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
           ))}
         </div>
 
+
+        {/* 드롭다운 외부 클릭 닫기 오버레이 */}
+        {copyMenuOpen && (
+          <div className="fixed inset-0 z-20" onClick={() => setCopyMenuOpen(null)} />
+        )}
+
         {/* 탭 본문 */}
         <div className="flex-1 overflow-y-auto min-h-0">
           <div className="p-4 space-y-3">
             {items.length === 0 ? (
               <div className="text-center py-12 text-gray-400 text-sm">품목이 없습니다.</div>
-            ) : items.map(it => <React.Fragment key={it.id}>{ItemCard({ it })}</React.Fragment>)}
+            ) : items.map((it, idx) => <React.Fragment key={it.id}>{ItemCard({ it, idx })}</React.Fragment>)}
 
           </div>
         </div>
@@ -1149,7 +1294,7 @@ export default function BuyerDialog({ open, request, onClose, onSaved }: Props) 
                 className="h-8 px-2.5 rounded-lg border border-[#e6e6e6] text-xs text-gray-700 bg-white focus:outline-none focus:ring-1 focus:ring-purple-400"
               >
                 <option value="">{STATUS_LABEL[request.status] ?? request.status} (현재)</option>
-                {(['PENDING', 'APPROVED', 'ORDERED', 'RECEIVED', 'REJECTED'] as const)
+                {(['PENDING','APPROVED','WAITING','ORDER_PROGRESS','ORDERED','RECEIVED','SETTLED','REJECTED'] as const)
                   .filter(s => s !== request.status)
                   .map(s => (
                     <option key={s} value={s}>{STATUS_LABEL[s]}</option>

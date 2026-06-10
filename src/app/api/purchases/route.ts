@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { PurchaseStatus } from '@prisma/client'
 
-const EXTERNAL_ALLOWED_STATUSES: PurchaseStatus[] = ['APPROVED', 'ORDERED', 'RECEIVED']
+const EXTERNAL_ALLOWED_STATUSES: PurchaseStatus[] = ['APPROVED', 'WAITING', 'ORDER_PROGRESS', 'ORDERED', 'RECEIVED', 'SETTLED']
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,8 +19,9 @@ export async function GET(req: NextRequest) {
     const where: any = {}
 
     if (externalView) {
-      // 외부 거래처: 생산구매팀 고정 + 허용 상태만
-      where.department = '생산구매팀'
+      // 외부 거래처: 허용 상태만 (부서는 파라미터 또는 기본값 생산구매팀)
+      if (department) where.department = department
+      else where.department = '생산구매팀'
       if (status && EXTERNAL_ALLOWED_STATUSES.includes(status as PurchaseStatus)) {
         where.status = status as PurchaseStatus
       } else {
@@ -42,26 +43,50 @@ export async function GET(req: NextRequest) {
       ]
     }
 
-    const [requests, total, rawCounts] = await Promise.all([
-      prisma.purchaseRequest.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          items: { orderBy: { lineNo: 'asc' } },
-          requester: { select: { name: true, email: true } },
-          files: { orderBy: { uploadedAt: 'asc' } },
-        },
-      }),
-      prisma.purchaseRequest.count({ where }),
-      prisma.purchaseRequest.groupBy({ by: ['status'], where, _count: { _all: true } }),
-    ])
+    // Neon HTTP: Promise.all + include 조합이 암묵적 트랜잭션 유발 → 순차 실행으로 분리
+    const requests = await prisma.purchaseRequest.findMany({
+      where, skip, take: limit, orderBy: { createdAt: 'desc' },
+    })
+    const total = await prisma.purchaseRequest.count({ where })
+    const rawCounts = await prisma.purchaseRequest.groupBy({ by: ['status'], where, _count: { _all: true } })
+
+    // 관계 데이터 순차 조회 (include 대신 별도 쿼리)
+    const reqIds = requests.map((r: any) => r.id)
+    const allItems = reqIds.length > 0
+      ? await prisma.purchaseRequestItem.findMany({ where: { purchaseRequestId: { in: reqIds } }, orderBy: { lineNo: 'asc' } })
+      : []
+    const allFiles = reqIds.length > 0
+      ? await prisma.purchaseFile.findMany({ where: { purchaseRequestId: { in: reqIds } }, orderBy: { uploadedAt: 'asc' } })
+      : []
+
+    // requester는 requesterId 기반으로 매핑
+    const requesterIds = [...new Set(requests.map((r: any) => r.requesterId).filter(Boolean))]
+    const requesters = requesterIds.length > 0
+      ? await prisma.user.findMany({ where: { id: { in: requesterIds } }, select: { id: true, name: true, email: true } })
+      : []
+    const requesterMap: Record<string, any> = Object.fromEntries(requesters.map(u => [u.id, u]))
+
+    const itemsByReq: Record<string, any[]> = {}
+    for (const it of allItems) {
+      if (!itemsByReq[it.purchaseRequestId]) itemsByReq[it.purchaseRequestId] = []
+      itemsByReq[it.purchaseRequestId].push(it)
+    }
+    const filesByReq: Record<string, any[]> = {}
+    for (const f of allFiles) {
+      if (!filesByReq[f.purchaseRequestId]) filesByReq[f.purchaseRequestId] = []
+      filesByReq[f.purchaseRequestId].push(f)
+    }
+    const requestsWithRelations = requests.map((r: any) => ({
+      ...r,
+      items: itemsByReq[r.id] ?? [],
+      files: filesByReq[r.id] ?? [],
+      requester: r.requesterId ? (requesterMap[r.requesterId] ?? null) : null,
+    }))
 
     const statusCounts: Record<string, number> = {}
     for (const row of rawCounts) statusCounts[row.status] = row._count._all
 
-    return NextResponse.json({ success: true, data: { requests, total, page, limit, statusCounts } })
+    return NextResponse.json({ success: true, data: { requests: requestsWithRelations, total, page, limit, statusCounts } })
   } catch (error) {
     console.error('[GET /api/purchases]', error)
     return NextResponse.json({ success: false, message: '데이터를 불러오지 못했습니다.' }, { status: 500 })
@@ -90,36 +115,35 @@ export async function POST(req: NextRequest) {
         memo: memo?.trim() || null,
         requesterId: requesterId || null,
         approvalLine: approvalLine ? JSON.stringify(approvalLine) : null,
-        items: {
-          create: validItems.map((it: any, i: number) => ({
-            lineNo: i + 1,
-            workCode: it.workCode?.trim() || null,
-            itemId: it.itemId || null,
-            category: it.category?.trim() || null,
-            midCategory: it.midCategory?.trim() || null,
-            subCategory: it.subCategory?.trim() || null,
-            bomNo: it.bomNo?.trim() || null,
-            spec: it.spec?.trim() || null,
-            quantity: Number(it.quantity),
-            unit: it.unit?.trim() || 'EA',
-            currency: it.currency || 'KRW',
-            supplyAmount: it.supplyAmount != null ? Number(it.supplyAmount) : null,
-            taxAmount: it.taxAmount != null ? Number(it.taxAmount) : null,
-            purchaseReason: it.purchaseReason?.trim() || null,
-            requestedDeliveryDate: it.requestedDeliveryDate ? new Date(it.requestedDeliveryDate) : null,
-            supplier: it.supplier?.trim() || null,
-            deliveryLocation: it.deliveryLocation?.trim() || null,
-          })),
-        },
-      },
-      include: {
-        items: { orderBy: { lineNo: 'asc' } },
-        requester: { select: { name: true, email: true } },
-        files: true,
       },
     })
-
-    return NextResponse.json({ success: true, data: created }, { status: 201 })
+    for (let i = 0; i < validItems.length; i++) {
+      const it = validItems[i]
+      await prisma.purchaseRequestItem.create({
+        data: {
+          purchaseRequestId: created.id,
+          lineNo: i + 1,
+          workCode: it.workCode?.trim() || null,
+          itemId: it.itemId || null,
+          category: it.category?.trim() || null,
+          midCategory: it.midCategory?.trim() || null,
+          subCategory: it.subCategory?.trim() || null,
+          bomNo: it.bomNo?.trim() || null,
+          spec: it.spec?.trim() || null,
+          quantity: Number(it.quantity),
+          unit: it.unit?.trim() || 'EA',
+          currency: it.currency || 'KRW',
+          supplyAmount: it.supplyAmount != null ? Number(it.supplyAmount) : null,
+          taxAmount: it.taxAmount != null ? Number(it.taxAmount) : null,
+          purchaseReason: it.purchaseReason?.trim() || null,
+          requestedDeliveryDate: it.requestedDeliveryDate ? new Date(it.requestedDeliveryDate) : null,
+          supplier: it.supplier?.trim() || null,
+          deliveryLocation: it.deliveryLocation?.trim() || null,
+        },
+      })
+    }
+    const createdItems = await prisma.purchaseRequestItem.findMany({ where: { purchaseRequestId: created.id }, orderBy: { lineNo: 'asc' } })
+    return NextResponse.json({ success: true, data: { ...created, items: createdItems, files: [] } }, { status: 201 })
   } catch (error) {
     console.error('[POST /api/purchases]', error)
     return NextResponse.json({ success: false, message: '구매 요청 생성에 실패했습니다.' }, { status: 500 })

@@ -55,16 +55,9 @@ export async function POST(req: NextRequest) {
         })
 
         // Neon HTTP: create+include는 내부 트랜잭션 발생 → 별도 findUnique로 분리
-        const request = await prisma.purchaseRequest.findUnique({
-          where: { id: created.id },
-          include: {
-            items: true,
-            requester: { select: { name: true, email: true } },
-            files: { orderBy: { uploadedAt: 'asc' } },
-          },
-        })
-
-        return NextResponse.json({ success: true, data: request }, { status: 201 })
+        const request = await prisma.purchaseRequest.findUnique({ where: { id: created.id } })
+        const reqItems = await prisma.purchaseRequestItem.findMany({ where: { purchaseRequestId: created.id } })
+        return NextResponse.json({ success: true, data: { ...request, items: reqItems, files: [] } }, { status: 201 })
       } catch (err: any) {
         if (err?.code === 'P2002' && attempt < 2) continue
         throw err

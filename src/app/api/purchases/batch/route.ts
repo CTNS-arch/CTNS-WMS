@@ -95,16 +95,9 @@ export async function POST(req: NextRequest) {
           })
         }
 
-        const record = await prisma.purchaseRequest.findUnique({
-          where: { id: request.id },
-          include: {
-            items: { orderBy: { lineNo: 'asc' } },
-            requester: { select: { name: true, email: true } },
-            files: true,
-          },
-        })
-
-        return NextResponse.json({ success: true, data: [record] }, { status: 201 })
+        const record = await prisma.purchaseRequest.findUnique({ where: { id: request.id } })
+        const recordItems = await prisma.purchaseRequestItem.findMany({ where: { purchaseRequestId: request.id }, orderBy: { lineNo: 'asc' } })
+        return NextResponse.json({ success: true, data: [{ ...record, items: recordItems, files: [] }] }, { status: 201 })
       } catch (err: any) {
         if (err?.code === 'P2002' && attempt < 2) continue
         throw err
@@ -125,23 +118,20 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   try {
-    const { auth } = await import('@/auth')
-    const session = await auth()
-    const roles = session?.user?.roles ?? []
-    const allowed = roles.includes('MASTER_ADMIN') || roles.includes('PROD_STOCK') || roles.includes('LAB_STOCK')
-    if (!allowed)
-      return NextResponse.json({ success: false, message: '권한이 없습니다.' }, { status: 403 })
-
-    const { ids, status } = await req.json()
+    const { ids, status, approved } = await req.json()
     if (!Array.isArray(ids) || ids.length === 0)
       return NextResponse.json({ success: false, message: '변경할 요청 ID 목록이 필요합니다.' }, { status: 400 })
-    const validStatuses = ['PENDING', 'APPROVED', 'WAITING', 'ORDERED', 'RECEIVED', 'REJECTED']
+    const validStatuses = ['PENDING', 'APPROVED', 'WAITING', 'ORDER_PROGRESS', 'ORDERED', 'RECEIVED', 'SETTLED', 'REJECTED']
     if (!validStatuses.includes(status))
       return NextResponse.json({ success: false, message: '유효하지 않은 상태값입니다.' }, { status: 400 })
-    const { count } = await prisma.purchaseRequest.updateMany({
-      where: { id: { in: ids } },
-      data: { status: status as any },
-    })
+    const data: any = { status: status as any }
+    if (approved !== undefined) data.approved = approved
+    // NeonHTTP: updateMany는 내부 트랜잭션 유발 → 개별 update 순차 실행
+    let count = 0
+    for (const id of ids) {
+      await prisma.purchaseRequest.update({ where: { id }, data })
+      count++
+    }
     return NextResponse.json({ success: true, count })
   } catch (error: any) {
     return NextResponse.json({ success: false, message: error.message }, { status: 500 })

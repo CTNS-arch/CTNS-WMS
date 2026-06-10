@@ -21,23 +21,29 @@ import ItemRequestDialog from '@/components/items/ItemRequestDialog'
 
 // ── 상수 ──────────────────────────────────────────────────
 const STATUS_LABEL: Record<string, string> = {
-  PENDING: '구매요청', APPROVED: '견적진행', WAITING: '발주대기', ORDERED: '발주완료', RECEIVED: '입고완료', REJECTED: '반려',
+  PENDING: '구매요청', APPROVED: '견적진행', WAITING: '발주승인',
+  ORDER_PROGRESS: '발주진행', ORDERED: '발주완료',
+  RECEIVED: '입고완료', SETTLED: '정산완료', REJECTED: '반려',
 }
 const STATUS_COLOR: Record<string, string> = {
-  PENDING:  'bg-amber-100 text-amber-700 border border-amber-200',
-  APPROVED: 'bg-indigo-100 text-indigo-700 border border-indigo-200',
-  WAITING:  'bg-orange-100 text-orange-700 border border-orange-200',
-  ORDERED:  'bg-blue-100 text-blue-700 border border-blue-200',
-  RECEIVED: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
-  REJECTED: 'bg-red-100 text-red-500 border border-red-200',
+  PENDING:        'bg-amber-100 text-amber-700 border border-amber-200',
+  APPROVED:       'bg-indigo-100 text-indigo-700 border border-indigo-200',
+  WAITING:        'bg-orange-100 text-orange-700 border border-orange-200',
+  ORDER_PROGRESS: 'bg-violet-100 text-violet-700 border border-violet-200',
+  ORDERED:        'bg-blue-100 text-blue-700 border border-blue-200',
+  RECEIVED:       'bg-emerald-100 text-emerald-700 border border-emerald-200',
+  SETTLED:        'bg-teal-100 text-teal-700 border border-teal-200',
+  REJECTED:       'bg-red-100 text-red-500 border border-red-200',
 }
 const STATUS_STRIPE: Record<string, string> = {
-  PENDING:  'bg-amber-400',
-  APPROVED: 'bg-indigo-500',
-  WAITING:  'bg-orange-400',
-  ORDERED:  'bg-blue-500',
-  RECEIVED: 'bg-emerald-500',
-  REJECTED: 'bg-red-400',
+  PENDING:        'bg-amber-400',
+  APPROVED:       'bg-indigo-500',
+  WAITING:        'bg-orange-400',
+  ORDER_PROGRESS: 'bg-violet-500',
+  ORDERED:        'bg-blue-500',
+  RECEIVED:       'bg-emerald-500',
+  SETTLED:        'bg-teal-500',
+  REJECTED:       'bg-red-400',
 }
 const DOMESTIC_CHIP: Record<string, string> = {
   '국내': 'bg-teal-100 text-teal-700 border border-teal-200',
@@ -45,12 +51,14 @@ const DOMESTIC_CHIP: Record<string, string> = {
 }
 
 const STATUS_ROW: Record<string, string> = {
-  PENDING:  '',
-  APPROVED: 'bg-indigo-50/30',
-  WAITING:  'bg-orange-50/20',
-  ORDERED:  'bg-blue-50/20',
-  RECEIVED: 'bg-emerald-50/20',
-  REJECTED: 'bg-red-50/10',
+  PENDING:        '',
+  APPROVED:       'bg-indigo-50/30',
+  WAITING:        'bg-orange-50/20',
+  ORDER_PROGRESS: 'bg-violet-50/20',
+  ORDERED:        'bg-blue-50/20',
+  RECEIVED:       'bg-emerald-50/20',
+  SETTLED:        'bg-teal-50/20',
+  REJECTED:       'bg-red-50/10',
 }
 const FILTER_PILLS_MISC: { value: string; label: string }[] = [
   { value: '', label: '전체' },
@@ -62,17 +70,21 @@ const FILTER_PILLS_MISC: { value: string; label: string }[] = [
 const FILTER_PILLS_EXTERNAL: { value: string; label: string }[] = [
   { value: '', label: '전체' },
   { value: 'APPROVED', label: '견적진행' },
-  { value: 'WAITING', label: '발주대기' },
+  { value: 'WAITING', label: '발주승인' },
+  { value: 'ORDER_PROGRESS', label: '발주진행' },
   { value: 'ORDERED', label: '발주완료' },
   { value: 'RECEIVED', label: '입고완료' },
+  { value: 'SETTLED', label: '정산완료' },
 ]
 const FILTER_PILLS_DEPT: { value: string; label: string }[] = [
   { value: '', label: '전체' },
   { value: 'PENDING', label: '구매요청' },
   { value: 'APPROVED', label: '견적진행' },
-  { value: 'WAITING', label: '발주대기' },
+  { value: 'WAITING', label: '발주승인' },
+  { value: 'ORDER_PROGRESS', label: '발주진행' },
   { value: 'ORDERED', label: '발주완료' },
   { value: 'RECEIVED', label: '입고완료' },
+  { value: 'SETTLED', label: '정산완료' },
   { value: 'REJECTED', label: '반려' },
 ]
 const DEPT_TABS = [
@@ -81,12 +93,14 @@ const DEPT_TABS = [
   { value: '연구비', label: '연구비' },
 ]
 const NEXT_STATUS: Record<string, string[]> = {
-  PENDING:  ['APPROVED', 'REJECTED'],
-  APPROVED: ['WAITING',  'PENDING', 'REJECTED'],
-  WAITING:  ['ORDERED',  'APPROVED', 'REJECTED'],
-  ORDERED:  ['RECEIVED', 'PENDING', 'REJECTED'],
-  RECEIVED: ['PENDING'],
-  REJECTED: ['PENDING'],
+  PENDING:        ['APPROVED', 'REJECTED'],
+  APPROVED:       ['WAITING',  'PENDING', 'REJECTED'],
+  WAITING:        ['ORDER_PROGRESS', 'ORDERED', 'APPROVED', 'REJECTED'],
+  ORDER_PROGRESS: ['ORDERED',  'APPROVED', 'REJECTED'],
+  ORDERED:        ['RECEIVED', 'PENDING', 'REJECTED'],
+  RECEIVED:       ['SETTLED',  'PENDING'],
+  SETTLED:        ['PENDING'],
+  REJECTED:       ['PENDING'],
 }
 const DEPT_OPTIONS       = ['생산구매팀', '연구소']
 const CURRENCY_OPTIONS   = ['KRW', 'USD', 'CNY']
@@ -282,13 +296,13 @@ export default function PurchasesPage() {
     setBuyerOpen(true)
   }
 
-  const handleBulkStatusChange = async (toStatus: string) => {
+  const handleBulkStatusChange = async (toStatus: string, approved?: boolean) => {
     const ids = selectedReqs().map((r: any) => r.id)
     try {
       const res = await fetch('/api/purchases/batch', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, status: toStatus }),
+        body: JSON.stringify({ ids, status: toStatus, ...(approved !== undefined ? { approved } : {}) }),
       })
       const json = await res.json()
       if (json.success) {
@@ -299,6 +313,25 @@ export default function PurchasesPage() {
         toast.error(json.message ?? '상태 변경에 실패했습니다.')
       }
     } catch { toast.error('서버 오류가 발생했습니다.') }
+  }
+
+  // BuyerDialog를 특정 탭+상태로 열기
+  const openBuyerWithStatus = (req: any, tab: string, forceStatus: string) => {
+    setBuyerRequest({ ...req, _forceTab: tab, _forceStatus: forceStatus })
+    setBuyerOpen(true)
+  }
+  const openBulkBuyerWithStatus = (tab: string, forceStatus: string) => {
+    const reqs = selectedReqs()
+    if (!reqs.length) return
+    // 모든 선택 요청의 품목을 하나의 다이얼로그에 합산
+    const combined = {
+      ...reqs[0],
+      _forceTab: tab,
+      _forceStatus: forceStatus,
+      _bulkRequests: reqs,
+    }
+    setBuyerRequest(combined)
+    setBuyerOpen(true)
   }
 
   const [buyerOpen,    setBuyerOpen]    = useState(false)
@@ -451,7 +484,12 @@ export default function PurchasesPage() {
     setApprovalEditing(false); setFormOpen(true)
   }
 
-  function openBuyer(req: any) { setBuyerRequest(req); setBuyerOpen(true) }
+  function openBuyer(req: any, item?: any) {
+    // 특정 행(item)이 있으면 해당 품목만, 없으면 전체
+    const target = item ? { ...req, items: [item] } : req
+    setBuyerRequest(target)
+    setBuyerOpen(true)
+  }
 
   // ── 폼 업데이트 ─────────────────────────────────────────
   const updItem = (key: string, field: keyof ItemRow, val: string) =>
@@ -778,21 +816,64 @@ export default function PurchasesPage() {
       </div>
 
       {/* ── 일괄 액션 바 ─────────────────────────────────── */}
-      {selectedIds.size > 0 && deptTab !== '연구비' && (
-        <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-100 flex items-center gap-3 shrink-0">
-          <span className="text-xs text-indigo-700 font-medium">{selectedIds.size}행 선택됨</span>
-          {/* 구매요청 → 견적진행: 마스터 또는 재고 담당자, 선택된 요청 모두 PENDING일 때 */}
-          {(isAdmin || isMasterAdmin) && selectedReqs().every((r: any) => r.status === 'PENDING') && (
-            <button
-              onClick={() => handleBulkStatusChange('APPROVED')}
-              className="h-7 px-3 rounded text-xs font-medium border border-indigo-300 text-indigo-700 bg-white hover:bg-indigo-100 transition-colors whitespace-nowrap"
-            >
-              견적진행으로 변경
-            </button>
-          )}
-          <button onClick={() => setSelectedIds(new Set())} className="text-xs text-gray-400 hover:text-gray-600">선택 해제</button>
-        </div>
-      )}
+      {selectedIds.size > 0 && deptTab !== '연구비' && (() => {
+        const reqs = selectedReqs()
+        const allSameStatus = reqs.length > 0 && reqs.every((r: any) => r.status === reqs[0].status)
+        const selStatus = allSameStatus ? reqs[0]?.status : null
+        return (
+          <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-100 flex items-center gap-2 shrink-0 flex-wrap">
+            <span className="text-xs text-indigo-700 font-medium">{selectedIds.size}행 선택됨</span>
+
+            {/* ── 재고담당자 / 마스터 버튼 ── */}
+            {(isAdmin || isMasterAdmin) && selStatus === 'PENDING' && (
+              <button onClick={() => handleBulkStatusChange('APPROVED')}
+                className="h-7 px-3 rounded text-xs font-medium border border-indigo-300 text-indigo-700 bg-white hover:bg-indigo-100 whitespace-nowrap">
+                견적진행으로 변경
+              </button>
+            )}
+            {(isAdmin || isMasterAdmin) && selStatus === 'WAITING' && (
+              <>
+                <button onClick={() => handleBulkStatusChange('ORDER_PROGRESS', true)}
+                  className="h-7 px-3 rounded text-xs font-medium border border-violet-300 text-violet-700 bg-white hover:bg-violet-100 whitespace-nowrap">
+                  발주진행으로 변경
+                </button>
+                <button onClick={() => handleBulkStatusChange('APPROVED', false)}
+                  className="h-7 px-3 rounded text-xs font-medium border border-indigo-300 text-indigo-700 bg-white hover:bg-indigo-100 whitespace-nowrap">
+                  견적진행으로 변경
+                </button>
+              </>
+            )}
+            {(isAdmin || isMasterAdmin) && selStatus === 'ORDERED' && (
+              <button onClick={() => openBulkBuyerWithStatus('logistics', 'RECEIVED')}
+                className="h-7 px-3 rounded text-xs font-medium border border-emerald-300 text-emerald-700 bg-white hover:bg-emerald-100 whitespace-nowrap">
+                입고완료로 변경
+              </button>
+            )}
+            {(isAdmin || isMasterAdmin) && selStatus === 'RECEIVED' && (
+              <button onClick={() => openBulkBuyerWithStatus('payment', 'SETTLED')}
+                className="h-7 px-3 rounded text-xs font-medium border border-teal-300 text-teal-700 bg-white hover:bg-teal-100 whitespace-nowrap">
+                정산완료로 변경
+              </button>
+            )}
+
+            {/* ── 거래처 버튼 ── */}
+            {isExternal && selStatus === 'APPROVED' && (
+              <button onClick={() => openBulkBuyerWithStatus('order', 'WAITING')}
+                className="h-7 px-3 rounded text-xs font-medium border border-orange-300 text-orange-700 bg-white hover:bg-orange-100 whitespace-nowrap">
+                발주승인으로 변경
+              </button>
+            )}
+            {isExternal && selStatus === 'ORDER_PROGRESS' && (
+              <button onClick={() => openBulkBuyerWithStatus('logistics', 'ORDERED')}
+                className="h-7 px-3 rounded text-xs font-medium border border-blue-300 text-blue-700 bg-white hover:bg-blue-100 whitespace-nowrap">
+                발주완료로 변경
+              </button>
+            )}
+
+            <button onClick={() => setSelectedIds(new Set())} className="text-xs text-gray-400 hover:text-gray-600 ml-1">선택 해제</button>
+          </div>
+        )
+      })()}
 
       {/* ── 목록 테이블 ──────────────────────────────────── */}
       <div className="flex-1 overflow-auto">
@@ -951,8 +1032,8 @@ export default function PurchasesPage() {
               <col style={{ width: 36 }} />
               <col style={{ width: 82 }} />
               <col style={{ width: 90 }} />
-              <col style={{ width: 88 }} />
               <col style={{ width: 90 }} />
+              <col style={{ width: 88 }} />
               <col style={{ width: 60 }} />
               <col style={{ width: 68 }} />
               <col style={{ width: 110 }} />
@@ -972,7 +1053,7 @@ export default function PurchasesPage() {
                     checked={requests.length > 0 && requests.flatMap((r: any) => r.items?.length > 0 ? r.items.map((i: any) => i.id) : [r.id]).every((k: string) => selectedIds.has(k))}
                     onChange={toggleAll} />
                 </th>
-                {['상태', '요청일', '요청자', '구매요청코드', '구분', '배송지', '품목코드', '품목명', '수량', '공급처', '구매사유', '입고희망일', '입고예정일', '진행자', '관리'].map(h => (
+                {['상태', '구매요청코드', '요청일', '요청자', '구분', '배송지', '품목코드', '품목명', '수량', '공급처', '구매사유', '입고희망일', '입고예정일', '진행자', '관리'].map(h => (
                   <th key={h} className="px-3 py-2.5 text-left text-[11px] font-semibold text-gray-500 whitespace-nowrap">
                     {h}
                   </th>
@@ -1016,16 +1097,16 @@ export default function PurchasesPage() {
                           {STATUS_LABEL[req.status] ?? req.status}
                         </span>
                       </td>
+                      <td className="px-3 py-2 align-middle whitespace-nowrap">
+                        <span className="text-xs font-mono text-gray-700">
+                          {req.documentNo || <span className="text-gray-300">—</span>}
+                        </span>
+                      </td>
                       <td className="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">
                         {req.createdAt ? req.createdAt.slice(0, 10) : <span className="text-gray-300">—</span>}
                       </td>
                       <td className="px-3 py-2 text-gray-600 whitespace-nowrap text-xs">
                         {drafter ? drafter.replace(/\s*[\(（(].*[\)）)].*/, '').trim() || drafter : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-3 py-2 align-middle whitespace-nowrap">
-                        <span className="text-xs font-mono text-gray-700">
-                          {req.documentNo || <span className="text-gray-300">—</span>}
-                        </span>
                       </td>
                       <td className="px-3 py-2 align-middle whitespace-nowrap">
                         {item?.domestic
@@ -1073,26 +1154,17 @@ export default function PurchasesPage() {
                       <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-600">
                         {getApprover(req) || <span className="text-gray-300">—</span>}
                       </td>
-                      {isFirst && (
-                        <td rowSpan={groupSize} className="px-3 py-2 align-middle">
-                          <div className="flex items-center gap-1">
-                            {/* 보기: 모두 / 수정: 작성자만 */}
-                            {isOwn(req) ? (
-                              req.status === 'PENDING' ? (
-                                <button
-                                  onClick={() => openEdit(req, false)}
-                                  className="h-7 px-2.5 rounded text-xs font-medium border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors whitespace-nowrap"
-                                >
-                                  수정
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={() => openEdit(req, true)}
-                                  className="h-7 px-2.5 rounded text-xs font-medium border border-gray-200 text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors whitespace-nowrap"
-                                >
-                                  보기
-                                </button>
-                              )
+                      <td className="px-3 py-2">
+                        <div className="flex items-center gap-1">
+                          {/* 보기: 모두 / 수정: 작성자만 */}
+                          {isOwn(req) ? (
+                            req.status === 'PENDING' ? (
+                              <button
+                                onClick={() => openEdit(req, false)}
+                                className="h-7 px-2.5 rounded text-xs font-medium border border-blue-200 text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors whitespace-nowrap"
+                              >
+                                수정
+                              </button>
                             ) : (
                               <button
                                 onClick={() => openEdit(req, true)}
@@ -1100,28 +1172,35 @@ export default function PurchasesPage() {
                               >
                                 보기
                               </button>
-                            )}
-                            {/* 구매 처리: 해당 탭 재고권한 user 또는 거래처(VENDOR) 권한 */}
-                            {(isAdmin || (isExternal && deptTab === '생산구매팀')) && (
-                              <button
-                                onClick={() => openBuyer(req)}
-                                className="h-7 px-2.5 rounded text-xs font-medium border border-purple-200 text-purple-600 bg-purple-50 hover:bg-purple-100 transition-colors whitespace-nowrap"
-                              >
-                                구매 처리
-                              </button>
-                            )}
-                            {/* 삭제: 작성자 또는 해당 탭 재고권한 user */}
-                            {(isOwn(req) || isAdmin) && req.status === 'PENDING' && (
-                              <button
-                                onClick={() => setDeleteId(req.id)}
-                                className="h-7 px-2.5 rounded text-xs font-medium border border-red-200 text-red-500 bg-red-50 hover:bg-red-100 transition-colors whitespace-nowrap"
-                              >
-                                삭제
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      )}
+                            )
+                          ) : (
+                            <button
+                              onClick={() => openEdit(req, true)}
+                              className="h-7 px-2.5 rounded text-xs font-medium border border-gray-200 text-gray-600 bg-gray-50 hover:bg-gray-100 transition-colors whitespace-nowrap"
+                            >
+                              보기
+                            </button>
+                          )}
+                          {/* 구매 처리: 해당 탭 재고권한 user 또는 거래처(VENDOR) 권한 */}
+                          {(isAdmin || (isExternal && deptTab === '생산구매팀')) && (
+                            <button
+                              onClick={() => openBuyer(req, item)}
+                              className="h-7 px-2.5 rounded text-xs font-medium border border-purple-200 text-purple-600 bg-purple-50 hover:bg-purple-100 transition-colors whitespace-nowrap"
+                            >
+                              구매 처리
+                            </button>
+                          )}
+                          {/* 삭제: 작성자 또는 해당 탭 재고권한 user */}
+                          {(isOwn(req) || isAdmin) && req.status === 'PENDING' && (
+                            <button
+                              onClick={() => setDeleteId(req.id)}
+                              className="h-7 px-2.5 rounded text-xs font-medium border border-red-200 text-red-500 bg-red-50 hover:bg-red-100 transition-colors whitespace-nowrap"
+                            >
+                              삭제
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   )
                 })
@@ -1607,15 +1686,16 @@ export default function PurchasesPage() {
       <BuyerDialog
         open={buyerOpen}
         request={buyerRequest}
-        onClose={() => { setBuyerOpen(false); setBuyerRequest(null); setBulkQueue([]); setSelectedIds(new Set()) }}
+        onClose={() => { setBuyerOpen(false); setBuyerRequest(null); setBulkQueue([]); setSelectedIds(new Set()); fetchRequests(page, filterStatus, search, deptTab) }}
         onSaved={updated => {
-          setRequests(prev => prev.map((r: any) => r.id === updated.id ? updated : r))
           if (bulkQueue.length > 0) {
             const [next, ...rest] = bulkQueue
             setBulkQueue(rest)
             setBuyerRequest(next)
           } else {
             setBuyerRequest(updated)
+            // 마지막 저장 완료 시 목록 새로고침
+            fetchRequests(page, filterStatus, search, deptTab)
           }
         }}
       />

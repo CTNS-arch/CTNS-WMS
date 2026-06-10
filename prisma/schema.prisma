@@ -104,12 +104,14 @@ enum StockTxType {
 // ── 구매 요청 ──────────────────────────────────────────────
 
 enum PurchaseStatus {
-  PENDING  // 구매요청
-  APPROVED // 견적진행
-  WAITING  // 발주대기
-  ORDERED  // 발주완료
-  RECEIVED // 입고완료
-  REJECTED // 반려
+  PENDING         // 구매요청
+  APPROVED        // 견적진행
+  WAITING         // 발주승인
+  ORDER_PROGRESS  // 발주진행
+  ORDERED         // 발주완료
+  RECEIVED        // 입고완료
+  SETTLED         // 정산완료
+  REJECTED        // 반려
 }
 
 model Item {
@@ -255,6 +257,7 @@ model PurchaseRequest {
   department    String         @default("생산구매팀")
   requestDate  DateTime       @default(now())
   status       PurchaseStatus @default(PENDING)
+  approved     Boolean        @default(false) // 승인 여부 (재고담당자 발주완료 처리 시 Y)
   memo         String?
   requesterId  String?
   approvalLine String?        // JSON: [{order,role,name}]
@@ -329,10 +332,15 @@ model PurchaseRequestItem {
   krwAmount             Float?    // 원화 환산 금액
   unitPrice             Float?    // 단가 (구매금액 ÷ 수량)
   boxUnitQty            Float?    // 박스별 수량
+  orderNumber           String?   // 발주번호
   paymentMethod         String?   // 정산구분 (계좌이체/카드/현금/어음)
   payBankName           String?   // 정산 - 은행
   payAccountNumber      String?   // 정산 - 계좌번호
   payAccountHolder      String?   // 정산 - 예금주
+  settlementRequired    String?   // 정산여부 (Y/N)
+  settlementParty       String?   // 정산 거래처
+  settlementAmount      Float?    // 정산 금액
+  settlementDate        DateTime? // 정산일
 
   purchaseRequest PurchaseRequest @relation(fields: [purchaseRequestId], references: [id], onDelete: Cascade)
   item            Item?           @relation(fields: [itemId], references: [id])
