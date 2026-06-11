@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { ItemStatus } from '@prisma/client'
+import { notifyErpWebhook } from '@/lib/erp-webhook'
 
 export async function PATCH(req: NextRequest) {
   try {
@@ -18,6 +19,7 @@ export async function PATCH(req: NextRequest) {
       where: { id: { in: ids } },
       data: { status },
     })
+    notifyErpWebhook('batch', { ids })
     return NextResponse.json({ success: true, message: `${count}개 품목 상태가 변경되었습니다.` })
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 })
@@ -40,6 +42,7 @@ export async function DELETE(req: NextRequest) {
       )
 
     const { count } = await prisma.item.deleteMany({ where: { id: { in: ids } } })
+    notifyErpWebhook('batch', { ids })
     return NextResponse.json({ success: true, message: `${count}개 품목이 삭제되었습니다.` })
   } catch (err: any) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 })
